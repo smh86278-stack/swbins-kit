@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ko" data-mode="__MODE__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>매크로 허브</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+/* 색·단추·칩·입력·토스트는 /static/theme.css(운영 화면과 공유). 여기는 첫 화면에만 있는 것. */
+#dot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s,box-shadow .3s}
+#dot.on{background:var(--ok);animation:ping 2.4s ease-out infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%,100%{box-shadow:0 0 0 8px transparent}}
+#skinSel{max-width:170px}
+
+/* ---------- 히어로: 강아지 · 통계 · 고양이 (작은 띠) ---------- */
+.hero{position:relative;margin:12px 16px 0;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);
+  background:linear-gradient(110deg,var(--hero1),var(--hero2) 50%,var(--hero3))}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;filter:blur(36px);opacity:.5;pointer-events:none;animation:drift 18s ease-in-out infinite alternate}
+.hero::before{width:220px;height:220px;left:-60px;top:-110px;background:var(--glass)}
+.hero::after{width:260px;height:260px;right:-80px;bottom:-170px;background:var(--accent2);opacity:.22;animation-duration:24s}
+@keyframes drift{to{transform:translate(50px,20px) scale(1.12)}}
+.stage{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,440px) minmax(0,1fr);align-items:center;gap:14px;padding:10px 16px 8px}
+.pet{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"art bubble" "art tag";align-items:center;column-gap:10px;min-width:0}
+.pet.cat{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"bubble art" "tag art";justify-items:end}
+.pet .art{grid-area:art;width:84px}
+/* 펫 뒤 둥근 받침 — 어두운 스킨(검은 고양이 등)도 다크 모드에서 보이게 */
+.pet .art::before{content:"";position:absolute;left:50%;bottom:-4px;width:104px;height:62px;transform:translateX(-50%);border-radius:50%;z-index:-1;
+  background:radial-gradient(closest-side,var(--petglow),transparent)}
+.pet .art{isolation:isolate}
+.pet .bubble{grid-area:bubble;align-self:end}
+.pet .tag{grid-area:tag;align-self:start}
+.pet svg{width:100%;height:auto;overflow:visible;filter:drop-shadow(0 6px 6px rgba(90,60,140,.2))}
+.tag{margin:4px 2px 0;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.2px}
+.bubble{position:relative;max-width:300px;background:var(--solid);color:var(--text);border-radius:14px;padding:6px 11px 0;border-bottom:6px solid transparent;font-size:12px;line-height:1.45;
+  box-shadow:var(--shadow);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  transition:transform .35s cubic-bezier(.3,1.6,.5,1),opacity .25s}
+.bubble.pop{animation:pop .45s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{0%{transform:scale(.8)}100%{transform:scale(1)}}
+.center{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--panel);border:1px solid var(--glass);border-radius:14px;padding:6px 4px;box-shadow:var(--shadow)}
+.stat b{font-size:20px;font-variant-numeric:tabular-nums;line-height:1.15;color:var(--accent)}
+.stat span{color:var(--muted);font-size:11px;white-space:nowrap}
+.stat.ok b{color:var(--ok)}.stat.bad b{color:var(--bad)}.stat.run b{color:var(--info)}
+@media (max-width:980px){.stage{grid-template-columns:1fr 1fr}.center{grid-column:1/-1;order:3}}
+
+/* ---------- 본문 ---------- */
+main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px;padding:12px 16px 28px;align-items:start}
+@media (max-width:980px){main{grid-template-columns:1fr}}
+section.box{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;box-shadow:var(--shadow)}
+h2{font-size:12px;margin:0 0 9px;color:var(--muted);font-weight:800;letter-spacing:.4px;display:flex;align-items:center;gap:6px}
+h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.stack{display:flex;flex-direction:column;gap:12px}
+.card{border:1px solid var(--line);background:var(--solid);border-radius:13px;padding:8px 12px;margin-bottom:6px;
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s}
+.card:last-child{margin-bottom:0}
+.card:hover{transform:translateY(-1px);box-shadow:var(--shadow2);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.card.rise{animation:rise .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*45ms)}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+.card.live{border-color:color-mix(in srgb,var(--info) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--info) 13%,transparent)}
+.row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.grow{flex:1;min-width:0}
+.name{font-weight:800}
+.desc{color:var(--muted);font-size:12px;margin:1px 0 2px}
+.badge{font-size:10.5px;font-weight:700;border-radius:99px;padding:0 8px;background:var(--accentsoft);color:var(--accent)}
+.badge.ex{background:var(--soft);color:var(--muted)}
+.badge.svc{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.trg{font-size:11.5px;color:var(--muted)}
+.card .act{gap:8px}
+.card .act button{padding:3px 12px}
+.params{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0}
+.params label{display:flex;flex-direction:column;font-size:10.5px;color:var(--muted);gap:1px}
+.params input{padding:3px 8px;font-size:12px;width:130px}
+.switch{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none;color:var(--muted)}
+.switch input{appearance:none;width:32px;height:18px;border-radius:20px;background:var(--line);position:relative;cursor:pointer;transition:background .25s;margin:0}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
+.switch input:checked{background:var(--ok)}.switch input:checked::after{transform:translateX(14px)}
+.tool{margin-bottom:10px}.tool:last-child{margin-bottom:0}
+.tool .lbl{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.runs{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--solid)}
+.run{display:flex;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12.5px;transition:background .15s}
+.run:last-child{border-bottom:0}.run:hover{background:var(--soft)}.run.sel{background:var(--accentsoft)}
+.run.new{animation:slidein .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes slidein{from{opacity:0;transform:translateX(-12px);background:color-mix(in srgb,var(--accent) 16%,transparent)}}
+.run .t{color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
+pre#log{background:var(--code);color:var(--codetext);border-radius:13px;padding:10px 13px;margin:8px 0 0;height:320px;overflow:auto;
+  font:12px/1.5 Consolas,"Malgun Gothic",monospace;white-space:pre-wrap;word-break:break-all;scroll-behavior:smooth}
+pre#log .ln{animation:fadein .35s ease both}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}}
+#logTitle{font-size:11.5px;color:var(--muted);margin-top:8px}
+</style>
+<link rel="stylesheet" href="/static/pets.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
+  <h1>매크로 허브</h1><span id="dot" title="연결 상태"></span>
+  <span class="sub" id="info"></span>
+  <a class="nav" href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화 — 메일로 맡긴 일을 메신저처럼(다른 PC 는 DispatchChat.exe)">💬 대화</a>
+  <a class="nav" href="/ops" title="예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트">⏰ 운영</a>
+  <select id="skinSel" title="강아지·고양이 모습 — 펫과 같이 바뀝니다"></select>
+  <button id="petBtn" title="화면 구석에 강아지·고양이 펫을 띄웁니다">화면 펫</button>
+  <span id="modeSw"></span>
+  <span class="sub" style="margin-left:auto">자동 실행은 매크로마다 켜야 동작합니다 (기본 꺼짐)</span>
+</header>
+
+<div class="hero">
+  <div class="stage">
+    <!-- ================= 강아지 (감시견 · 상시 매크로) ================= -->
+    <div class="pet dog" id="dog" data-mood="sleep" data-bark="off">
+      <div class="bubble" id="dogBubble">…</div>
+      <div class="art" id="dogArt"></div>
+      <div class="tag">감시견 · 상시 매크로</div>
+    </div>
+
+    <div class="center">
+      <div class="stat"><b id="sSvc">0</b><span>상시 매크로 동작</span></div>
+      <div class="stat run"><b id="sRun">0</b><span>지금 실행 중</span></div>
+      <div class="stat ok"><b id="sOk">0</b><span>오늘 성공</span></div>
+      <div class="stat bad"><b id="sFail">0</b><span>오늘 실패</span></div>
+    </div>
+
+    <!-- ================= 고양이 (일꾼 · 실행 중 매크로) ================= -->
+    <div class="pet cat" id="cat" data-mood="idle">
+      <div class="bubble" id="catBubble">…</div>
+      <div class="art" id="catArt"></div>
+      <div class="tag">일꾼 고양이 · 실행 중 매크로</div>
+    </div>
+  </div>
+  <div class="ground"></div>
+</div>
+
+<main>
+  <div class="stack">
+    <section class="box">
+      <h2>매크로</h2>
+      <div id="macros"></div>
+    </section>
+  </div>
+  <div class="stack">
+    <section class="box">
+      <h2>만들기 · 녹화 · 도구</h2>
+      <div class="tool">
+        <div class="lbl">새 매크로 (템플릿)</div>
+        <div class="row"><input id="newName" type="text" placeholder="이름" class="grow">
+          <select id="newKind"><option value="web">웹</option><option value="desktop">데스크톱</option></select>
+          <button id="newBtn">만들기</button></div>
+      </div>
+      <div class="tool">
+        <div class="lbl">웹 녹화 — Chrome 이 열리고, 조작한 내용이 매크로로 저장됩니다 (창을 닫으면 저장)</div>
+        <div class="row"><input id="recUrl" type="text" placeholder="https://…" class="grow"><input id="recName" type="text" placeholder="저장 이름" style="width:130px">
+          <button id="recBtn">녹화 시작</button></div>
+      </div>
+      <div class="tool">
+        <div class="lbl">데스크톱 — 요소 찍기: 누르고 3초 안에 찍을 컨트롤에 마우스를 올립니다</div>
+        <div class="row"><button id="pickBtn">요소 찍기</button>
+          <input id="inspTitle" type="text" placeholder="창 제목 일부(비우면 창 목록)" class="grow"><button id="inspBtn">구조 보기</button></div>
+      </div>
+      <div class="tool">
+        <div class="row"><button id="openLocal">내 매크로 폴더 열기</button><button id="openEx">예제 폴더 열기</button></div>
+      </div>
+    </section>
+    <section class="box">
+      <h2>실행 기록 · 로그</h2>
+      <div class="runs" id="runs"></div>
+      <div id="logTitle">실행을 선택하면 로그가 보입니다</div>
+      <pre id="log"></pre>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+<script src="/static/theme.js"></script>
+<script src="/static/pets.js"></script>
+<script>
+const TOKEN='__TOKEN__';
+HubMode.mount('#modeSw',TOKEN);
+const $=s=>document.querySelector(s);
+let macros=[],runs=[],sel=null,toolRuns=new Map(),paramVals={};
+let firstDraw=true;const seenRuns=new Set();
+const STATUS={running:'실행 중',ok:'성공',fail:'실패',stopped:'중지됨',timeout:'시간 초과'};
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function hm(ms){const d=new Date(ms),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),3500)}
+async function api(path,body){
+  const opt=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Hub-Token':TOKEN},body:JSON.stringify(body)};
+  const r=await fetch(path,opt);let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j;
+}
+function chip(s){return el('span','chip s-'+s,STATUS[s]||s)}
+function trgText(t){
+  if(t.type==='process')return '프로세스 '+t.name+' 실행 시';
+  if(t.type==='window')return '창 "'+t.title+'"'+(t.process?' ('+t.process+')':'')+' 등장 시';
+  if(t.type==='schedule')return t.every?'매 '+t.every:(t.days&&t.days!=='daily'?t.days+' ':'매일 ')+t.at;
+  return JSON.stringify(t);
+}
+
+/* ---------- 매크로 카드 ---------- */
+function drawMacros(){
+  const box=$('#macros');box.replaceChildren();
+  if(!macros.length){box.append(el('div','empty','매크로가 없습니다. 오른쪽에서 새로 만들거나 녹화하세요.'));return}
+  macros.forEach((m,idx)=>{
+    const c=el('div','card'+(firstDraw?' rise':'')+(m.running?' live':''));c.style.setProperty('--i',idx);
+    const top=el('div','row'),title=el('div','grow');
+    title.append(el('span','name',m.name),' ');
+    if(m.target)title.append(el('span','badge',m.target==='web'?'웹':'데스크톱'),' ');
+    if(m.service)title.append(el('span','badge svc','상시'),' ');
+    if(!m.local)title.append(el('span','badge ex','예제'));
+    top.append(title);
+    if(m.last&&!m.running)top.append(chip(m.last.status));
+    if(m.running)top.append(chip('running'));
+    c.append(top);
+    if(m.desc)c.append(el('div','desc',m.desc));
+    if(m.triggers.length)c.append(el('div','trg','트리거: '+m.triggers.map(trgText).join(' · ')));
+    const keys=Object.keys(m.params||{});
+    if(keys.length){
+      const p=el('div','params');
+      for(const k of keys){
+        const l=el('label','',k),i=el('input');i.type='text';i.value=(paramVals[m.id]||{})[k]??m.params[k];
+        i.oninput=()=>{(paramVals[m.id]=paramVals[m.id]||{})[k]=i.value};l.append(i);p.append(l);
+      }
+      c.append(p);
+    }
+    const act=el('div','row');
+    if(m.running){const b=el('button','bad','중지');b.onclick=()=>api('/api/stop',{run:m.running}).catch(e=>toast(e.message));act.append(b)}
+    else{const b=el('button','pri','실행');b.onclick=async()=>{
+      try{const r=await api('/api/run',{id:m.id,params:paramVals[m.id]||{}});select(r.run)}catch(e){toast(e.message)}};act.append(b)}
+    if(m.triggers.length||m.service){
+      const lab=el('label','switch'),cb=el('input');cb.type='checkbox';cb.checked=m.enabled;
+      cb.onchange=()=>api('/api/enable',{id:m.id,enabled:cb.checked}).then(()=>toast(cb.checked?(m.service?'상시 실행을 켰습니다':'자동 실행을 켰습니다'):'껐습니다')).catch(e=>toast(e.message));
+      lab.append(cb,m.service?'상시 실행':'자동 실행');act.append(lab);
+    }
+    act.classList.add('act');top.append(act);box.append(c);
+  });
+  firstDraw=false;
+}
+// 성공한 예약 실행(메일 분류는 10분마다)은 한 줄로 접는다 — 펼침 여부는 이 브라우저에만 기억
+let showRoutine=false;try{showRoutine=localStorage.getItem('runs.routine')==='1'}catch(e){}
+const routine=r=>r.trigger==='schedule'&&r.status==='ok'&&r.id!==sel;
+function drawRuns(){
+  const box=$('#runs');box.replaceChildren();
+  if(!runs.length){box.append(el('div','empty','아직 실행 기록이 없습니다'));return}
+  const hidden=runs.filter(routine);
+  if(hidden.length){
+    const t=el('div','run');t.style.cursor='pointer';t.style.opacity='.75';
+    t.append(el('span','t','⏰'),el('span','grow','예약 성공 '+hidden.length+'건 · 마지막 '+hm(hidden[0].started)+' '+hidden[0].name),el('span','t',showRoutine?'접기 ▲':'펼치기 ▼'));
+    t.onclick=()=>{showRoutine=!showRoutine;try{localStorage.setItem('runs.routine',showRoutine?'1':'0')}catch(e){}drawRuns()};
+    box.append(t);
+  }
+  for(const r of runs){
+    if(!showRoutine&&routine(r))continue;
+    const d=el('div','run'+(r.id===sel?' sel':'')+(seenRuns.has(r.id)?'':' new'));seenRuns.add(r.id);
+    d.append(el('span','t',hm(r.started)),el('span','grow',r.name),el('span','t',r.trigger+(r.detail?' · '+r.detail:'')),chip(r.status));
+    d.onclick=()=>select(r.id);box.append(d);
+  }
+}
+async function select(id){
+  sel=id;drawRuns();
+  const r=await api('/api/run?id='+id).catch(()=>null);if(!r||sel!==id)return;
+  $('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
+  const pre=$('#log');pre.replaceChildren();r.lines.forEach(l=>addLine(l,false));pre.scrollTop=pre.scrollHeight;
+}
+function addLine(text,animate){const s=el('div',animate?'ln':'',text||' ');$('#log').append(s)}
+
+/* ---------- 강아지 · 고양이 ---------- */
+const params=new URLSearchParams(location.search);          // ?dog=sleep&cat=work&motion=mail 로 모습을 미리 볼 수 있다
+const flash=PetMood.newFlash();
+function setBubble(id,text){const b=$(id);if(b.textContent!==text){b.textContent=text;b.title=text;b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop')}}
+function numTo(id,n){
+  const e=$(id),from=+e.dataset.v||0;if(from===n)return;e.dataset.v=n;
+  const t0=performance.now();(function step(t){const k=Math.min(1,(t-t0)/450),v=Math.round(from+(n-from)*(1-Math.pow(1-k,3)));e.textContent=v;if(k<1)requestAnimationFrame(step)})(t0);
+}
+let skin=null,skinId=null;
+async function setSkin(id){skinId=id||null;skin=await PetSkin.load(skinId);PetSkin.reset($('#dogArt'));PetSkin.reset($('#catArt'));const sel=$('#skinSel');if(sel)sel.value=skinId||'';updatePets()}
+async function loadSkins(){
+  const list=await PetSkin.list(),sel=$('#skinSel');sel.replaceChildren(new Option('기본 그림',''));
+  list.forEach(k=>sel.append(new Option(k.name||k.id,k.id)));
+  try{const j=await api('/api/skin');await setSkin(j.skin)}catch(e){}
+}
+$('#skinSel').onchange=e=>api('/api/skin',{skin:e.target.value||null}).catch(x=>toast(x.message));
+function updatePets(){
+  const now=Date.now();
+  const r=PetMood.compute(macros,flash,now,{dog:params.get('dog'),cat:params.get('cat'),motion:params.get('motion')});
+  const D=$('#dog'),C=$('#cat');
+  D.dataset.mood=r.dog;D.dataset.bark=r.barking?'on':'off';C.dataset.mood=r.cat;C.dataset.motion=r.catMotion||'';
+  PetSkin.render(skin,D,$('#dogArt'),'dog',r.dog,r.barking);PetSkin.render(skin,C,$('#catArt'),'cat',r.cat,false,r.catMotion);
+  setBubble('#dogBubble',r.dogText);setBubble('#catBubble',r.catText);
+  numTo('#sSvc',r.on.length-r.down.length);numTo('#sRun',r.working.length);
+  const day0=new Date().setHours(0,0,0,0),today=runs.filter(x=>x.started>=day0);
+  numTo('#sOk',today.filter(x=>x.status==='ok').length);numTo('#sFail',today.filter(x=>x.status==='fail'||x.status==='timeout').length);
+}
+function reactToRun(r){PetMood.react(flash,r)}
+
+/* ---------- 데이터 · 이벤트 ---------- */
+function upsertRun(r){
+  if(r.tool){toolRuns.set(r.id,r)}else{const i=runs.findIndex(x=>x.id===r.id);if(i>=0)runs[i]=r;else runs.unshift(r);runs=runs.slice(0,100)}
+  reactToRun(r);drawRuns();
+  if(r.id===sel)$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
+  if(!r.tool)loadMacros();else updatePets();
+}
+async function loadMacros(){try{macros=await api('/api/macros');drawMacros();updatePets()}catch(e){}}
+async function loadRuns(){try{runs=await api('/api/runs');runs.forEach(r=>seenRuns.add(r.id));drawRuns();updatePets()}catch(e){}}
+function connect(){
+  const es=new EventSource('/events');
+  es.onopen=()=>{$('#dot').classList.add('on');loadMacros();loadRuns()};
+  es.onerror=()=>$('#dot').classList.remove('on');
+  es.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.t==='run')upsertRun(m.run);
+    else if(m.t==='log'){if(m.run===sel){const pre=$('#log'),near=pre.scrollHeight-pre.scrollTop-pre.clientHeight<48;addLine(m.line,true);if(near)pre.scrollTop=pre.scrollHeight}}
+    else if(m.t==='macros'||m.t==='motion')loadMacros();
+    else if(m.t==='pet')setTimeout(petState,400);
+    else if(m.t==='skin')setSkin(m.skin);
+    else if(m.t==='theme')HubMode.apply(m.mode);
+    else if(m.t==='note')toast(m.text);
+    else if(m.t==='notify'){toast('🔔 '+m.title+' — '+m.text);PetMood.notify(flash,m)}
+  };
+}
+const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
+$('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 매크로 폴더에서 편집하세요');loadMacros()});
+$('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
+$('#pickBtn').onclick=guard(async()=>{const r=await api('/api/pick',{});select(r.run)});
+$('#inspBtn').onclick=guard(async()=>{const r=await api('/api/inspect',{title:$('#inspTitle').value});select(r.run)});
+$('#openLocal').onclick=guard(()=>api('/api/open',{which:'local'}));
+$('#openEx').onclick=guard(()=>api('/api/open',{which:'example'}));
+async function petState(){try{const p=await api('/api/pet');const b=$('#petBtn');b.textContent=p.on?'화면 펫 끄기':'화면 펫 켜기';b.classList.toggle('pri',!p.on);b.disabled=!p.installed;if(!p.installed)b.title='pet 폴더에서 npm install 이 필요합니다'}catch(e){}}
+$('#petBtn').onclick=guard(async()=>{const p=await api('/api/pet');await api('/api/pet',{on:!p.on});setTimeout(petState,600)});
+petState();loadSkins();
+api('/api/info').then(i=>{$('#info').textContent=i.venv?'':'⚠ .venv 없음 — setup.bat 을 먼저 실행하세요'});
+$('#dogArt').innerHTML='<div class="art-svg">'+PetArt.dog+'</div>';$('#catArt').innerHTML='<div class="art-svg">'+PetArt.cat+'</div>'+PetArt.badge;
+setInterval(updatePets,1000);
+updatePets();connect();
+</script>
+</body>
+</html>

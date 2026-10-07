@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>매크로 허브 펫</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/pets.css">
+<style>
+/* 데스크톱 펫 — 배경은 완전히 투명하고, 그림(SVG)과 말풍선 위에서만 마우스가 반응한다. */
+html,body{margin:0;background:transparent;overflow:hidden;font:13px/1.45 "Segoe UI","Malgun Gothic",sans-serif;
+  user-select:none;-webkit-user-select:none}
+#stage{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;align-items:flex-end;padding:0 4px 4px}
+.slot{position:relative;width:176px;display:flex;flex-direction:column;align-items:center}
+.slot.off{display:none}
+.pet{position:relative;width:176px}
+.pet .art svg{display:block;width:176px;height:auto;overflow:visible;filter:drop-shadow(0 8px 8px rgba(90,60,140,.28));cursor:grab}
+body.dragging .pet .art svg{cursor:grabbing}
+.bubble{position:absolute;left:50%;bottom:calc(100% - 6px);transform:translate(-50%,6px) scale(.9);max-width:230px;width:max-content;
+  background:#fff;color:#2f2b45;border:1.5px solid #e4dcfb;border-radius:16px;padding:6px 12px;box-shadow:0 6px 18px rgba(110,90,170,.25);text-align:center;
+  opacity:0;pointer-events:none;transition:opacity .25s,transform .35s cubic-bezier(.3,1.6,.5,1);z-index:2}
+.bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:11px;height:11px;background:#fff;transform:translateX(-50%) rotate(45deg);border-radius:2px}
+.bubble.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
+.pet.hop .bodywrap{animation:jump .5s ease-in-out 1!important}
+.pet.hop .skin-media{animation:jump .5s ease-in-out 1!important}
+.skin-media{cursor:grab}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="slot" id="slotDog">
+    <div class="bubble" id="dogBubble"></div>
+    <div class="pet dog" id="dog" data-mood="sleep" data-bark="off"><div class="art" id="dogArt"></div></div>
+  </div>
+  <div class="slot" id="slotCat">
+    <div class="bubble" id="catBubble"></div>
+    <div class="pet cat" id="cat" data-mood="idle"><div class="art" id="catArt"></div></div>
+  </div>
+</div>
+<script src="/static/pets.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const TOKEN = '__TOKEN__';
+const api = window.petApi || null;                       // Electron 안에서만 있다(브라우저로 열면 미리보기 전용)
+const params = new URLSearchParams(location.search);     // ?dog=sleep&cat=work&motion=mail 로 모습을 미리 볼 수 있다
+let macros = [], connected = false;
+const flash = PetMood.newFlash();
+
+$('#dogArt').innerHTML = '<div class="art-svg">' + PetArt.dog + '</div>';
+$('#catArt').innerHTML = '<div class="art-svg">' + PetArt.cat + '</div>' + PetArt.badge;
+
+/* ---------- 말풍선: 말이 바뀔 때와 마우스를 올릴 때만 잠깐 보인다 ---------- */
+const bubbles = {dog: {el: $('#dogBubble'), text: '', timer: 0}, cat: {el: $('#catBubble'), text: '', timer: 0}};
+function say(k, text, ms) {
+  const b = bubbles[k];
+  b.el.textContent = text; b.el.classList.add('show');
+  clearTimeout(b.timer); b.timer = setTimeout(() => b.el.classList.remove('show'), ms || 5000);
+}
+function track(k, text) { const b = bubbles[k]; if (b.text !== text) { b.text = text; say(k, text, 5200); } }
+
+function update() {
+  const r = PetMood.compute(macros, flash, Date.now(), {dog: params.get('dog'), cat: params.get('cat'), motion: params.get('motion')});
+  let dog = r.dog, dogText = r.dogText;
+  if (!connected) { dog = 'sleep'; dogText = '허브에 연결 중…'; }
+  const D = $('#dog'), C = $('#cat');
+  D.dataset.mood = dog; D.dataset.bark = r.barking ? 'on' : 'off'; C.dataset.mood = r.cat; C.dataset.motion = r.catMotion || '';
+  renderSkin('dog', dog, r.barking); renderSkin('cat', r.cat, false, r.catMotion);
+  track('dog', dogText); track('cat', r.catText);
+}
+
+/* ---------- 스킨: 움직이는 이미지/영상으로 통째로 바꾸기 (web/skins/README.md) ---------- */
+let skin = null, skinId = null; const curFile = {dog: null, cat: null};
+async function setSkin(id) { skinId = id; skin = await PetSkin.load(id); curFile.dog = curFile.cat = null; update(); }
+function renderSkin(kind, mood, bark, motion) {
+  const pet = $('#' + kind), art = $('#' + kind + 'Art');
+  const file = skin ? PetSkin.file(skin, kind, mood, bark, motion) : null;
+  pet.classList.toggle('skinned', !!file);
+  if (!file) { PetSkin.dispose(art.querySelector('.skin-media')); curFile[kind] = null; return; }
+  if (curFile[kind] !== file) {
+    PetSkin.dispose(art.querySelector('.skin-media'));
+    art.append(PetSkin.element(skin, file)); curFile[kind] = file;
+  }
+}
+
+/* ---------- 허브와 연결 (같은 출처라 CORS 문제가 없다) ---------- */
+async function loadMacros() {
+  try { macros = await (await fetch('/api/macros')).json(); connected = true; update(); } catch (e) { connected = false; }
+}
+async function loadSkin() {                              // 스킨은 허브가 정본 — 연결될 때마다 맞춘다
+  try { const j = await (await fetch('/api/skin')).json(); if ((j.skin || null) !== skinId) setSkin(j.skin || null); } catch (e) {}
+}
+function connect() {
+  const es = new EventSource('/events');
+  es.onopen = () => { connected = true; loadMacros(); loadSkin(); };
+  es.onerror = () => { connected = false; update(); };
+  es.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.t === 'run') { PetMood.react(flash, m.run); if (!m.run.tool) loadMacros(); update(); }
+    else if (m.t === 'macros' || m.t === 'motion') loadMacros();
+    else if (m.t === 'skin') { if ((m.skin || null) !== skinId) setSkin(m.skin || null); }
+    else if (m.t === 'notify') { PetMood.notify(flash, m); say('dog', (m.title || '알림') + (m.text ? ' — ' + m.text : ''), 6500); update(); }
+  };
+}
+
+/* ---------- 마우스: 투명한 곳은 통과, 펫 위에서만 반응 ---------- */
+function isHit(el) {
+  if (!el) return false;
+  if (el.closest && el.closest('.bubble.show')) return true;
+  if (el.classList && el.classList.contains('skin-media')) return true;
+  return el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg';     // 그림이 실제로 칠해진 곳만
+}
+let ignoring = null, dragging = false, drag = null;
+function setIgnore(v) { if (ignoring !== v) { ignoring = v; if (api) api.setIgnore(v); } }
+document.addEventListener('mousemove', e => { if (!dragging) setIgnore(!isHit(e.target)); });
+document.addEventListener('mouseleave', () => { if (!dragging) setIgnore(true); });
+
+function petOf(el) { return el && el.closest ? el.closest('.pet') : null; }
+document.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !isHit(e.target)) return;
+  drag = {x: e.screenX, y: e.screenY, moved: false, pet: petOf(e.target)};
+  try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+});
+document.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.screenX - drag.x, dy = e.screenY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;                    // 살짝 흔들린 건 클릭으로 본다
+  if (!drag.moved) { drag.moved = true; dragging = true; document.body.classList.add('dragging'); }
+  drag.x = e.screenX; drag.y = e.screenY;
+  if (api) api.dragBy(dx, dy);
+});
+document.addEventListener('pointerup', e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.moved) {
+    dragging = false; document.body.classList.remove('dragging');
+    if (api) api.saveBounds();
+    setIgnore(!isHit(document.elementFromPoint(e.clientX, e.clientY)));
+  } else {
+    if (d.pet) { d.pet.classList.add('hop'); setTimeout(() => d.pet.classList.remove('hop'), 600); }
+    if (api) api.openHub();                                              // 1단계: 클릭하면 허브 화면을 연다(2단계에서 방사형 메뉴로)
+  }
+});
+document.addEventListener('contextmenu', e => { e.preventDefault(); if (isHit(e.target) && api) api.showMenu(); });
+for (const k of ['dog', 'cat']) {
+  $('#' + k).addEventListener('mouseenter', () => { if (bubbles[k].text) say(k, bubbles[k].text, 3000); });
+}
+
+/* ---------- 설정(메뉴에서 바꾼 것) ---------- */
+function applySettings(s) {
+  $('#slotDog').classList.toggle('off', !s.showDog);
+  $('#slotCat').classList.toggle('off', !s.showCat);
+  document.body.style.zoom = s.scale;
+}
+if (api) { api.getSettings().then(applySettings); api.onSettings(applySettings); }
+if (api) {
+  // 우클릭 메뉴의 모습 선택 — 허브가 기억하고 허브 화면과 같이 바뀐다
+  api.onSetSkin(id => fetch('/api/skin', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
+    body: JSON.stringify({skin: id})}).catch(() => {}));
+  // 메뉴의 '펫 끄기' — 허브에 알려 '꺼 둔 상태'로 기억시킨다(그래야 허브를 다시 켤 때 펫이 되살아나지 않는다)
+  api.onAskOff(() => fetch('/api/pet', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
+    body: JSON.stringify({on: false})}).catch(() => {}));
+}
+// 마우스 휠로 크기 조절 (펫 위에서)
+document.addEventListener('wheel', e => {
+  if (!api || !isHit(e.target)) return;
+  e.preventDefault();
+  api.scaleBy(e.deltaY < 0 ? 1 : -1);
+}, {passive: false});
+
+setInterval(update, 700);
+update(); connect();
+</script>
+</body>
+</html>

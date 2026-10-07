@@ -1,0 +1,15 @@
+{
+  "name": "디스패치",
+  "short_name": "디스패치",
+  "description": "메일로 일을 맡기는 메신저형 보내기 화면",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f4fc",
+  "theme_color": "#f7f4fc",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

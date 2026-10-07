@@ -1,0 +1,7 @@
+{
+  "name": "macro-hub-window",
+  "version": "0.1.0",
+  "private": true,
+  "description": "매크로 허브 전용 창 — 허브 화면(http://127.0.0.1:8610/)을 자기 창으로 연다. Electron 은 pet\\node_modules 의 것을 같이 쓴다",
+  "main": "main.js"
+}

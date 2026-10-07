@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>디스패치</title>
+<meta name="description" content="메일로 일을 맡기는 메신저형 보내기 화면">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="디스패치">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f7f4fc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1826" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<style>
+/* 디스패치 — 폰(아이폰 Safari)에서 쓰는 '보내기' 화면. 서버가 없다: 보내기를 누르면 메일 앱이 제목·본문이 채워진 채 열리고,
+   보내기만 누르면 PC 의 메일 게이트웨이가 받아 일을 시작한다. 답은 메일로 온다(메일 안의 단추로 바로 답장).
+   이 페이지에는 메일 주소·업무 내용이 들어 있지 않다 — 주소는 처음 한 번 입력하면 이 기기에만 남는다. */
+:root{color-scheme:light dark;
+  --bg:light-dark(#f7f4fc,#1a1826);--bg2:light-dark(#fde9f3,#2a1f33);--bg3:light-dark(#e6f1ff,#1c2236);
+  --panel:light-dark(#ffffffee,#232033ee);--solid:light-dark(#fff,#252236);--soft:light-dark(#f3effb,#2c2840);
+  --text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#8781a0,#9a94b3);--line:light-dark(#ebe4f6,#363150);
+  --accent:light-dark(#8a72ee,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--accentsoft:light-dark(#eee9ff,#332c52);
+  --onaccent:light-dark(#fff,#1d1830);--warn:light-dark(#d98a2b,#f2b067);--ok:light-dark(#2fa57d,#5fd3a6);
+  --shadow:0 2px 12px light-dark(rgba(110,90,170,.10),rgba(0,0,0,.35));
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;color:var(--text);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI","Malgun Gothic",sans-serif;
+  background:radial-gradient(700px 360px at 0% -10%,var(--bg2),transparent 60%),radial-gradient(600px 360px at 100% 0%,var(--bg3),transparent 55%),var(--bg);
+  display:flex;flex-direction:column;min-height:100dvh}
+button,input,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.logo{width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;flex:none}
+.logo svg{width:18px;height:18px}
+h1{font-size:17px;margin:0;font-weight:800}
+.sub{color:var(--muted);font-size:12px}
+.icon-btn{margin-left:auto;border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:6px 12px;font-size:14px;font-weight:700}
+
+/* 보낸 기록 — 말풍선 */
+#log{flex:1;overflow:auto;padding:14px 16px 8px;display:flex;flex-direction:column;gap:10px}
+.empty{margin:auto;text-align:center;color:var(--muted);font-size:14px;max-width:300px}
+.empty b{color:var(--text)}
+.day{align-self:center;font-size:11px;color:var(--muted);background:var(--soft);border-radius:99px;padding:2px 10px}
+.msg{align-self:flex-end;max-width:85%;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onaccent);border-radius:18px 18px 6px 18px;padding:9px 13px;
+  white-space:pre-wrap;word-break:break-word;box-shadow:var(--shadow)}
+.meta{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.tagchip{font-size:10.5px;font-weight:800;border-radius:99px;padding:0 7px;background:var(--accentsoft);color:var(--accent)}
+.tagchip.w{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.again{border:0;background:none;color:var(--accent);font-size:11px;font-weight:700;padding:0}
+
+/* 입력부 */
+.composer{position:sticky;bottom:0;background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--line);padding:8px 12px calc(env(safe-area-inset-bottom) + 10px)}
+.tabs{display:flex;gap:4px;background:var(--soft);border:1px solid var(--line);border-radius:99px;padding:3px;margin-bottom:8px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:99px;padding:6px 0;font-size:14px;font-weight:700;color:var(--muted)}
+.tabs button.on{background:var(--solid);color:var(--accent);box-shadow:var(--shadow)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.chip{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:4px 11px;font-size:13px;font-weight:700;color:var(--muted)}
+.chip.on{background:var(--accentsoft);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--accent)}
+.chip.on.w{background:color-mix(in srgb,var(--warn) 16%,transparent);border-color:color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--warn)}
+.row{display:flex;gap:8px;align-items:flex-end}
+textarea,input[type=text],input[type=email],input[type=number]{width:100%;background:var(--solid);border:1px solid var(--line);border-radius:18px;padding:9px 13px;outline:none;
+  font-size:16px}  /* 16px 미만이면 iOS 가 확대한다 */
+textarea{resize:none;max-height:140px;min-height:42px}
+textarea:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+.send{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onaccent);
+  display:grid;place-items:center;box-shadow:var(--shadow)}
+.send:disabled{opacity:.4}
+.send svg{width:20px;height:20px}
+.pane{display:none}.pane.on{display:block}
+.picks{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.pick{border:1px solid var(--line);background:var(--solid);border-radius:14px;padding:9px 0;font-size:16px;font-weight:800;color:var(--muted);display:flex;gap:5px;justify-content:center;align-items:center}
+.pick.on{background:var(--accentsoft);border-color:var(--accent);color:var(--accent)}
+.pick .box{width:16px;height:16px;border-radius:5px;border:2px solid currentColor;display:grid;place-items:center;font-size:11px;line-height:1}
+.inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.inline label{font-size:13px;color:var(--muted);white-space:nowrap;font-weight:700}
+.prefix{display:flex;align-items:center;background:var(--solid);border:1px solid var(--line);border-radius:18px;padding-left:13px;flex:1}
+.prefix span{color:var(--muted);font-weight:700}
+.prefix input{border:0;box-shadow:none!important;background:transparent;padding-left:2px}
+.hint{font-size:12px;color:var(--muted);margin:6px 2px 0}
+.stopbtn{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:5px 12px;font-size:13px;font-weight:700;color:var(--muted)}
+.stopbtn.on{border-color:var(--warn);color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+
+/* 설정 */
+dialog{border:0;border-radius:20px;padding:0;width:min(420px,calc(100vw - 32px));background:var(--solid);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(20,15,40,.35)}
+.dlg{padding:18px}
+.dlg h2{margin:0 0 4px;font-size:17px}
+.dlg p{margin:0 0 12px;color:var(--muted);font-size:13px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
+.dlg .actions{display:flex;gap:8px;justify-content:flex-end}
+.btn{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:8px 16px;font-weight:700}
+.btn.pri{background:linear-gradient(135deg,var(--accent),var(--accent2));border:0;color:var(--onaccent)}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 64px);transform:translate(-50%,-10px);opacity:0;background:var(--text);color:var(--bg);
+  padding:8px 14px;border-radius:14px;font-size:14px;transition:.25s;pointer-events:none;max-width:85vw;text-align:center}
+#toast.show{opacity:.95;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg></div>
+  <div><h1>디스패치</h1><div class="sub" id="who">메일로 일을 맡깁니다</div></div>
+  <button class="icon-btn" id="setBtn" aria-label="설정">설정</button>
+</header>
+
+<main id="log" aria-live="polite"></main>
+
+<div class="composer">
+  <div class="tabs" role="tablist">
+    <button data-pane="say" class="on">지시</button>
+    <button data-pane="answer">답하기</button>
+    <button data-pane="issue" id="issueTab" hidden>이슈</button>
+  </div>
+
+  <!-- 지시: 새 일을 맡기거나, 대화 번호를 넣어 이어서 말한다 -->
+  <section class="pane on" id="say">
+    <div class="chips" id="modeChips">
+      <button class="chip on" data-mode="read">읽기</button>
+      <button class="chip w" data-mode="write">수정 허용</button>
+      <span style="width:6px"></span>
+      <span id="folderChips" style="display:contents"></span>
+    </div>
+    <div class="inline">
+      <label for="sayThread">이어서</label>
+      <div class="prefix" style="max-width:130px"><span>T</span><input id="sayThread" type="number" inputmode="numeric" placeholder="새 대화"></div>
+      <span class="hint" style="margin:0">비우면 새 대화</span>
+    </div>
+    <div class="row">
+      <textarea id="sayText" rows="1" placeholder="할 일을 적으세요 (첫 줄이 제목)"></textarea>
+      <button class="send" id="saySend" aria-label="보내기" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </section>
+
+  <!-- 답하기: 메일로 온 질문(☐ 1~4)에 체크박스로 답한다 -->
+  <section class="pane" id="answer">
+    <div class="inline">
+      <label for="ansThread">대화</label>
+      <div class="prefix" style="max-width:130px"><span>T</span><input id="ansThread" type="number" inputmode="numeric" placeholder="12"></div>
+      <span class="hint" style="margin:0">권한은 처음 그대로</span>
+    </div>
+    <div class="picks" id="picks"></div>
+    <div class="row">
+      <textarea id="ansText" rows="1" placeholder="덧붙일 말 (없어도 됨)"></textarea>
+      <button class="send" id="ansSend" aria-label="보내기" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="hint">메일 제목의 <b>[T번호]</b> 를 넣고 고르세요. 여러 개 고를 수 있습니다. <button class="stopbtn" id="stopBtn">멈춤</button></div>
+  </section>
+
+  <!-- 이슈: 이슈 번호로 처리 시작(수정 허용 → PC 가 실행 확인 메일을 한 번 보낸다). 설정에 이슈 키 앞부분을 넣어야 탭이 보인다 -->
+  <section class="pane" id="issue">
+    <div class="row">
+      <div class="prefix"><span id="issuePrefix"></span><input id="issueNo" type="text" autocapitalize="characters" autocomplete="off" placeholder="번호 또는 키 전체"></div>
+      <button class="send" id="issueSend" aria-label="보내기" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="hint">PC 의 이슈 처리 명령(<span id="issueCmdShow">/issue</span>)으로 시작합니다. 수정 허용이라 PC 가 <b>실행 확인 메일</b>을 한 번 보냅니다 — 그 메일의 [실행] 단추를 누르세요.</div>
+  </section>
+</div>
+
+<dialog id="dlg">
+  <form class="dlg" method="dialog" id="setForm">
+    <h2>설정</h2>
+    <p>이 기기에만 저장됩니다. 페이지에는 아무 주소도 들어 있지 않습니다.</p>
+    <div class="field"><label for="setMail">지시를 받을 메일 주소 (PC 게이트웨이가 보는 내 주소)</label>
+      <input id="setMail" type="email" autocomplete="email" placeholder="me@example.com" required></div>
+    <div class="field"><label for="setFolders">작업 폴더 키 (쉼표로, 비우면 기본 폴더만)</label>
+      <input id="setFolders" type="text" placeholder="docs, notes"></div>
+    <div class="field"><label for="setPrefix">이슈 키 앞부분 (비우면 이슈 탭을 숨깁니다)</label>
+      <input id="setPrefix" type="text" placeholder="PROJ-"></div>
+    <div class="field"><label for="setCmd">이슈 처리 명령 (PC 설정 dispatch.issue_command 와 같게)</label>
+      <input id="setCmd" type="text" placeholder="/issue"></div>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>닫기</button><button class="btn pri" value="ok">저장</button></div>
+  </form>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const TAG = { read: '#c', write: '#cw' };          // PC 게이트웨이의 지시 태그(읽기 · 수정 허용)
+const store = {                                   // 이 기기의 설정·보낸 기록. 저장이 막힌 브라우저에서도 화면은 돈다
+  get(k, d) { try { const v = localStorage.getItem('dispatch.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('dispatch.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+let cfg = store.get('cfg', { mail: '', folders: [], prefix: '', cmd: '/issue' });
+let sent = store.get('sent', []);
+let mode = 'read', folder = '', picks = new Set(), stop = false;
+
+function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2600); }
+function el(t, c, x) { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
+const pad = n => String(n).padStart(2, '0');
+
+/* ---- 보낸 기록 ---- */
+function draw() {
+  const box = $('#log'); box.replaceChildren();
+  if (!sent.length) {
+    const e = el('div', 'empty');
+    e.innerHTML = '<b>메일로 일을 맡기는 곳</b><br><br>아래에 할 일을 적고 보내면 메일 앱이 다 채워진 채 열립니다. <b>보내기</b>만 누르세요.<br><br>답은 메일로 옵니다. 메일 안의 단추로 바로 답하거나, 여기 <b>답하기</b> 탭에서 체크박스로 고르세요.';
+    box.append(e); return;
+  }
+  let lastDay = '';
+  for (const s of sent) {
+    const d = new Date(s.at), day = (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+    if (day !== lastDay) { box.append(el('div', 'day', day)); lastDay = day; }
+    const m = el('div', 'msg'), b = el('div', 'bubble', s.text), meta = el('div', 'meta');
+    meta.append(el('span', 'tagchip' + (s.mode === 'write' ? ' w' : ''), s.label));
+    meta.append(el('span', '', pad(d.getHours()) + ':' + pad(d.getMinutes())));
+    if (s.kind === 'say') {
+      const again = el('button', 'again', '다시 쓰기');
+      again.onclick = () => { setTab('say'); $('#sayText').value = s.text; $('#sayThread').value = s.thread || ''; setMode(s.mode); grow($('#sayText')); refresh(); $('#sayText').focus(); };
+      meta.append(again);
+    }
+    m.append(b, meta); box.append(m);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---- 메일 앱 열기 ---- */
+function openMail(subject, body, rec) {
+  if (!cfg.mail) { openSettings(); toast('먼저 메일 주소를 넣어 주세요'); return false; }   // 입력은 지우지 않는다
+  const enc = s => encodeURIComponent(s).replace(/%0A/g, '%0D%0A');
+  const url = 'mailto:' + encodeURIComponent(cfg.mail) + '?subject=' + enc(subject) + '&body=' + enc(body);
+  (window.dispatchGo || (u => { location.href = u; }))(url);   // dispatchGo: 시험용 가로채기
+  sent.push(Object.assign({ at: Date.now() }, rec)); sent = sent.slice(-200); store.set('sent', sent); draw();
+  toast('메일 앱에서 보내기를 누르세요');
+  return true;
+}
+
+/* ---- 지시 ---- */
+function setMode(m) { mode = m; for (const b of document.querySelectorAll('#modeChips [data-mode]')) b.classList.toggle('on', b.dataset.mode === m); }
+function drawFolders() {
+  const box = $('#folderChips'); box.replaceChildren();
+  for (const f of [''].concat(cfg.folders || [])) {
+    const b = el('button', 'chip' + (f === folder ? ' on' : ''), f ? '@' + f : '기본 폴더');
+    b.onclick = () => { folder = f; drawFolders(); }; box.append(b);
+  }
+}
+$('#saySend').onclick = () => {
+  const text = $('#sayText').value.trim(), t = parseInt($('#sayThread').value, 10);
+  if (!text) return;
+  const [first, ...rest] = text.split('\n');
+  const head = [TAG[mode]];
+  if (t > 0) head.push('[T' + t + ']');
+  else if (folder) head.push('@' + folder);             // 이어 쓰는 대화는 원래 폴더를 그대로 쓴다
+  const subject = head.join(' ') + ' ' + first.trim().slice(0, 90);
+  const body = (first.trim().length > 90 ? first.trim() + '\n' : '') + rest.join('\n').trim();
+  if (!openMail(subject, body, { kind: 'say', text, mode, thread: t > 0 ? t : '', label: (t > 0 ? 'T' + t + ' · ' : '') + (mode === 'write' ? '수정' : '읽기') + (folder && !(t > 0) ? ' @' + folder : '') })) return;
+  $('#sayText').value = ''; grow($('#sayText')); refresh();
+};
+
+/* ---- 답하기(체크박스) ---- */
+function drawPicks() {
+  const box = $('#picks'); box.replaceChildren();
+  for (let i = 1; i <= 4; i++) {
+    const b = el('button', 'pick' + (picks.has(i) ? ' on' : ''));
+    b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', picks.has(i));
+    const box2 = el('span', 'box', picks.has(i) ? '✓' : ''); b.append(box2, String(i));
+    b.onclick = () => { picks.has(i) ? picks.delete(i) : picks.add(i); stop = false; $('#stopBtn').classList.remove('on'); drawPicks(); refresh(); };
+    box.append(b);
+  }
+}
+$('#stopBtn').onclick = () => { stop = !stop; if (stop) picks.clear(); $('#stopBtn').classList.toggle('on', stop); drawPicks(); refresh(); };
+$('#ansSend').onclick = () => {
+  const t = parseInt($('#ansThread').value, 10), extra = $('#ansText').value.trim();
+  if (!(t > 0)) { toast('메일 제목의 [T번호] 를 넣어 주세요'); return; }
+  const nums = [...picks].sort((a, b) => a - b).join(',');
+  const body = stop ? '멈춤' : (nums + (nums && extra ? ' ' : '') + extra);
+  if (!body) return;
+  if (!openMail('Re: ' + TAG.read + ' [T' + t + '] 답', body, { kind: 'answer', text: stop ? '멈춤' : (nums ? '☑ ' + nums.split(',').join(' ☑ ') : '') + (extra ? (nums ? '\n' : '') + extra : ''), mode: 'read', label: 'T' + t + ' · 답' })) return;
+  picks.clear(); stop = false; $('#stopBtn').classList.remove('on'); $('#ansText').value = ''; drawPicks(); refresh();
+};
+
+/* ---- 이슈 ---- */
+$('#issueSend').onclick = () => {
+  const n = $('#issueNo').value.trim(); if (!n || !cfg.prefix) return;
+  const key = (/^[A-Za-z]/.test(n) ? '' : cfg.prefix) + n.toUpperCase();   // 키 전체를 적었으면 앞부분을 붙이지 않는다
+  if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) { toast('이슈 키 형식이 아닙니다 (예: ' + cfg.prefix + '123)'); return; }
+  if (!openMail(TAG.write + ' ' + (cfg.cmd || '/issue') + ' ' + key, '', { kind: 'issue', text: '이슈 ' + key + ' 처리 시작', mode: 'write', label: '이슈' })) return;
+  $('#issueNo').value = ''; refresh();
+};
+
+/* ---- 공통 ---- */
+function setTab(name) {
+  for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.pane === name);
+  for (const p of document.querySelectorAll('.pane')) p.classList.toggle('on', p.id === name);
+  store.set('tab', name);
+}
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => setTab(b.dataset.pane);
+for (const b of document.querySelectorAll('#modeChips [data-mode]')) b.onclick = () => setMode(b.dataset.mode);
+function grow(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
+function refresh() {
+  $('#saySend').disabled = !$('#sayText').value.trim();
+  $('#ansSend').disabled = !(parseInt($('#ansThread').value, 10) > 0 && (picks.size || stop || $('#ansText').value.trim()));
+  $('#issueSend').disabled = !$('#issueNo').value.trim();
+}
+for (const id of ['#sayText', '#ansText']) $(id).addEventListener('input', e => { grow(e.target); refresh(); });
+for (const id of ['#ansThread', '#issueNo', '#sayThread']) $(id).addEventListener('input', refresh);
+
+function openSettings() {
+  $('#setMail').value = cfg.mail || ''; $('#setFolders').value = (cfg.folders || []).join(', '); $('#setPrefix').value = cfg.prefix || '';
+  $('#setCmd').value = cfg.cmd || '/issue';
+  $('#dlg').showModal();
+}
+$('#setBtn').onclick = openSettings;
+$('#dlg').addEventListener('close', () => {
+  if ($('#dlg').returnValue !== 'ok') return;
+  cfg = { mail: $('#setMail').value.trim(), folders: $('#setFolders').value.split(',').map(s => s.trim().replace(/^@/, '')).filter(Boolean), prefix: $('#setPrefix').value.trim(),
+          cmd: $('#setCmd').value.trim() || '/issue' };
+  store.set('cfg', cfg); applyCfg(); toast('저장했습니다');
+});
+function applyCfg() {
+  $('#who').textContent = cfg.mail ? cfg.mail.replace(/^(.{2}).*(@.*)$/, '$1…$2') + ' 로 보냅니다' : '설정에서 메일 주소를 넣어 주세요';
+  $('#issuePrefix').textContent = cfg.prefix || '';
+  $('#issueCmdShow').textContent = cfg.cmd || '/issue';
+  $('#issueTab').hidden = !cfg.prefix;                   // 이슈 키 앞부분이 없으면 이슈 탭을 숨긴다
+  if (!cfg.prefix && $('#issue').classList.contains('on')) setTab('say');
+  if (!(cfg.folders || []).includes(folder)) folder = '';
+  drawFolders();
+}
+
+const tab0 = store.get('tab', 'say');
+setTab(['say', 'answer', 'issue'].includes(tab0) ? tab0 : 'say'); applyCfg(); drawPicks(); draw(); refresh();
+if (!cfg.mail) setTimeout(openSettings, 300);
+</script>
+</body>
+</html>

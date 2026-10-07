@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------
+# 업무 자동화 키트 — 저장소 공통 제외 규칙
+#
+# 회사마다 다른 값(메일 계정·주소·폴더)과 이 PC 의 실행 기록은 절대 커밋하지 않는다.
+# 설정은 config.local.json 하나에 두고, 견본만 config.example.json 으로 담는다.
+# ---------------------------------------------------------------
+
+# ── 설정 · 자격증명 · 비밀 (절대 커밋 금지) ─────────────────────
+config.local.json
+*.local.json
+secrets.local.json
+state.local.json
+*.local.key
+*.pem
+*.env
+.env
+.env.*
+!.env.example
+
+# ── 실행 중 갱신되는 런타임 상태 · 기록 ─────────────────────────
+tools/macro-hub/data.local/
+tools/macro-hub/macros.local/
+macros.local/
+runs.jsonl
+state.json
+notify.jsonl
+paused.flag
+mail-state.json
+mail-notify.jsonl
+mail-paused.flag
+mail-seen.json
+python-path.txt
+
+# 메일 지시 인박스 — 지시 원문·결과에 회사 자료가 들어갈 수 있다
+inbox/
+
+# proc-live(허브 내부 모듈)를 직접 띄웠을 때 남는 기록
+tools/proc-live/events.jsonl
+tools/proc-live/events.old.jsonl
+tools/proc-live/known.json
+
+# ── 로그 ────────────────────────────────────────────────────────
+*.log
+logs/
+*.stackdump
+*.bak-*
+
+# ── 재생성 가능한 것 (가상환경 · 패키지 · 빌드 결과) ────────────
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+tools/macro-hub/MacroHub.exe
+tools/macro-hub/MacroHub.exe.old
+tools/macro-hub/profiles/
+tools/macro-hub/.codegen-*.py
+tools/macro-hub/hub.out
+tools/macro-hub/hub.err
+tools/macro-hub/shell/window.local.json
+tools/macro-hub/pet/settings.selftest.json
+# 허브 화면에서 가져온 스킨(모습)은 각자 PC 의 것 — 견본 설명(README.md)만 담는다
+tools/macro-hub/web/skins/*/
+
+# ── IDE ─────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.serena/
+*.iml

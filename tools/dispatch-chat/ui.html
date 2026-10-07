@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>디스패치 대화</title>
+<style>
+/* 디스패치 대화 화면 — 색은 매크로 허브(tools\macro-hub\web\theme.css)와 같은 파스텔. 이 화면은 다른 PC 의 exe 에서도 혼자 돌아야 해서 값을 옮겨 왔다. */
+:root{color-scheme:light dark;
+  --bg:light-dark(#f7f4fc,#1a1826);--bg2:light-dark(#fde9f3,#2a1f33);--bg3:light-dark(#e6f1ff,#1c2236);
+  --panel:light-dark(#ffffffe6,#232033e6);--solid:light-dark(#fff,#252236);--soft:light-dark(#f3effb,#2c2840);
+  --text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#8781a0,#9a94b3);--line:light-dark(#ebe4f6,#363150);
+  --accent:light-dark(#8a72ee,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--accentsoft:light-dark(#eee9ff,#332c52);--onaccent:light-dark(#fff,#1d1830);
+  --ok:light-dark(#2fa57d,#5fd3a6);--warn:light-dark(#d98a2b,#f2b067);--bad:light-dark(#e05a76,#f58aa0);--info:light-dark(#4f8fe6,#82b4ff);
+  --shadow:0 2px 10px light-dark(rgba(110,90,170,.08),rgba(0,0,0,.3));--shadow2:0 8px 22px light-dark(rgba(110,90,170,.16),rgba(0,0,0,.45));
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{color:var(--text);font:13.5px/1.5 "Segoe UI","Malgun Gothic",sans-serif;
+  background:radial-gradient(900px 420px at 0% -10%,var(--bg2),transparent 60%),radial-gradient(800px 420px at 100% 0%,var(--bg3),transparent 55%),var(--bg);
+  display:grid;grid-template-columns:320px 1fr;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 28%,var(--line));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+
+/* ---------- 왼쪽: 대화 목록 ---------- */
+aside{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel);backdrop-filter:blur(14px)}
+.brand{display:flex;align-items:center;gap:9px;padding:12px 14px 10px}
+.logo{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;flex:none}
+.logo svg{width:16px;height:16px}
+.brand h1{font-size:15px;margin:0;font-weight:800}
+.brand .sub{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+#dot{width:8px;height:8px;border-radius:50%;background:var(--muted);margin-left:auto;flex:none}
+#dot.ok{background:var(--ok)}#dot.bad{background:var(--bad)}
+.iconbtn{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700;color:var(--muted)}
+.iconbtn:hover{color:var(--accent);border-color:var(--accent)}
+.newbtn{margin:0 12px 8px;border:0;border-radius:14px;padding:9px;font-weight:800;color:var(--onaccent);background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:var(--shadow)}
+.filters{display:flex;gap:4px;padding:0 12px 8px}
+.filters button{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;color:var(--muted)}
+.filters button.on{background:var(--accentsoft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+#list{flex:1;overflow:auto;padding:0 8px 12px}
+.item{display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:13px;padding:8px 10px;margin-bottom:2px}
+.item:hover{background:var(--soft)}
+.item.sel{background:var(--accentsoft);border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.item .top{display:flex;align-items:center;gap:6px}
+.item .title{font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .time{font-size:11px;color:var(--muted);flex:none}
+.item .last{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.no{font-size:10.5px;font-weight:800;color:var(--muted);flex:none}
+.badge{font-size:10.5px;font-weight:800;border-radius:99px;padding:0 7px;flex:none;white-space:nowrap}
+.b-ask{background:color-mix(in srgb,var(--accent2) 22%,transparent);color:light-dark(#c2457f,#f2a3c8)}
+.b-confirm{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.b-sent,.b-queued{background:var(--soft);color:var(--muted)}
+.b-running{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info);animation:breathe 1.6s ease-in-out infinite}
+.b-done{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.b-error{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+@keyframes breathe{50%{opacity:.55}}
+.w{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+
+/* ---------- 오른쪽: 대화 ---------- */
+main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.head{display:flex;align-items:center;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel);backdrop-filter:blur(14px)}
+.head h2{font-size:15px;margin:0;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#msgs{flex:1;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;flex-direction:column;max-width:min(720px,82%)}
+.row.me{align-self:flex-end;align-items:flex-end}
+.row.bot{align-self:flex-start}
+.bubble{border-radius:18px;padding:9px 13px;white-space:pre-wrap;word-break:break-word;box-shadow:var(--shadow)}
+.me .bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onaccent);border-bottom-right-radius:6px}
+.me.pending .bubble{opacity:.65}
+.bot .bubble{background:var(--solid);border:1px solid var(--line);border-bottom-left-radius:6px}
+.bot.err .bubble{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.meta{font-size:11px;color:var(--muted);margin:3px 6px 0;display:flex;gap:6px;align-items:center}
+.foot{font-size:11px;color:var(--muted);margin-top:6px;border-top:1px dashed var(--line);padding-top:5px;white-space:pre-wrap}
+.who{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--muted);margin:0 6px 3px}
+.who i{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-block}
+.dayline{align-self:center;font-size:11px;color:var(--muted);background:var(--soft);border-radius:99px;padding:1px 10px}
+.typing{align-self:flex-start;color:var(--muted);font-size:12px;padding:4px 8px}
+.typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:3px;animation:hop 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes hop{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+
+/* 선택지 카드 */
+.choice{align-self:flex-start;max-width:min(560px,82%);background:var(--solid);border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--line));
+  border-radius:18px;padding:11px 13px;box-shadow:var(--shadow2)}
+.choice .q{font-weight:800;margin-bottom:8px}
+.choice .q small{color:var(--muted);font-weight:600}
+.opt{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--line);border-radius:12px;margin-bottom:6px;cursor:pointer;background:var(--soft)}
+.opt:hover{border-color:var(--accent)}
+.opt.on{background:var(--accentsoft);border-color:var(--accent)}
+.opt input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+.opt .n{font-weight:800;color:var(--accent);min-width:14px}
+.choice .acts{display:flex;gap:6px;align-items:center;margin-top:8px}
+.choice .acts input{flex:1;min-width:0}
+
+/* 입력부 */
+.composer{border-top:1px solid var(--line);background:var(--panel);backdrop-filter:blur(14px);padding:10px 18px 14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
+.chip{border:1px solid var(--line);background:var(--solid);border-radius:99px;padding:3px 11px;font-size:12px;font-weight:700;color:var(--muted)}
+.chip.on{background:var(--accentsoft);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--accent)}
+.chip.on.wr{background:color-mix(in srgb,var(--warn) 15%,transparent);border-color:color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--warn)}
+.sep{width:1px;height:16px;background:var(--line);margin:0 4px}
+.inrow{display:flex;gap:8px;align-items:flex-end}
+textarea,input[type=text],input[type=password],input[type=email],input[type=number],select{width:100%;background:var(--solid);border:1px solid var(--line);border-radius:14px;padding:8px 12px;outline:none}
+textarea{resize:none;min-height:40px;max-height:180px}
+textarea:focus,input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.send{flex:none;white-space:nowrap;border:0;border-radius:14px;padding:9px 16px;font-weight:800;color:var(--onaccent);background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:var(--shadow)}
+.send:disabled{opacity:.45;cursor:default}
+.ghost{border:1px solid var(--line);background:var(--solid);border-radius:14px;padding:8px 13px;font-weight:700;color:var(--muted);white-space:nowrap;flex:none}
+.ghost:hover{color:var(--accent);border-color:var(--accent)}
+.hint{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+/* 새 대화 */
+.welcome{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px}
+.newcard{width:min(640px,100%);background:var(--solid);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow2)}
+.newcard h2{margin:0 0 4px;font-size:18px}
+.newcard p{margin:0 0 14px;color:var(--muted)}
+.issue{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);align-items:center}
+.issue label{font-weight:800;white-space:nowrap}
+.prefix{display:flex;align-items:center;flex:1;background:var(--solid);border:1px solid var(--line);border-radius:14px;padding-left:12px}
+.prefix span{color:var(--muted);font-weight:700}
+.prefix input{border:0!important;box-shadow:none!important;padding-left:2px}
+.banner{margin:10px 18px 0;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);font-size:12.5px;display:none}
+
+dialog{border:0;border-radius:20px;padding:0;width:min(460px,calc(100vw - 40px));background:var(--solid);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(20,15,40,.35)}
+.dlg{padding:18px 20px}.dlg h2{margin:0 0 4px;font-size:17px}.dlg p{margin:0 0 12px;color:var(--muted);font-size:12.5px}
+.field{margin-bottom:10px}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:3px}
+.two{display:grid;grid-template-columns:1fr 110px;gap:8px}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+#setErr{color:var(--bad);font-size:12.5px;min-height:18px}
+#toast{position:fixed;right:18px;bottom:18px;background:var(--text);color:var(--bg);padding:9px 15px;border-radius:14px;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none;max-width:520px;z-index:9}
+#toast.show{opacity:.96;transform:none}
+@media (max-width:760px){body{grid-template-columns:1fr}aside{display:none}body.list aside{display:flex}body.list main{display:none}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg></div>
+    <div style="min-width:0"><h1>디스패치 대화</h1><div class="sub" id="who">메일함을 읽는 중…</div></div>
+    <span id="dot" title="메일함 연결"></span>
+  </div>
+  <button class="newbtn" id="newBtn">＋ 새 대화</button>
+  <div class="filters" id="filters">
+    <button data-f="all" class="on">전체</button><button data-f="wait">답할 것</button><button data-f="busy">진행 중</button>
+    <button class="iconbtn" id="refreshBtn" style="margin-left:auto" title="메일함 다시 읽기">↻</button>
+    <button class="iconbtn" id="setBtn" title="메일 계정">⚙</button>
+  </div>
+  <div id="list"></div>
+</aside>
+
+<main>
+  <div class="banner" id="banner"></div>
+  <!-- 새 대화 -->
+  <div class="welcome" id="newPane">
+    <div class="newcard">
+      <h2>새 일 맡기기</h2>
+      <p>보내면 메일로 PC 게이트웨이에 전달되고, 답은 이 화면에 대화로 옵니다. 폰 메일·디스패치 페이지와 같은 대화입니다.</p>
+      <div class="chips" id="newChips">
+        <button class="chip on" data-mode="read">읽기</button>
+        <button class="chip wr" data-mode="write">수정 허용</button>
+        <span class="sep"></span>
+        <span id="folderChips" style="display:contents"></span>
+      </div>
+      <div class="inrow">
+        <textarea id="newText" rows="3" placeholder="할 일을 적으세요 — 첫 줄이 제목이 됩니다 (Ctrl+Enter 로 보내기)"></textarea>
+        <button class="send" id="newSend" disabled>보내기</button>
+      </div>
+      <div class="hint" id="newHint">읽기: 조회·분석만 · 수정 허용: 파일 수정·명령 실행까지(PC 가 실행 전에 확인 메일을 한 번 보냅니다)</div>
+      <!-- 이슈 처리 — 설정에 이슈 키 앞부분(issue_prefix)이 있을 때만 보인다 -->
+      <div class="issue" id="issueRow" style="display:none">
+        <label for="issueNo">이슈</label>
+        <div class="prefix"><span id="issuePrefix"></span><input id="issueNo" type="text" placeholder="번호 또는 키" autocomplete="off"></div>
+        <button class="send" id="issueSend" disabled>처리 시작</button>
+      </div>
+    </div>
+  </div>
+  <!-- 대화 -->
+  <div id="threadPane" style="display:none;flex:1;min-height:0;flex-direction:column">
+    <div class="head">
+      <button class="iconbtn" id="backBtn" style="display:none">←</button>
+      <span class="no" id="tNo"></span><h2 id="tTitle"></h2><span id="tMode"></span><span id="tStatus"></span>
+    </div>
+    <div id="msgs"></div>
+    <div class="composer">
+      <div class="inrow">
+        <textarea id="sayText" rows="1" placeholder="이어서 말하기 (Ctrl+Enter 로 보내기)"></textarea>
+        <button class="ghost" id="stopBtn" title="하던 일을 정리하고 멈추게 합니다">멈춤</button>
+        <button class="send" id="saySend" disabled>보내기</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <form class="dlg" id="setForm" method="dialog">
+    <h2>메일 계정</h2>
+    <p id="setNote">지시를 주고받는 내 메일 계정입니다. 비밀번호는 이 PC 사용자 계정으로만 풀 수 있게 암호화해 둡니다.</p>
+    <div class="field"><label>메일 주소</label><input id="sUser" type="email" placeholder="me@example.com" required></div>
+    <div class="field"><label>로그인 아이디 (주소와 다를 때만)</label><input id="sLogin" type="text" placeholder="비우면 메일 주소"></div>
+    <div class="field"><label>비밀번호</label><input id="sPw" type="password" autocomplete="current-password" placeholder="바꿀 때만 입력"></div>
+    <div class="two"><div class="field"><label>IMAP 서버</label><input id="sImap" type="text" placeholder="imap.example.com"></div><div class="field"><label>포트</label><input id="sImapPort" type="number"></div></div>
+    <div class="two"><div class="field"><label>SMTP 서버</label><input id="sSmtp" type="text" placeholder="smtp.example.com"></div><div class="field"><label>포트</label><input id="sSmtpPort" type="number"></div></div>
+    <div class="two"><div class="field"><label>이슈 키 앞부분 (비우면 이슈 칸 숨김)</label><input id="sIssue" type="text" placeholder="PROJ-"></div>
+      <div class="field"><label>이슈 처리 명령</label><input id="sIssueCmd" type="text" placeholder="/issue"></div></div>
+    <div class="two">
+      <div class="field"><label>보내기</label><select id="sSend"><option value="smtp">메일 발송</option><option value="append">메일함에 넣기</option></select></div></div>
+    <div id="setErr"></div>
+    <div class="acts"><button type="button" class="ghost" id="setCancel">닫기</button><button type="submit" class="send" id="setSave">연결 확인 후 저장</button></div>
+  </form>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const TOKEN = '__TOKEN__';
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+const pad = n => String(n).padStart(2, '0');
+const STATUS = { ask: '답할 차례', confirm: '실행 확인', sent: '보냄', queued: '대기', running: '작업 중', done: '완료', error: '오류' };
+let state = { threads: [] }, sel = null, cur = null, filter = 'all', newMode = 'read', folder = '', lastVer = -1, curTs = 0, busy = false;
+
+function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 3200); }
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': TOKEN }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt); let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.error || ('오류 ' + r.status)); return j;
+}
+function when(ts) {
+  const d = new Date(ts * 1000), now = new Date();
+  return d.toDateString() === now.toDateString() ? pad(d.getHours()) + ':' + pad(d.getMinutes()) : (d.getMonth() + 1) + '/' + d.getDate();
+}
+function badge(st) { return el('span', 'badge b-' + st, STATUS[st] || st); }
+
+/* ---------- 목록 ---------- */
+function drawList() {
+  const box = $('#list'); box.replaceChildren();
+  const show = state.threads.filter(t => filter === 'all' || (filter === 'wait' ? ['ask', 'confirm'].includes(t.status) : ['sent', 'queued', 'running'].includes(t.status)));
+  if (!show.length) { box.append(el('div', 'hint', state.threads.length ? '해당하는 대화가 없습니다' : '최근 대화가 없습니다 — ＋ 새 대화로 시작하세요')); return; }
+  for (const t of show) {
+    const b = el('button', 'item' + (t.key === sel ? ' sel' : ''));
+    const top = el('div', 'top');
+    if (t.no) top.append(el('span', 'no', 'T' + t.no));
+    top.append(el('span', 'title', t.title));
+    if (t.mode === 'write') top.append(el('span', 'badge w', '수정'));
+    top.append(badge(t.status), el('span', 'time', when(t.ts)));
+    b.append(top, el('div', 'last', (t.last_bot ? '' : '나: ') + (t.last || '')));
+    b.onclick = () => openThread(t.key);
+    box.append(b);
+  }
+}
+
+/* ---------- 대화 ---------- */
+async function openThread(key) {
+  sel = key; drawList(); document.body.classList.remove('list');
+  $('#newPane').style.display = 'none'; $('#threadPane').style.display = 'flex';
+  try { cur = await api('/api/thread?key=' + encodeURIComponent(key)); } catch (e) { toast(e.message); return; }
+  curTs = cur.ts; drawThread(true);
+}
+function drawThread(scroll) {
+  const t = cur; if (!t) return;
+  $('#tNo').textContent = t.no ? 'T' + t.no : '번호 대기';
+  $('#tTitle').textContent = t.title;
+  $('#tMode').replaceChildren(t.mode === 'write' ? el('span', 'badge w', '수정 허용') : el('span', 'badge b-sent', '읽기'));
+  $('#tStatus').replaceChildren(badge(t.status));
+  const box = $('#msgs'), near = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.replaceChildren();
+  let lastDay = '';
+  t.msgs.forEach((m, i) => {
+    const d = new Date(m.ts * 1000), day = (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+    if (day !== lastDay) { box.append(el('div', 'dayline', day)); lastDay = day; }
+    const row = el('div', 'row ' + (m.bot ? 'bot' : 'me') + (m.pending ? ' pending' : '') + (m.bot && m.status === 'error' ? ' err' : ''));
+    if (m.bot) { const w = el('div', 'who'); w.append(el('i'), document.createTextNode(m.kind === 'confirm' ? '게이트웨이' : 'Claude')); row.append(w); }
+    const b = el('div', 'bubble', m.text || (m.bot ? '' : '(빈 메시지)'));
+    if (m.bot && m.foot) b.append(el('div', 'foot', m.foot));
+    row.append(b);
+    row.append(el('div', 'meta', (m.pending ? '보내는 중 · ' : '') + pad(d.getHours()) + ':' + pad(d.getMinutes())));
+    box.append(row);
+    if (m.bot && m.ask && i === t.msgs.length - 1) box.append(choiceCard(m.ask, m.kind === 'confirm'));
+  });
+  if (['sent', 'queued', 'running'].includes(t.status)) {
+    const ty = el('div', 'typing'); ty.append(el('span'), el('span'), el('span'), document.createTextNode(t.status === 'running' ? ' 작업 중' : ' 답을 기다리는 중'));
+    box.append(ty);
+  }
+  if (scroll || near) box.scrollTop = box.scrollHeight;
+  refreshBtns();
+}
+function choiceCard(ask, confirm) {
+  const c = el('div', 'choice'), q = el('div', 'q', '❓ ' + ask.question + ' ');
+  if (ask.multi) q.append(el('small', '', '(여러 개 가능)'));
+  c.append(q);
+  const picked = new Set();
+  ask.options.forEach((o, i) => {
+    const lab = el('label', 'opt'), inp = el('input');
+    inp.type = ask.multi ? 'checkbox' : 'radio'; inp.name = 'ask';
+    inp.onchange = () => {
+      if (!ask.multi) picked.clear();
+      inp.checked ? picked.add(i + 1) : picked.delete(i + 1);
+      for (const [j, l] of [...c.querySelectorAll('.opt')].entries()) l.classList.toggle('on', picked.has(j + 1));
+      go.disabled = !picked.size;
+    };
+    lab.append(inp, el('span', 'n', String(i + 1)), el('span', '', o)); c.append(lab);
+  });
+  const acts = el('div', 'acts'), extra = el('input'); extra.type = 'text'; extra.placeholder = confirm ? '' : '덧붙일 말 (없어도 됨)';
+  const go = el('button', 'send', confirm ? '답하기' : '고른 것으로 보내기'); go.disabled = true;
+  go.onclick = () => sendSay({ picks: [...picked], text: extra.value.trim() });
+  if (!confirm) acts.append(extra);
+  acts.append(go); c.append(acts);
+  return c;
+}
+async function sendSay(extra) {
+  if (busy || !cur) return;
+  const body = Object.assign({ key: cur.key, text: '' }, extra);
+  busy = true; refreshBtns();
+  try { await api('/api/send', body); $('#sayText').value = ''; grow($('#sayText')); toast('보냈습니다'); await poll(true); }
+  catch (e) { toast(e.message); }
+  finally { busy = false; refreshBtns(); }
+}
+$('#saySend').onclick = () => sendSay({ text: $('#sayText').value.trim() });
+$('#stopBtn').onclick = () => { if (confirm('이 대화의 일을 멈추게 할까요?')) sendSay({ stop: true }); };
+
+/* ---------- 새 대화 ---------- */
+function showNew() {
+  sel = null; cur = null; drawList(); document.body.classList.remove('list');
+  $('#threadPane').style.display = 'none'; $('#newPane').style.display = 'flex'; $('#newText').focus();
+}
+$('#newBtn').onclick = showNew;
+for (const b of document.querySelectorAll('#newChips [data-mode]')) b.onclick = () => {
+  newMode = b.dataset.mode; for (const x of document.querySelectorAll('#newChips [data-mode]')) x.classList.toggle('on', x === b);
+};
+function drawFolders() {
+  const box = $('#folderChips'); box.replaceChildren();
+  for (const f of [''].concat(state.folders || [])) {
+    const b = el('button', 'chip' + (f === folder ? ' on' : ''), f ? '@' + f : '기본 폴더');
+    b.onclick = () => { folder = f; drawFolders(); }; box.append(b);
+  }
+}
+async function sendNew(body, after) {
+  if (busy) return; busy = true; refreshBtns();
+  try { await api('/api/send', body); after(); toast('보냈습니다 — 회신이 오면 목록에 번호가 붙습니다'); await poll(true); }
+  catch (e) { toast(e.message); }
+  finally { busy = false; refreshBtns(); }
+}
+$('#newSend').onclick = () => sendNew({ text: $('#newText').value.trim(), mode: newMode, folder }, () => { $('#newText').value = ''; });
+$('#issueSend').onclick = () => sendNew({ issue: $('#issueNo').value.trim() }, () => { $('#issueNo').value = ''; });
+
+/* ---------- 공통 ---------- */
+function grow(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 180) + 'px'; }
+function refreshBtns() {
+  $('#newSend').disabled = busy || !$('#newText').value.trim();
+  $('#issueSend').disabled = busy || !$('#issueNo').value.trim();
+  $('#saySend').disabled = busy || !$('#sayText').value.trim() || !(cur && cur.no);
+  $('#stopBtn').disabled = busy || !(cur && cur.no);
+}
+for (const [id, fn] of [['#newText', () => $('#newSend').click()], ['#sayText', () => $('#saySend').click()]]) {
+  $(id).addEventListener('input', e => { grow(e.target); refreshBtns(); });
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter' && e.ctrlKey && !e.isComposing) { e.preventDefault(); fn(); } });
+}
+$('#issueNo').addEventListener('input', refreshBtns);
+$('#issueNo').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) $('#issueSend').click(); });
+for (const b of document.querySelectorAll('#filters [data-f]')) b.onclick = () => {
+  filter = b.dataset.f; for (const x of document.querySelectorAll('#filters [data-f]')) x.classList.toggle('on', x === b); drawList();
+};
+$('#refreshBtn').onclick = () => api('/api/refresh', {}).then(() => { toast('메일함을 다시 읽습니다'); setTimeout(() => poll(true), 2500); });
+$('#backBtn').onclick = () => document.body.classList.add('list');
+
+async function poll(force) {
+  let s; try { s = await api('/api/state'); } catch (e) { $('#dot').className = 'bad'; return; }
+  state = s;
+  $('#who').textContent = (s.user || '계정 없음') + (s.source === 'kit' ? ' · 이 PC 키트 설정 계정' : '');
+  $('#dot').className = s.error ? 'bad' : (s.polled ? 'ok' : '');
+  const ban = $('#banner');
+  if (s.error === 'setup') { ban.style.display = 'none'; if (!$('#dlg').open) openSetup(true); }
+  else if (s.error) { ban.textContent = '메일함을 읽지 못했습니다 — ' + s.error; ban.style.display = 'block'; }
+  else ban.style.display = 'none';
+  $('#issuePrefix').textContent = s.issue_prefix || '';
+  $('#issueRow').style.display = s.issue_prefix ? '' : 'none';
+  if (!$('#folderChips').childElementCount || force) drawFolders();
+  drawList();
+  if (sel) {
+    const t = s.threads.find(x => x.key === sel);
+    if (!t) {                                  // 보낸 첫 지시가 번호를 받아 T 대화로 바뀌었다 — 같은 대화로 따라간다
+      const moved = s.threads.find(x => cur && x.no && cur.msgs.some(m => !m.bot && x.title === cur.title));
+      if (moved) return openThread(moved.key);
+    } else if (force || t.ts !== curTs || t.status !== (cur && cur.status)) {
+      try { cur = await api('/api/thread?key=' + encodeURIComponent(sel)); curTs = cur.ts; drawThread(false); } catch (e) {}
+    }
+  }
+}
+
+/* ---------- 계정 ---------- */
+async function openSetup(first) {
+  const s = await api('/api/setup');
+  $('#sUser').value = s.user || ''; $('#sLogin').value = s.login_user || ''; $('#sPw').value = '';
+  $('#sImap').value = s.imap_host || ''; $('#sImapPort').value = s.imap_port || 993;
+  $('#sSmtp').value = s.smtp_host || ''; $('#sSmtpPort').value = s.smtp_port || 587;
+  $('#sIssue').value = s.issue_prefix || ''; $('#sIssueCmd').value = s.issue_command || '/issue'; $('#sSend').value = s.send_mode || 'smtp';
+  $('#setNote').textContent = s.source === 'kit'
+    ? '지금은 이 PC 키트 설정(config.local.json)의 계정을 쓰고 있습니다. 여기서 저장하면 이 앱만 따로 쓰는 계정이 됩니다.'
+    : (first ? '처음 여셨습니다. 지시를 주고받는 내 메일 계정을 넣어 주세요. ' : '') + '비밀번호는 이 PC 사용자 계정으로만 풀 수 있게 암호화해 둡니다.';
+  $('#sPw').placeholder = s.has_password ? '바꿀 때만 입력' : '비밀번호';
+  $('#setErr').textContent = ''; $('#dlg').showModal();
+}
+$('#setBtn').onclick = () => openSetup(false);
+$('#setCancel').onclick = () => $('#dlg').close();
+$('#setForm').onsubmit = async e => {
+  e.preventDefault(); $('#setErr').textContent = '연결을 확인하는 중…'; $('#setSave').disabled = true;
+  try {
+    await api('/api/setup', { user: $('#sUser').value, login_user: $('#sLogin').value, password: $('#sPw').value,
+      imap_host: $('#sImap').value, imap_port: $('#sImapPort').value, smtp_host: $('#sSmtp').value, smtp_port: $('#sSmtpPort').value,
+      issue_prefix: $('#sIssue').value, issue_command: $('#sIssueCmd').value, send_mode: $('#sSend').value });
+    $('#dlg').close(); toast('저장했습니다 — 메일함을 읽습니다'); setTimeout(() => poll(true), 2500);
+  } catch (err) { $('#setErr').textContent = err.message; }
+  finally { $('#setSave').disabled = false; }
+};
+
+showNew(); poll(true); setInterval(() => poll(false), 4000);
+</script>
+</body>
+</html>

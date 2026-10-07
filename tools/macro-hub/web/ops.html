@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko" data-mode="__MODE__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>운영 — 매크로 허브</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+/* 운영 화면 — 예약 작업 · 상시 서비스 · 기능 상태 · 설정(보기 전용) · 에이전트.
+   색·단추·칩·입력·토스트는 /static/theme.css(허브 첫 화면과 공유). 여기는 운영 화면에만 있는 것. */
+.top a{color:var(--muted);text-decoration:none;font-weight:700;padding:4px 10px;border-radius:99px;transition:background .2s,color .2s}
+.top a:hover{color:var(--accent);background:var(--accentsoft)}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--soft);padding:3px;border-radius:99px;border:1px solid var(--line)}
+nav.tabs button{border-color:transparent;background:transparent;padding:4px 12px}
+nav.tabs button:hover{background:var(--solid);transform:none}
+nav.tabs button.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onaccent);box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 30%,transparent)}
+main{max-width:1320px;margin:0 auto;padding:12px 16px 40px}
+section{display:none}section.on{display:block}
+h2{font-size:14px;margin:4px 0 6px;font-weight:800;display:flex;align-items:center;gap:6px}
+.note{color:var(--muted);font-size:12px;margin:0 0 10px}
+.card{border:1px solid var(--line);background:var(--solid);border-radius:13px;padding:8px 12px;margin-bottom:6px;box-shadow:var(--shadow);
+  transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));box-shadow:var(--shadow2)}
+/* 예약 작업 · 상시 서비스는 넓은 창에서 두 줄로 — 한 화면에 더 많이 */
+#schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:6px;align-items:start}
+#schedList>.card,#svcList>.card{margin-bottom:0}
+#schedList>.empty,#svcList>.empty{grid-column:1/-1}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.name{font-weight:800}
+.grow{flex:1;min-width:0}
+.card button{padding:3px 11px}
+input,select{padding:4px 8px}
+.edit{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:none}
+.edit.on{display:block}
+.edit .line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px}
+.switch{position:relative;width:32px;height:18px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;border-radius:99px;background:var(--line);transition:.2s;cursor:pointer}
+.switch span::before{content:"";position:absolute;width:14px;height:14px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
+.switch input:checked+span{background:var(--ok)}.switch input:checked+span::before{transform:translateX(14px)}
+table{border-collapse:separate;border-spacing:0;width:100%;background:var(--solid);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+td,th{padding:4px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:12.5px;vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{color:var(--muted);font-weight:700;background:var(--soft);font-size:11.5px}
+tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
+  <h1>운영</h1>
+  <a href="/">← 매크로 허브</a>
+  <a href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화">💬 대화</a>
+  <nav class="tabs" id="tabs">
+    <button data-tab="sched">⏰ 예약 작업</button>
+    <button data-tab="svc">🛡 상시 서비스</button>
+    <button data-tab="feat">📊 기능 상태</button>
+    <button data-tab="set">⚙ 설정</button>
+    <button data-tab="agents">🧵 에이전트</button>
+  </nav>
+  <span id="modeSw" style="margin-left:auto"></span>
+</header>
+<main>
+  <section id="sched">
+    <h2>⏰ 예약 작업</h2>
+    <p class="note">허브가 정해진 시각에 실행합니다(작업 스케줄러 대신). 허브가 꺼져 있는 동안 놓친 실행은 나중에 따라잡지 않습니다. 시각을 바꾸면 매크로 파일은 그대로 두고 허브에 기억합니다 — "기본값으로" 로 되돌립니다.</p>
+    <div id="schedList"><div class="empty">불러오는 중…</div></div>
+  </section>
+  <section id="svc">
+    <h2>🛡 상시 서비스</h2>
+    <p class="note">허브가 띄우고 지키는 서버·워처입니다. 허브를 꺼도 계속 돌고, 여기서 끄면 진짜로 멈춥니다. 죽으면 5초 안에 다시 띄웁니다.</p>
+    <div id="svcList"><div class="empty">불러오는 중…</div></div>
+  </section>
+  <section id="feat">
+    <h2>📊 기능 상태</h2>
+    <p class="note">각 기능의 예약 작업이 마지막으로 돌았을 때 남긴 결과입니다. 기능을 켜고 끄는 건 「⏰ 예약 작업」 탭에서, 대상(받는 사람·주소·폴더)은 설정 파일에서 정합니다.</p>
+    <div id="featBox"><div class="empty">준비 중</div></div>
+  </section>
+  <section id="set"><h2>⚙ 설정</h2><div id="setBox"><div class="empty">준비 중</div></div></section>
+  <section id="agents"><h2>🧵 에이전트</h2><div id="agentBox"><div class="empty">준비 중</div></div></section>
+</main>
+<div id="toast"></div>
+<script src="/static/theme.js"></script>
+<script>
+const TOKEN = '__TOKEN__';
+HubMode.mount('#modeSw', TOKEN);
+const $ = s => document.querySelector(s);
+function el(t, c, x){ const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
+function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 4000); }
+async function api(path, body){
+  const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN}, body: JSON.stringify(body)};
+  const r = await fetch(path, opt); let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.error || ('오류 ' + r.status)); return j;
+}
+const p2 = n => String(n).padStart(2, '0');
+function when(ms){
+  if (!ms) return '—';
+  const d = new Date(ms), now = new Date(), day = Math.round((new Date(d).setHours(0,0,0,0) - new Date(now).setHours(0,0,0,0)) / 864e5);
+  const hm = p2(d.getHours()) + ':' + p2(d.getMinutes());
+  return (day === 0 ? '오늘 ' : day === 1 ? '내일 ' : day === -1 ? '어제 ' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + hm;
+}
+function ago(ms){ const s = Math.round((Date.now() - ms) / 1000); return s < 60 ? s + '초 전' : s < 3600 ? Math.round(s / 60) + '분 전' : s < 86400 ? Math.round(s / 3600) + '시간 전' : Math.round(s / 86400) + '일 전'; }
+const DAYS = {daily: '매일', 'mon-fri': '평일', 'sat-sun': '주말', mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일'};
+function daysText(d){ d = (d || 'daily').toLowerCase(); return DAYS[d] || d.split(',').map(x => DAYS[x] || x).join('·'); }
+function schedText(t){
+  if (t.every){ const m = /^(\d+)\s*([smh])$/.exec(t.every) || []; return (m[1] || t.every) + ({s: '초', m: '분', h: '시간'}[m[2]] || '') + '마다'; }
+  return daysText(t.days) + ' ' + t.at;
+}
+const STATUS = {running: '실행 중', ok: '성공', fail: '실패', stopped: '중지됨', timeout: '시간 초과'};
+function lastChip(last){
+  if (!last) return el('span', 'chip', '실행 기록 없음');
+  return el('span', 'chip ' + (last.status === 'ok' ? 'ok' : last.status === 'running' ? 'run' : 'bad'), STATUS[last.status] + ' · ' + ago(last.ended || last.started));
+}
+function sw(checked, onchange){
+  const l = el('label', 'switch'), i = el('input'); i.type = 'checkbox'; i.checked = checked; i.onchange = () => onchange(i.checked, i);
+  l.append(i, el('span')); return l;
+}
+
+/* ---------- 예약 작업 ---------- */
+async function loadSched(){
+  let list; try { list = await api('/api/schedule'); } catch (e) { $('#schedList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const box = $('#schedList'); box.replaceChildren();
+  if (!list.length) box.append(el('div', 'empty', '예약 트리거가 있는 매크로가 없습니다.'));
+  for (const m of list){
+    const c = el('div', 'card'), r = el('div', 'row');
+    r.append(sw(m.enabled, async (on, i) => { try { await api('/api/service', {id: m.id, action: on ? 'start' : 'stop'}); toast(m.name + (on ? ' — 예약을 켰습니다' : ' — 예약을 껐습니다')); loadSched(); } catch (e) { i.checked = !on; toast(e.message); } }));
+    const info = el('div', 'grow');
+    const t = el('div'); t.append(el('span', 'name', m.name), ' ', el('span', 'sub', m.schedule.map(schedText).join(', ')));
+    if (m.overridden) t.append(' ', el('span', 'chip warn', '허브에서 바꿈'));
+    info.append(t);
+    const s = el('div', 'sub'); s.append('다음 실행 ', el('b', '', m.enabled ? when(m.next) : '꺼짐'), ' · 마지막 ', lastChip(m.last));
+    if (m.running) s.append(' ', el('span', 'chip run', '지금 실행 중'));
+    info.append(s);
+    const bRun = el('button', '', '지금 실행'); bRun.onclick = async () => { try { const j = await api('/api/service', {id: m.id, action: 'run'}); toast(j.message); setTimeout(loadSched, 800); } catch (e) { toast(e.message); } };
+    const bEdit = el('button', '', '시각 바꾸기');
+    r.append(info, bRun, bEdit);
+    c.append(r, editor(m, bEdit));
+    box.append(c);
+  }
+}
+function editor(m, opener){
+  const ed = el('div', 'edit'), rows = el('div');
+  const add = t => {
+    const line = el('div', 'line'), kind = el('select');
+    kind.append(new Option('간격', 'every'), new Option('시각', 'at'));
+    const ev = el('input'); ev.placeholder = '10m · 2h'; ev.size = 7;
+    const at = el('input'); at.type = 'time';
+    const days = el('select');
+    for (const [v, txt] of [['daily', '매일'], ['mon-fri', '평일'], ['sat-sun', '주말'], ['mon', '월'], ['tue', '화'], ['wed', '수'], ['thu', '목'], ['fri', '금'], ['sat', '토'], ['sun', '일']]) days.append(new Option(txt, v));
+    const del = el('button', '', '빼기'); del.onclick = () => line.remove();
+    const sync = () => { const e = kind.value === 'every'; ev.style.display = e ? '' : 'none'; at.style.display = days.style.display = e ? 'none' : ''; };
+    kind.onchange = sync;
+    if (t.every){ kind.value = 'every'; ev.value = t.every; } else { kind.value = 'at'; at.value = t.at || '09:00';
+      if (![...days.options].some(o => o.value === (t.days || 'daily'))) days.append(new Option(t.days, t.days));
+      days.value = t.days || 'daily'; }
+    sync(); line.append(kind, ev, at, days, del); line._get = () => kind.value === 'every' ? {every: ev.value.trim()} : {at: at.value, days: days.value};
+    rows.append(line);
+  };
+  m.schedule.forEach(add);
+  const bar = el('div', 'line'), bAdd = el('button', '', '+ 예약 추가'), bSave = el('button', 'pri', '저장'), bReset = el('button', '', '기본값으로');
+  bAdd.onclick = () => add({at: '09:00', days: 'daily'});
+  bSave.onclick = async () => { try { await api('/api/schedule', {id: m.id, schedule: [...rows.children].map(l => l._get())}); toast(m.name + ' — 예약을 바꿨습니다'); loadSched(); } catch (e) { toast(e.message); } };
+  bReset.onclick = async () => { try { await api('/api/schedule', {id: m.id, reset: true}); toast(m.name + ' — 기본값(' + m.default.map(schedText).join(', ') + ')으로 되돌렸습니다'); loadSched(); } catch (e) { toast(e.message); } };
+  bar.append(bAdd, bSave);
+  if (m.overridden) bar.append(bReset);
+  ed.append(rows, bar, el('div', 'sub', '기본값(매크로 파일): ' + (m.default.map(schedText).join(', ') || '없음')));
+  opener.onclick = () => ed.classList.toggle('on');
+  return ed;
+}
+
+/* ---------- 상시 서비스 ---------- */
+async function loadSvc(){
+  let list; try { list = await api('/api/macros'); } catch (e) { $('#svcList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const box = $('#svcList'); box.replaceChildren();
+  for (const m of list.filter(x => x.service)){
+    const c = el('div', 'card'), r = el('div', 'row');
+    r.append(sw(m.enabled, async (on, i) => {
+      if (!on && !confirm(m.name + ' 을(를) 멈출까요? 허브가 지키던 프로그램도 같이 꺼집니다.')) { i.checked = true; return; }
+      try { const j = await api('/api/service', {id: m.id, action: on ? 'start' : 'stop'}); toast(j.message); setTimeout(loadSvc, 1500); } catch (e) { i.checked = !on; toast(e.message); } }));
+    const info = el('div', 'grow'); info.append(el('div', 'name', m.name));
+    const s = el('div', 'sub');
+    s.append(m.enabled ? (m.running ? el('span', 'chip ok', '지키는 중') : el('span', 'chip warn', '다시 띄우는 중')) : el('span', 'chip', '꺼짐'));
+    if (m.desc) s.append(' ' + m.desc);
+    info.append(s);
+    const bRe = el('button', '', '다시 띄우기'); bRe.onclick = async () => { try { const j = await api('/api/service', {id: m.id, action: 'restart'}); toast(j.message); setTimeout(loadSvc, 1500); } catch (e) { toast(e.message); } };
+    r.append(info);
+    if (m.owns && m.owns.length) r.append(bRe);
+    c.append(r); box.append(c);
+  }
+}
+
+function kv(label, val){ const d = el('div', 'sub'); d.append(label + ' ', typeof val === 'string' ? el('b', '', val) : val); return d; }
+
+/* ---------- 기능 상태 — 기능별 매크로가 남긴 status.json (kit.write_status) ---------- */
+function okChip(ok){ return ok === true ? el('span', 'chip ok', '정상') : ok === false ? el('span', 'chip bad', '문제') : el('span', 'chip', '—'); }
+async function loadFeat(){
+  const box = $('#featBox');
+  let v; try { v = await api('/api/ops/features'); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  box.replaceChildren();
+  for (const f of v.features || []){
+    const c = el('div', 'card'), h = el('div', 'row');
+    const bad = (f.items || []).filter(x => x.ok === false).length;
+    h.append(el('span', 'name grow', f.label), el('span', 'sub', f.feature));
+    if (!f.configured) h.append(el('span', 'chip', '설정 안 됨'));
+    else h.append(bad ? el('span', 'chip bad', '문제 ' + bad) : el('span', 'chip ok', '정상'), el('span', 'sub', f.ago ? f.ago + ' 확인' : ''));
+    c.append(h);
+    if (!f.configured){ c.append(el('div', 'sub', '아직 실행 기록이 없습니다 — 설정 파일에 대상을 적고 「⏰ 예약 작업」에서 켜세요.')); box.append(c); continue; }
+    if (f.note) c.append(el('div', 'note', f.note));
+    if (f.items && f.items.length){
+      const t = el('table'), hr = el('tr'); hr.append(el('th', '', '대상'), el('th', '', '상태'), el('th', '', '내용')); t.append(hr);
+      for (const it of f.items){ const tr = el('tr'), st = el('td'); st.append(okChip(it.ok)); tr.append(el('td', '', it.name), st, el('td', 'sub', it.text)); t.append(tr); }
+      c.append(t);
+    } else c.append(el('div', 'sub', '대상이 없습니다.'));
+    box.append(c);
+  }
+}
+
+/* ---------- 설정(보기 전용) ---------- */
+async function loadSet(){
+  const box = $('#setBox');
+  let v; try { v = await api('/api/ops/settings'); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const c = el('div', 'card'), h = el('div', 'row');
+  h.append(el('span', 'name grow', '📬 메일 계정'), v.mailReady ? el('span', 'chip ok', '준비됨') : el('span', 'chip bad', '설정 필요'));
+  c.append(h);
+  if (!v.mailReady && v.mailWhy) c.append(el('div', 'note', v.mailWhy));
+  c.append(kv('회사 이름', v.company || '(없음)'), kv('설정 파일', v.configPath + (v.configExists ? '' : '  (아직 없음)')));
+  const cmd = el('code', '', v.setup); cmd.title = '눌러서 복사'; cmd.style.cursor = 'pointer';
+  cmd.onclick = () => navigator.clipboard.writeText(v.setup).then(() => toast('복사했습니다'), () => {});
+  c.append(el('div', 'note', '이 화면은 보기 전용입니다. 메일 계정·비밀번호는 명령 창에서 아래 명령으로 정합니다(비밀번호는 이 PC·이 사용자만 풀 수 있게 암호화됩니다). 알림 시험: 같은 명령에 --test.'), cmd);
+  box.replaceChildren(c);
+}
+
+/* ---------- 에이전트(보기 전용) ---------- */
+async function loadAgents(verify){
+  const box = $('#agentBox');
+  if (verify) box.prepend(el('div', 'empty', 'claude agents 로 대조하는 중… (약 4초)'));
+  let v; try { v = await api('/api/ops/agents' + (verify ? '?verify=1' : '')); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  box.replaceChildren();
+  const head = el('div', 'row'), t = v.tally || {};
+  head.append(el('span', 'grow sub', '작업 중 ' + (t.active || 0) + ' · 대기 ' + (t.idle || 0) + ' · 막힘 ' + (t.blocked || 0) + ' · 완료 ' + (t.done || 0) + (t.hiddenDone ? ' (' + v.doneKeepDays + '일 지난 완료 ' + t.hiddenDone + '개 접음)' : '')));
+  const bV = el('button', '', 'CLI 로 대조'); bV.onclick = () => loadAgents(true); head.append(bV);
+  box.append(el('div', 'note', '띄워 둔 백그라운드 에이전트와 지금 열려 있는 대화형 세션입니다. 보기 전용 — 상태는 ~\\.claude 의 상태 파일에서 읽습니다.'), head);
+  if (v.verify){
+    const vv = v.verify;
+    box.append(el('div', 'card', vv.ok ? 'CLI 대조: ' + vv.count + '개 — ' + (vv.names || []).join(', ') + (vv.mismatch ? ' ⚠ 보드와 다름' : ' (일치)') : 'CLI 대조 실패: ' + vv.error));
+  }
+  for (const p of v.problems || []) box.append(el('div', 'card', '⚠ ' + (typeof p === 'string' ? p : JSON.stringify(p))));
+  const group = (title, items) => {
+    box.append(el('h2', '', title + ' (' + items.length + ')'));
+    if (!items.length) box.append(el('div', 'empty', '없음'));
+    for (const it of items){
+      const c = el('div', 'card'), r = el('div', 'row');
+      r.append(el('span', 'chip ' + (it.badge === 'up' ? 'ok' : it.badge === 'down' ? 'bad' : it.badge === 'warn' ? 'warn' : ''), it.label), el('span', 'name grow', it.name || it.shortSession || it.id), el('span', 'sub', '갱신 ' + (it.updatedAgo || '—')));
+      c.append(r);
+      if (it.cwd) c.append(el('div', 'sub', it.cwd));
+      for (const [k, lbl] of [['intentShort', '하려는 일'], ['detailShort', '지금'], ['resultShort', '결과']]) if (it[k]) c.append(kv(lbl, it[k]));
+      if (it.orphan) c.append(el('div', 'sub', '⚠ 막혔는데 돌고 있는 프로세스가 없습니다'));
+      if (it.resume){ const code = el('code', '', it.resume); code.title = '눌러서 복사'; code.style.cursor = 'pointer';
+        code.onclick = () => navigator.clipboard.writeText(it.resume).then(() => toast('복사했습니다'), () => {}); c.append(el('div', 'sub', ''), code); }
+      box.append(c);
+    }
+  };
+  group('🧵 백그라운드 에이전트', v.background || []);
+  group('💬 열린 세션', v.interactive || []);
+}
+
+/* ---------- 탭 ---------- */
+const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false)};
+function show(tab){
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === tab);
+  for (const s of document.querySelectorAll('main section')) s.classList.toggle('on', s.id === tab);
+  try { localStorage.setItem('ops.tab', tab); } catch (e) {}
+  if (LOAD[tab]) LOAD[tab]();
+}
+for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => { history.replaceState(null, '', '#' + b.dataset.tab); show(b.dataset.tab); };
+let start = location.hash.slice(1); if (!LOAD[start] && !document.getElementById(start)) { try { start = localStorage.getItem('ops.tab') || 'sched'; } catch (e) { start = 'sched'; } }
+show(document.getElementById(start) ? start : 'sched');
+const es = new EventSource('/events');
+es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); const on = document.querySelector('main section.on');
+  if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); } };
+setInterval(() => { const on = document.querySelector('main section.on'); if (on && LOAD[on.id]) LOAD[on.id](); }, 30000);
+</script>
+</body>
+</html>
