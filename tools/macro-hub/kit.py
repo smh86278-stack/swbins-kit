@@ -2,7 +2,7 @@
 """업무 자동화 키트의 공통 바탕 — 설정 파일 · 메일(보내기·메일함) · 비밀번호 암호화 · 예약 시각 판정 · 상태 파일.
 
 어느 회사에서나 쓰도록 회사마다 다른 값은 전부 저장소 맨 위의 config.local.json 한 곳에 둔다
-(견본은 config.example.json, 처음 설정은 `python setup.py`). 이 모듈은 표준 라이브러리만 쓴다 —
+(견본은 config.example.json, 처음 설정은 「메일·계정 설정」 창 setup_gui.py — 명령 창이면 `python setup.py`). 이 모듈은 표준 라이브러리만 쓴다 —
 허브(macrohub.py·alertmail.py)와 허브 매크로(macros\\*.py), 메일 게이트웨이가 함께 import 한다.
 
     import kit
@@ -107,7 +107,7 @@ def unprotect(b64):
     src, _keep = _blob(base64.b64decode(b64))
     out = _Blob()
     if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out)):
-        raise RuntimeError('비밀번호를 풀 수 없습니다 — 다른 사용자·PC 에서 만든 설정이면 setup.py 를 다시 실행하세요')
+        raise RuntimeError('비밀번호를 풀 수 없습니다 — 다른 사용자·PC 에서 만든 설정이면 「메일·계정 설정」에서 비밀번호를 다시 넣으세요')
     raw = ctypes.string_at(out.pbData, out.cbData)
     ctypes.windll.kernel32.LocalFree(out.pbData)
     return raw.decode('utf-8')
@@ -126,13 +126,13 @@ def mail_ready(m=None):
     lack = [k for k in ('user', 'password_enc') if not m.get(k)]
     if not (m.get('smtp_host') or m.get('imap_host')):
         lack.append('smtp_host/imap_host')
-    return (not lack), ('설정에 없는 값: %s — python setup.py 로 채우세요' % ', '.join(lack) if lack else '')
+    return (not lack), ('설정에 없는 값: %s — 「메일·계정 설정」(setup_gui.py)에서 채우세요' % ', '.join(lack) if lack else '')
 
 
 def password(m=None):
     m = m or mail_config()
     if not m.get('password_enc'):
-        raise RuntimeError('메일 비밀번호가 설정되지 않았습니다 — python setup.py')
+        raise RuntimeError('메일 비밀번호가 설정되지 않았습니다 — 「메일·계정 설정」(setup_gui.py)')
     return unprotect(m['password_enc'])
 
 

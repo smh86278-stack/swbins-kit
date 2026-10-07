@@ -523,7 +523,8 @@ def build_menu():
         settings = [pystray.MenuItem('화면 펫 (강아지·고양이)', toggle_pet, checked=lambda item: bool(hub.pet_pids())),
                     pystray.MenuItem('로그온 시 자동 시작', toggle_autostart, checked=lambda item: autostart_enabled()),
                     pystray.MenuItem('실패 알림 메일  (예약·상시 실패 → 내 메일함)', toggle_alert,
-                                     checked=lambda item: hub.alertmail.settings_of(hub.state.get('alert'))['on'])]
+                                     checked=lambda item: hub.alertmail.settings_of(hub.state.get('alert'))['on']),
+                    pystray.MenuItem('✉ 메일·계정 설정…', open_mail_settings)]
         if '--child' in sys.argv:                 # 감시자 아래에서만 — 혼자 떠 있으면 다시 띄워 줄 쪽이 없다
             settings.append(pystray.MenuItem('허브 다시 시작  (코드를 고친 뒤 · 서비스는 끊기지 않음)', restart_app))
         yield pystray.MenuItem('⚙ 설정', pystray.Menu(*settings))
@@ -551,6 +552,12 @@ def resume(m):
 
 def toggle_autostart(icon, item):
     set_autostart(not autostart_enabled())
+
+
+def open_mail_settings(icon, item):
+    """메일·계정 설정 창(저장소 맨 위 setup_gui.py)을 연다."""
+    gui = os.path.join(extsvc.ROOT, 'setup_gui.py')
+    subprocess.Popen([PYTHONW, gui], cwd=extsvc.ROOT, creationflags=0x00000008)
 
 
 def toggle_alert(icon, item):

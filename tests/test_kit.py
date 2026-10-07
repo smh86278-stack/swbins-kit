@@ -111,7 +111,7 @@ class MailReady(unittest.TestCase):
             with self.subTest(key=key):
                 ok, why = kit.mail_ready(dict(self.FULL, **{key: ''}))
                 self.assertFalse(ok)
-                self.assertIn('setup.py', why)
+                self.assertIn('메일·계정 설정', why)
 
     def test_alert_refuses_when_not_ready(self):
         with self.assertRaises(RuntimeError):

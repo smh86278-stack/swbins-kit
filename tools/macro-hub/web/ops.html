@@ -224,9 +224,9 @@ async function loadSet(){
   c.append(h);
   if (!v.mailReady && v.mailWhy) c.append(el('div', 'note', v.mailWhy));
   c.append(kv('회사 이름', v.company || '(없음)'), kv('설정 파일', v.configPath + (v.configExists ? '' : '  (아직 없음)')));
-  const cmd = el('code', '', v.setup); cmd.title = '눌러서 복사'; cmd.style.cursor = 'pointer';
-  cmd.onclick = () => navigator.clipboard.writeText(v.setup).then(() => toast('복사했습니다'), () => {});
-  c.append(el('div', 'note', '이 화면은 보기 전용입니다. 메일 계정·비밀번호는 명령 창에서 아래 명령으로 정합니다(비밀번호는 이 PC·이 사용자만 풀 수 있게 암호화됩니다). 알림 시험: 같은 명령에 --test.'), cmd);
+  const open = el('button', '', '✉ 메일·계정 설정 열기');
+  open.onclick = () => api('/api/open', {which: 'mail_settings'}).then(() => toast('설정 창을 열었습니다 — 저장한 뒤 이 탭을 다시 누르면 반영됩니다'), e => toast('열지 못했습니다: ' + e.message));
+  c.append(el('div', 'note', '메일 계정·비밀번호·알림 받을 곳은 「메일·계정 설정」 창에서 정합니다(트레이 ⚙ 설정, 시작 메뉴에도 있습니다). 비밀번호는 이 PC·이 사용자만 풀 수 있게 암호화됩니다. 창의 「시험 메일 보내기」로 바로 확인할 수 있습니다.'), open);
   box.replaceChildren(c);
 }
 

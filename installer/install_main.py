@@ -108,7 +108,7 @@ def make_shortcuts(target, desktop):
     cmds = ['$w = New-Object -ComObject WScript.Shell;',
             _ps_shortcut(os.path.join(START_DIR, APP_NAME + '.lnk'), pyw, '"%s"' % os.path.join(hub, 'launcher.py'),
                          hub, icon, '허브를 띄우고 창을 연다'),
-            _ps_shortcut(os.path.join(START_DIR, '메일·계정 설정.lnk'), py, '"%s"' % os.path.join(target, 'setup.py'),
+            _ps_shortcut(os.path.join(START_DIR, '메일·계정 설정.lnk'), pyw, '"%s"' % os.path.join(target, 'setup_gui.py'),
                          target, icon, '회사 이름·메일 서버·알림 받을 주소를 설정한다'),
             _ps_shortcut(os.path.join(START_DIR, APP_NAME + ' 제거.lnk'), py, '"%s"' % os.path.join(target, 'uninstall.py'),
                          target, icon, '키트를 이 PC 에서 지운다')]
@@ -190,7 +190,7 @@ def launch_after(target, first):
     py = os.path.join(target, 'runtime', 'python.exe')
     pyw = os.path.join(target, 'runtime', 'pythonw.exe')
     if first or not os.path.isfile(os.path.join(target, 'config.local.json')):
-        subprocess.Popen([py, os.path.join(target, 'setup.py')], cwd=target, creationflags=NEW_CONSOLE)
+        subprocess.Popen([pyw, os.path.join(target, 'setup_gui.py')], cwd=target, creationflags=DETACHED)
     subprocess.Popen([pyw, os.path.join(target, 'tools', 'macro-hub', 'launcher.py')],
                      cwd=os.path.join(target, 'tools', 'macro-hub'), creationflags=DETACHED)
 
@@ -253,7 +253,7 @@ def gui():
 
         def done():
             msg = ('설치를 마쳤습니다.\n\n%s\n\n' % target +
-                   ('이어서 뜨는 검은 창에서 회사 이름·메일 서버를 설정하세요.\n' if first else '') +
+                   ('이어서 뜨는 「메일·계정 설정」 창에서 회사 이름·메일 계정을 정하세요.\n' if first else '') +
                    '허브가 뜨면 ⏰ 예약 작업에서 쓸 기능을 켭니다.')
             messagebox.showinfo(APP_NAME, msg)
             launch_after(target, first)

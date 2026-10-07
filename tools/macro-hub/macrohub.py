@@ -1068,6 +1068,12 @@ class Handler(BaseHTTPRequestHandler):
             ok = set_pet(bool(body.get('on')))
             return self._send(200 if ok else 409, {'ok': ok, 'on': bool(pet_pids())} if ok else {'error': 'pet 폴더에서 npm install 을 먼저 실행하세요'})
         if path == '/api/open':
+            if body.get('which') == 'mail_settings':        # 운영 화면 ⚙ 설정 → 메일·계정 설정 창(setup_gui.py)
+                pyw = os.path.join(os.path.dirname(PYTHON), 'pythonw.exe')
+                gui = os.path.normpath(os.path.join(HERE, '..', '..', 'setup_gui.py'))
+                subprocess.Popen([pyw if os.path.isfile(pyw) else PYTHON, gui], cwd=os.path.dirname(gui),
+                                 creationflags=0x00000008)
+                return self._send(200, {'ok': True})
             os.makedirs(DIR_LOCAL, exist_ok=True)
             os.startfile(DIR_LOCAL if body.get('which') == 'local' else DIR_EXAMPLE)
             return self._send(200, {'ok': True})

@@ -176,7 +176,7 @@ def features_status(now=None):
 
 
 def settings_status():
-    """⚙ 설정(보기 전용) — 메일 준비 여부와 설정 파일 위치. 바꾸는 건 `python setup.py`."""
+    """⚙ 설정(보기 전용) — 메일 준비 여부와 설정 파일 위치. 바꾸는 건 「메일·계정 설정」 창(setup_gui.py)."""
     import kit
     try:
         ready, why = kit.mail_ready()
@@ -188,7 +188,7 @@ def settings_status():
         company = ''
     return {'mailReady': bool(ready), 'mailWhy': why, 'company': company,
             'configPath': kit.F_CONFIG, 'configExists': os.path.isfile(kit.F_CONFIG),
-            'setup': 'python "%s"' % os.path.join(ROOT, 'setup.py')}
+            'setup': 'python "%s"' % os.path.join(ROOT, 'setup_gui.py')}
 
 
 # ---------------------------------------------------------------- Claude 디스패치 보드
