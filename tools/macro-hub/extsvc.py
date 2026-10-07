@@ -43,8 +43,9 @@ def _proclist():
 # ---------------------------------------------------------------- 환경
 
 def system_python(windowed=True):
-    """이 순서로 고른다: python-path.txt → %LOCALAPPDATA%\\Python\\pythoncore-3.14-64 → PATH."""
+    """이 순서로 고른다: python-path.txt → 설치본의 내장 파이썬(runtime\\) → %LOCALAPPDATA%\\Python\\pythoncore-3.14-64 → PATH."""
     exe = 'pythonw.exe' if windowed else 'python.exe'
+    bundled = os.path.join(ROOT, 'runtime', exe)
     try:
         with open(os.path.join(ROOT, 'python-path.txt'), encoding='utf-8-sig') as f:
             p = f.readline().strip().strip('"')
@@ -56,6 +57,8 @@ def system_python(windowed=True):
                 return p
     except OSError:
         pass
+    if os.path.isfile(bundled):
+        return bundled
     base = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Python', 'pythoncore-3.14-64')
     for name in (exe, 'python.exe'):
         if os.path.isfile(os.path.join(base, name)):

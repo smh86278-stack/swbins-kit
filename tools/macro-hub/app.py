@@ -27,11 +27,19 @@ import webbrowser
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-PORT = 8610
+PORT = 8630
 URL = 'http://127.0.0.1:%d/' % PORT
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
-RUN_NAME = 'MacroHub'
-PYTHONW = os.path.join(HERE, '.venv', 'Scripts', 'pythonw.exe')
+RUN_NAME = 'WorkKit'
+def _pick_python(exe):
+    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(WorkKitSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
+    for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
+        if os.path.isfile(cand):
+            return os.path.normpath(cand)
+    return os.path.join(HERE, '.venv', 'Scripts', exe)
+
+
+PYTHONW = _pick_python('pythonw.exe')
 LOG = os.path.join(HERE, 'data.local', 'app.log')
 
 
@@ -76,9 +84,9 @@ def log(msg):
 # ---------------------------------------------------------------- 로그온 시 자동 시작
 
 def autostart_command():
-    """로그온 자동 시작 — MacroHub.exe(감시자: 트레이 앱이 죽으면 다시 띄운다)가 있으면 그것, 없으면 launcher.py."""
-    if os.path.isfile(os.path.join(HERE, 'MacroHub.exe')):
-        return '"%s" --background' % os.path.join(HERE, 'MacroHub.exe')
+    """로그온 자동 시작 — WorkKit.exe(감시자: 트레이 앱이 죽으면 다시 띄운다)가 있으면 그것, 없으면 launcher.py."""
+    if os.path.isfile(os.path.join(HERE, 'WorkKit.exe')):
+        return '"%s" --background' % os.path.join(HERE, 'WorkKit.exe')
     return '"%s" "%s" --background' % (PYTHONW, os.path.join(HERE, 'launcher.py'))
 
 
@@ -106,7 +114,7 @@ def set_autostart(on):
 # ---------------------------------------------------------------- 단일 인스턴스 · 남은 러너 정리
 
 def already_running():
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, 'Local\\macro-hub-app')
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, 'Local\\workkit-app')
     already_running.handle = mutex            # 프로세스가 끝날 때까지 쥐고 있는다
     return ctypes.windll.kernel32.GetLastError() == 183
 
@@ -240,7 +248,7 @@ def compute_state():
 
 ELECTRON = os.path.join(HERE, 'pet', 'node_modules', 'electron', 'dist', 'electron.exe')
 SHELL_DIR = os.path.join(HERE, 'shell')
-EXE = os.path.join(HERE, 'MacroHub.exe')
+EXE = os.path.join(HERE, 'WorkKit.exe')
 
 
 def open_window(page='/'):
@@ -562,7 +570,7 @@ RESTART = {'on': False}
 
 
 def restart_app(icon, item):
-    """허브(트레이 앱)만 다시 띄운다 — 종료 코드 3 으로 끝나면 감시자(MacroHub.exe)가 바로 다시 띄운다.
+    """허브(트레이 앱)만 다시 띄운다 — 종료 코드 3 으로 끝나면 감시자(WorkKit.exe)가 바로 다시 띄운다.
     서버·워처는 허브와 떨어진 프로세스라 그대로 돌고, 다시 뜬 허브가 넘겨받는다. 허브 창·펫은 다시 붙는다."""
     log('다시 시작 요청')
     RESTART['on'] = True

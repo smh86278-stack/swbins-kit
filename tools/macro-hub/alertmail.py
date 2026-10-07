@@ -75,7 +75,7 @@ def compose(rec, settings):
     tail = [str(x) for x in (rec.get('tail') or [])][-TAIL_LINES:]
     if tail:
         lines += ['', '── 마지막 로그 %d줄 ──' % len(tail)] + tail
-    lines += ['', '자세한 로그·다시 실행: http://127.0.0.1:8610/  (이 PC 에서만)',
+    lines += ['', '자세한 로그·다시 실행: http://127.0.0.1:8630/  (이 PC 에서만)',
               '같은 매크로는 %d분 안에 다시 알리지 않습니다. 끄기: 허브 트레이 ⚙ 설정 → 실패 알림 메일' % settings['cooldown_min']]
     return subject, '\n'.join(lines)
 

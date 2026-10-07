@@ -2,7 +2,7 @@
   "name": "macro-hub-pet",
   "version": "0.1.0",
   "private": true,
-  "description": "매크로 허브의 화면 상주 펫 — 허브(http://127.0.0.1:8610/pet)를 투명한 창으로 띄운다",
+  "description": "매크로 허브의 화면 상주 펫 — 허브(http://127.0.0.1:8630/pet)를 투명한 창으로 띄운다",
   "main": "main.js",
   "scripts": {
     "start": "electron ."

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """매크로 허브 — 회사 업무 화면 처리를 매크로로 돌리는 실시간 프로그램 (본인 전용, Windows).
 
-    python macrohub.py                http://127.0.0.1:8610/
+    python macrohub.py                http://127.0.0.1:8630/
     python macrohub.py --port 8700 --open
 
 하는 일
@@ -42,7 +42,15 @@ DIR_BUILTIN = os.path.join(HERE, 'builtin')
 F_STATE = os.path.join(HERE, 'state.local.json')
 F_RUNS = os.path.join(HERE, 'runs.jsonl')
 RUNNER = os.path.join(HERE, 'runner.py')
-VENV_PY = os.path.join(HERE, '.venv', 'Scripts', 'python.exe')
+def _pick_python(exe):
+    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(WorkKitSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
+    for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
+        if os.path.isfile(cand):
+            return os.path.normpath(cand)
+    return os.path.join(HERE, '.venv', 'Scripts', exe)
+
+
+VENV_PY = _pick_python('python.exe')
 PYTHON = VENV_PY if os.path.exists(VENV_PY) else sys.executable
 WEB_DIR = os.path.join(HERE, 'web')
 WEB = os.path.join(WEB_DIR, 'index.html')
@@ -1098,7 +1106,7 @@ def shutdown_children():
         kill_tree(rec['proc'])
 
 
-def start_services(host='127.0.0.1', port=8610):
+def start_services(host='127.0.0.1', port=8630):
     """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 매크로)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
     load_state()
     load_last_runs()
@@ -1127,7 +1135,7 @@ def start_services(host='127.0.0.1', port=8610):
 
 def main():
     ap = argparse.ArgumentParser(description='매크로 허브 (콘솔 모드 — 트레이 앱은 app.py)')
-    ap.add_argument('--port', type=int, default=8610)
+    ap.add_argument('--port', type=int, default=8630)
     ap.add_argument('--host', default='127.0.0.1', help='기본은 이 PC 에서만. 바꾸지 않는 것을 권한다')
     ap.add_argument('--open', action='store_true')
     args = ap.parse_args()

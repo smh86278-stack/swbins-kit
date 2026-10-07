@@ -1,7 +1,7 @@
 'use strict';
-/* 매크로 허브 창 — 허브 화면(http://127.0.0.1:8610/)을 브라우저 탭이 아니라 '매크로 허브' 전용 창으로 연다.
+/* 매크로 허브 창 — 허브 화면(http://127.0.0.1:8630/)을 브라우저 탭이 아니라 '매크로 허브' 전용 창으로 연다.
  *
- *   electron.exe shell [--page=/ops]     (보통은 MacroHub.exe · 트레이 '매크로 허브 열기' 가 띄운다)
+ *   electron.exe shell [--page=/ops]     (보통은 WorkKit.exe · 트레이 '매크로 허브 열기' 가 띄운다)
  *
  * 화면 펫(pet\)과 같은 Electron 을 쓴다. 창은 한 번에 하나 — 다시 열면 떠 있는 창이 앞으로 나오고 그 화면으로 간다.
  * 창을 닫아도 허브·트레이·서비스는 그대로 돈다(이 프로세스는 창만 맡는다). 허브 밖 주소는 기본 브라우저로 연다. */
@@ -9,12 +9,12 @@ const { app, BrowserWindow, shell, Menu, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const HUB = 'http://127.0.0.1:8610';
+const HUB = 'http://127.0.0.1:8630';
 const STATE = path.join(__dirname, 'window.local.json');
 const ICON = path.join(__dirname, '..', 'web', 'app.ico');
 const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
 
-app.setAppUserModelId('MacroHub');
+app.setAppUserModelId('WorkKit');
 app.setName('매크로 허브');
 app.setPath('userData', path.join(__dirname, '..', 'data.local', 'shell-profile'));   // 펫과 프로필을 나눈다
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }

@@ -276,7 +276,7 @@ def wizard():
     print('\n다음 단계')
     print('  1) tools\\macro-hub\\setup.bat        — 허브 실행 환경 만들기(처음 한 번)')
     print('  2) tools\\macro-hub\\start_app.bat    — 매크로 허브 시작(트레이에 강아지 아이콘)')
-    print('  3) http://127.0.0.1:8610/ops         — ⏰ 예약 작업에서 쓸 기능을 켜고, 대상은 config.local.json 에 적습니다')
+    print('  3) http://127.0.0.1:8630/ops         — ⏰ 예약 작업에서 쓸 기능을 켜고, 대상은 config.local.json 에 적습니다')
     print('  설정 보기: python setup.py --show · 알림 시험: python setup.py --test')
     return 0
 

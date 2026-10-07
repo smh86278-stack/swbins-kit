@@ -1,5 +1,5 @@
 'use strict';
-/* 매크로 허브 데스크톱 펫 — 허브가 내려 주는 투명 페이지(http://127.0.0.1:8610/pet)를 화면 구석에 띄운다.
+/* 매크로 허브 데스크톱 펫 — 허브가 내려 주는 투명 페이지(http://127.0.0.1:8630/pet)를 화면 구석에 띄운다.
  *
  *   npm start                 펫 시작 (이미 떠 있으면 두 번째는 바로 종료)
  *   npx electron . --selftest 창·마우스 처리 자가 점검(JSON 출력 후 종료, 설정 파일을 건드리지 않는다)
@@ -11,7 +11,7 @@ const { app, BrowserWindow, ipcMain, Menu, screen, shell } = require('electron')
 const fs = require('fs');
 const path = require('path');
 
-const HUB = (process.env.HUB_URL || 'http://127.0.0.1:8610').replace(/\/$/, '');
+const HUB = (process.env.HUB_URL || 'http://127.0.0.1:8630').replace(/\/$/, '');
 const TEST = process.argv.includes('--selftest');
 const SETTINGS_FILE = path.join(__dirname, TEST ? 'settings.selftest.json' : 'settings.local.json');
 const SLOT_W = 184, PAD_W = 8, BASE_H = 268;

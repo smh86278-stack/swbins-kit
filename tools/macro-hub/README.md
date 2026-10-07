@@ -5,22 +5,22 @@
 
 ```
 setup.bat          처음 한 번 — .venv 에 Playwright · pywinauto · pystray · Pillow 설치 (브라우저는 설치된 Chrome 을 쓴다)
-start_app.bat      트레이 앱 시작 → 웹 화면 http://127.0.0.1:8610/   (이미 떠 있으면 화면만 연다)
+start_app.bat      트레이 앱 시작 → 웹 화면 http://127.0.0.1:8630/   (이미 떠 있으면 화면만 연다)
 start_server.bat   콘솔 모드(디버깅용) — 트레이 없이 허브만, 이 창을 닫으면 끝
 ```
 
-## 응용프로그램 — `MacroHub.exe`
+## 응용프로그램 — `WorkKit.exe`
 
 허브는 이제 보통 프로그램처럼 쓴다. **시작 메뉴·바탕화면의 「매크로 허브」**(강아지 아이콘)를 누르면
 허브가 안 떠 있으면 띄우고, 허브 **전용 창**을 연다(브라우저 탭이 아니다).
 
 | 무엇 | 파일 | 하는 일 |
 |---|---|---|
-| 입구 · 감시자 | `MacroHub.exe` (= `launcher.py`, 표준 라이브러리만) | 트레이 앱(`app.py --child`)을 자식으로 띄우고 **지킨다** — 오류·강제 종료로 죽으면 다시 띄운다(5분 안에 5번 죽으면 멈추고 알림). 트레이 **「종료」로 끝나면 같이 끝난다**. 감시자는 한 번에 하나(`Local\macro-hub-watch`) — 이미 있으면 창만 연다 |
-| 허브 창 | `shell\` (Electron — 화면 펫의 `pet\node_modules` 를 같이 씀) | `http://127.0.0.1:8610/` 를 「매크로 허브」 창으로. 한 번에 하나, 다시 열면 앞으로 나온다. 닫아도 허브·트레이·서비스는 그대로. 허브 밖 주소는 기본 브라우저로. 크기·위치는 `shell\window.local.json` |
+| 입구 · 감시자 | `WorkKit.exe` (= `launcher.py`, 표준 라이브러리만) | 트레이 앱(`app.py --child`)을 자식으로 띄우고 **지킨다** — 오류·강제 종료로 죽으면 다시 띄운다(5분 안에 5번 죽으면 멈추고 알림). 트레이 **「종료」로 끝나면 같이 끝난다**. 감시자는 한 번에 하나(`Local\workkit-watch`) — 이미 있으면 창만 연다 |
+| 허브 창 | `shell\` (Electron — 화면 펫의 `pet\node_modules` 를 같이 씀) | `http://127.0.0.1:8630/` 를 「매크로 허브」 창으로. 한 번에 하나, 다시 열면 앞으로 나온다. 닫아도 허브·트레이·서비스는 그대로. 허브 밖 주소는 기본 브라우저로. 크기·위치는 `shell\window.local.json` |
 | 아이콘 | `web\app.ico` | 트레이의 직접 그린 강아지(상태 점 없이), 16~256px |
 
-- `MacroHub.exe` · `--background`(창 없이 — 로그온 자동 시작) · `--page=/ops`(그 화면으로) · `--install`(바로가기 2개 + 로그온 자동 시작을 이 exe 로).
+- `WorkKit.exe` · `--background`(창 없이 — 로그온 자동 시작) · `--page=/ops`(그 화면으로) · `--install`(바로가기 2개 + 로그온 자동 시작을 이 exe 로).
 - 만들기: `build_exe.bat` (PyInstaller 한 파일 exe, 약 6MB — `.venv\Scripts\python.exe -m pip install pyinstaller` 가 한 번 필요). exe 는 **이 폴더에 있어야 한다**(트레이 앱·매크로는 여전히 `.venv` Python 으로 돈다). 빌드 결과는 git 에 넣지 않는다.
 - 트레이 앱만 다시 띄우려면(코드를 고친 뒤) 트레이 「**허브 다시 시작**」 — 종료 코드 3 으로 끝나 감시자가 바로 다시 띄운다(그 프로세스 `app.py --child` 를 꺼도 3초 안에 다시 뜬다). 허브를 완전히 끄려면 트레이 「종료」.
 - 허브가 띄운 서버·워처는 원래 허브와 떨어진 프로세스라 트레이 앱이 다시 떠도 끊기지 않는다(아래 "서버·워처 지키기").
@@ -37,8 +37,8 @@ start_server.bat   콘솔 모드(디버깅용) — 트레이 없이 허브만, �
   묶음 안에 문제가 있으면 이름 끝에 `(⚠ n)` — 허브가 지키는 서버가 꺼짐 · 도구 멈춤/오류 · 예약 작업 마지막 실행 실패.
 - **알림 풍선** — 매크로가 `ctx.notify()` 를 부를 때, 자동 실행된 매크로가 실패할 때, 상시 매크로가 죽었을 때.
 - **실패 알림 메일** (`alertmail.py`) — 예약 작업·상시 서비스가 실패하거나 제한 시간을 넘기면 `[매크로 허브] … 실패 — 이름` 메일을 보낸다(마지막 로그 30줄 포함). 직접 누른 실행은 빼고, 같은 매크로는 60분에 한 번만. 보내는 길은 `kit.alert()` — `config.local.json` 의 `mail.alert_via` 가 `smtp` 면 `alert_to`(없으면 내 주소)로 발송, `append` 면 내 INBOX 에 직접 넣는다(자기에게 보낸 메일을 딴 폴더로 치우는 서버용). 메일 설정이 아직 없으면(`python setup.py` 전) 조용히 건너뛰고 로그에 한 번만 남긴다. 켜고 끄기: 트레이 ⚙ 설정 → 실패 알림 메일(`state.local.json` 의 `alert`). 보낸 기록·오류는 `data.local\alertmail.json`·`alertmail.log`. 허브 자체가 죽어 감시자가 포기할 때는 여전히 메시지 상자뿐이다.
-- **자동 시작** — HKCU Run `MacroHub` = `MacroHub.exe --background`(감시자째로 뜬다. exe 가 없으면 `launcher.py`). 관리자 권한 불필요.
-  `MacroHub.exe --install` 또는 `python app.py --install-autostart` / `--remove-autostart`, 트레이 메뉴에서도 토글.
+- **자동 시작** — HKCU Run `MacroHub` = `WorkKit.exe --background`(감시자째로 뜬다. exe 가 없으면 `launcher.py`). 관리자 권한 불필요.
+  `WorkKit.exe --install` 또는 `python app.py --install-autostart` / `--remove-autostart`, 트레이 메뉴에서도 토글.
   로그온하면 허브가 뜨고, 켜 둔 상시 매크로는 `state.local.json` 에 기억돼 있어 자동으로 다시 시작한다.
 - **한 번에 하나만** — 뮤텍스로 막는다(이미 떠 있으면 허브 창만 연다).
   트레이 「종료」는 화면 펫과 허브 창도 같이 닫는다. 이전 실행이 비정상 종료돼 남은 `runner.py` 는 시작할 때 정리한다.
@@ -67,7 +67,7 @@ start_server.bat   콘솔 모드(디버깅용) — 트레이 없이 허브만, �
 ## 구조
 
 ```
-launcher.py     입구·감시자 → MacroHub.exe (build_exe.py · build_exe.bat)
+launcher.py     입구·감시자 → WorkKit.exe (build_exe.py · build_exe.bat)
 shell/          허브 전용 창(Electron)
 app.py          트레이 앱 — 허브를 같은 프로세스에서 돌리고 트레이·알림·자동 시작을 맡는다
 winevents.py    창 이벤트(SetWinEventHook) 수신
@@ -178,7 +178,7 @@ def run(ctx):
 
 ## 운영 화면 — `/ops`
 
-<http://127.0.0.1:8610/ops> · 트레이 "⏰ 운영 화면 열기". 허브와 같이 이 PC 에서만 열린다. 데이터는 `ops.py`, 화면은 `web\ops.html`.
+<http://127.0.0.1:8630/ops> · 트레이 "⏰ 운영 화면 열기". 허브와 같이 이 PC 에서만 열린다. 데이터는 `ops.py`, 화면은 `web\ops.html`.
 
 | 탭 | 무엇 |
 |---|---|

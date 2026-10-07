@@ -53,8 +53,8 @@ __pycache__/
 dist/
 build/
 *.spec
-tools/macro-hub/MacroHub.exe
-tools/macro-hub/MacroHub.exe.old
+tools/macro-hub/WorkKit.exe
+tools/macro-hub/WorkKit.exe.old
 tools/macro-hub/profiles/
 tools/macro-hub/.codegen-*.py
 tools/macro-hub/hub.out
@@ -69,3 +69,7 @@ tools/macro-hub/web/skins/*/
 .vscode/
 .serena/
 *.iml
+
+# 설치 파일 빌드 결과
+installer/build/
+installer/dist/
