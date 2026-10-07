@@ -25,7 +25,8 @@ DESKTOP_LNK = os.path.join(os.path.expanduser('~'), 'Desktop', APP_NAME + '.lnk'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\%s' % APP_ID
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 NO_WINDOW = 0x08000000
-DETACHED = 0x00000008
+NEW_GROUP = 0x00000200
+BREAKAWAY = 0x01000000
 
 KEEP = ['config.local.json', 'tools/macro-hub/state.local.json', 'tools/macro-hub/secrets.local.json',
         'tools/macro-hub/runs.jsonl', 'tools/macro-hub/data.local', 'tools/macro-hub/macros.local',
@@ -86,8 +87,16 @@ def unregister():
 
 def remove_later(target):
     """이 파이썬이 끝난 뒤 폴더를 지운다(2초 기다렸다가)."""
+    # 부른 쪽(앱 및 기능·터미널)이 작업 묶음(job)째 정리해도 살아남게 묶음에서 빠져나가고(BREAKAWAY),
+    # 작업 폴더는 지울 폴더 밖(TEMP)에 둔다 — cmd 가 그 폴더 안에 서 있으면 rmdir 이 실패한다.
     cmd = 'ping -n 3 127.0.0.1 >nul & rmdir /s /q "%s"' % target
-    subprocess.Popen(['cmd', '/c', cmd], creationflags=NO_WINDOW | DETACHED, close_fds=True)
+    cwd = os.environ.get('TEMP') or os.path.dirname(target)
+    for flags in (NO_WINDOW | NEW_GROUP | BREAKAWAY, NO_WINDOW | NEW_GROUP):
+        try:
+            subprocess.Popen(['cmd', '/c', cmd], cwd=cwd, creationflags=flags, close_fds=True)
+            return
+        except OSError:          # 묶음이 빠져나가기를 허락하지 않으면 그냥 띄운다
+            continue
 
 
 def main(argv):
