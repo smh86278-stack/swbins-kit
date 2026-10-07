@@ -89,11 +89,16 @@ def remove_later(target):
     """이 파이썬이 끝난 뒤 폴더를 지운다(2초 기다렸다가)."""
     # 부른 쪽(앱 및 기능·터미널)이 작업 묶음(job)째 정리해도 살아남게 묶음에서 빠져나가고(BREAKAWAY),
     # 작업 폴더는 지울 폴더 밖(TEMP)에 둔다 — cmd 가 그 폴더 안에 서 있으면 rmdir 이 실패한다.
-    cmd = 'ping -n 3 127.0.0.1 >nul & rmdir /s /q "%s"' % target
+    # 이 파이썬이 늦게 끝나 파일이 잠겨 있으면 한 번 더 기다렸다 지운다. 남은 오류는 %TEMP%\workkit-uninstall.log 에.
     cwd = os.environ.get('TEMP') or os.path.dirname(target)
+    log = os.path.join(cwd, 'workkit-uninstall.log')
+    rm = 'rmdir /s /q "%s" 2>>"%s"' % (target, log)
+    cmd = ('ping -n 3 127.0.0.1 >nul & %s & if exist "%s" (ping -n 6 127.0.0.1 >nul & %s)'
+           % (rm, target, rm))
     for flags in (NO_WINDOW | NEW_GROUP | BREAKAWAY, NO_WINDOW | NEW_GROUP):
         try:
-            subprocess.Popen(['cmd', '/c', cmd], cwd=cwd, creationflags=flags, close_fds=True)
+            # 목록으로 넘기면 파이썬이 안쪽 " 를 \" 로 바꾸는데 cmd 는 그걸 모른다 — 명령줄을 문자열 그대로 넘긴다
+            subprocess.Popen('cmd.exe /d /c "%s"' % cmd, cwd=cwd, creationflags=flags, close_fds=True)
             return
         except OSError:          # 묶음이 빠져나가기를 허락하지 않으면 그냥 띄운다
             continue

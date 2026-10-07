@@ -32,7 +32,22 @@ Claude Code 가 깔려 있어야 하고, **`dispatch.enabled` 를 직접 켜야�
 > 보낸 사람 주소는 위조할 수 있다. 켜기 전에 `allowed_senders` 를 본인 주소로만 좁히고, 작업 폴더(`default_workdir` · `workdir_keys`)를
 > 업무에 필요한 곳으로 한정하고, 회사 보안 담당자와 먼저 상의할 것. 쓰지 않을 때는 끈다. 확실하지 않으면 켜지 않는다.
 
-## 5분 시작
+## 설치 — 파일 하나 (권장)
+
+`WorkKitSetup-<버전>.exe` 를 실행하고 「설치」를 누르면 끝이다. **파이썬·인터넷이 없는 PC 에도 된다**(내장 파이썬을 함께 깐다).
+
+- 관리자 권한이 필요 없다 — 내 계정 폴더(`%LOCALAPPDATA%\WorkKit`)에 깔린다.
+- 시작 메뉴 「업무 자동화 키트」(허브 열기) · 「메일·계정 설정」(= `setup.py`) · 「업무 자동화 키트 제거」, 바탕화면 바로가기, 로그온 자동 시작이 생긴다.
+- 처음 설치하면 메일 설정 창(검은 창)이 이어서 뜬다. 허브는 <http://127.0.0.1:8630/> (이 PC 에서만).
+- **다시 설치하면 업데이트**다 — 설정·기록은 그대로 남는다.
+- 제거는 '설정 → 앱 → 설치된 앱' 또는 시작 메뉴의 「제거」. 설정을 남기면 다음 설치 때 되살아난다.
+- IT 담당자 일괄 배포: `WorkKitSetup-<버전>.exe /S` (무인 설치, 폴더 지정은 `/D=D:\WorkKit`).
+- 서명되지 않은 exe 라 처음 실행 때 Windows SmartScreen 이 경고할 수 있다 — 「추가 정보 → 실행」.
+- 웹 매크로(playwright)는 용량이 커서 기본으로 넣지 않는다. 필요하면 설치 폴더에서 `runtime\python.exe -m pip install playwright`.
+
+설치 파일 만들기(개발 PC): `installer\build_installer.py` 맨 위 설명 참고 → `installer\dist\WorkKitSetup-<버전>.exe`.
+
+## 5분 시작 — 소스로 직접 (개발용)
 
 1. **Python 3.10 이상 설치** — <https://www.python.org/downloads/> (설치 화면에서 "Add python.exe to PATH" 체크).
    명령 창에서 `python --version` 이 나오면 된다.
