@@ -30,17 +30,18 @@
 사용법:
     python setup.py                    계정·비밀번호 설정 (저장소 맨 위 설정 마법사)
     python mail-gateway.py --setup     위와 같다(설정 마법사로 넘긴다)
+    python mail-gateway.py --setup-gmail  폰 지시를 Gmail 에서 직접 읽기(Gmail 주소·앱 비밀번호 입력 창)
     python mail-gateway.py --test      연결만 확인
     python mail-gateway.py --seed      지금 있는 지시 메일을 실행하지 않고 '처리됨'으로만 기록 (처음 켤 때)
     python mail-gateway.py --once      한 번만 돌고 종료 (진단용)
     python mail-gateway.py             상주
 """
-
 import base64
 import ctypes
 import email
 import email.header
 import email.utils
+import hmac
 import imaplib
 import json
 import os
@@ -69,6 +70,9 @@ import kit  # noqa: E402  — 설정·DPAPI·IMAP/SMTP 공통 코드
 
 INBOX = os.path.join(HERE, "inbox")
 JOBS = os.path.join(INBOX, "jobs")
+ATTACH = os.path.join(INBOX, "attachments")           # 폰이 지시와 함께 보낸 사진(잡마다 폴더 하나, 7일 지나면 지운다)
+IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+MAX_IMAGES, MAX_IMAGE_BYTES = 5, 10 * 1024 * 1024
 STATE_PATH = os.path.join(INBOX, "mail-state.json")
 PAUSE_PATH = os.path.join(INBOX, "mail-paused.flag")
 NOTIFY_PATH = os.path.join(INBOX, "mail-notify.jsonl")
@@ -110,6 +114,23 @@ DEFAULT_CFG = {
     # dkim=pass 또는 spf=pass 가 있는 메일만 받는다. 켜기 전에 로그의 '[인증]' 줄로
     # 이 서버가 그 헤더를 실제로 붙이는지 확인할 것(안 붙이면 전부 막힌다).
     "require_auth_results": False,
+    # 스팸함도 볼 때 그 폴더 이름(예: ["Spam"] — 서버마다 다르다). 회사 메일이 폰(개인 메일)에서 온 지시를 스팸으로
+    # 돌리는 경우에 쓴다. 여기서는 암호 단어(keyed_senders)가 맞는 메일만 받는다 — 회사 주소를 사칭한 메일이
+    # 흔히 떨어지는 곳이라 allowed_senders 주소라도 믿지 않는다. 빈 목록이면 보지 않는다.
+    "junk_folders": [],
+    # allowed_senders 밖의 개인 주소(폰 기본 메일 iCloud·Gmail 등)라도 그 주소의 암호 단어 '[k:단어]' 가
+    # 제목 끝이나 본문 한 줄로 붙어 있으면 받는다(폰 페이지가 설정의 암호 단어를 자동으로 붙인다).
+    # 예: {"me@example.com": "단어"} — config.local.json(git 제외)에만 둔다. 이 주소에서 온 지시의 회신은 그 주소로도 보낸다.
+    "keyed_senders": {},
+    # 암호 단어 주소에서 온 지시의 회신·접수 신호를 다른 주소로 받고 싶을 때. 예: {"me@icloud.example": "me@gmail.example"}
+    # (새 지시는 폰 메일 앱으로 보내고 답은 폰 페이지(Gmail)로 받는 식)
+    "phone_reply_to": {},
+    # 폰(Gmail) 지시를 회사 메일을 거치지 않고 Gmail 받은편지함에서 직접 읽는다 — 회사 스팸 장비가 외부 Gmail(API) 로
+    # 보낸 새 지시를 몇 분씩 붙잡는 경우가 있어서다(본문·서명·첨부를 바꿔도 소용없었다). 폰 페이지가 지시를 '나에게'
+    # 보내면 여기서 받는다. 이 주소 자신이 보낸 메일 + 암호 단어가 맞을 때만. 받은 지시는 PC 메신저가 보도록
+    # 회사 INBOX 에 사본(X-Dispatch-Mirror)을 넣는다. 'python mail-gateway.py --setup-gmail' 로 채운다.
+    # 예: {"user": "me@gmail.example", "password_enc": "<앱 비밀번호, kit.protect>"} — 비면 끈다.
+    "gmail": {},
     "default_workdir": r"%USERPROFILE%\Documents",
     # 제목의 '@키' 로 고르는 작업 폴더. 예(JSON): {"docs": "D:\\work\\docs"} → '#c @docs 요약해줘'
     "workdir_keys": {},
@@ -237,7 +258,64 @@ def decode_hdr(raw) -> str:
     return "".join(out).strip()
 
 
+def save_images(msg, key: str) -> tuple:
+    """메일에 붙은 사진을 inbox/attachments/<key>/ 에 저장하고 (폴더, [경로]) — 없으면 ("", []).
+    사진(jpeg·png·gif·webp)만, 최대 5장·장당 10MB. 파일 이름은 우리가 짓는다(보낸 쪽 이름을 경로로 쓰지 않는다)."""
+    if not msg.is_multipart():
+        return "", []
+    paths, folder = [], os.path.join(ATTACH, key)
+    for part in msg.walk():
+        ext = IMAGE_TYPES.get(part.get_content_type())
+        if not ext or len(paths) >= MAX_IMAGES:
+            continue
+        data = part.get_payload(decode=True) or b""
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            continue
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, "photo%d%s" % (len(paths) + 1, ext))
+        with open(path, "wb") as f:
+            f.write(data)
+        paths.append(path)
+    return (folder if paths else ""), paths
+
+
+_LAST_PRUNE = [0.0]
+
+
+def prune_attachments(days: int = 7) -> None:
+    """오래된 사진 폴더를 지운다(한 시간에 한 번만 본다)."""
+    if time.time() - _LAST_PRUNE[0] < 3600 or not os.path.isdir(ATTACH):
+        return
+    _LAST_PRUNE[0] = time.time()
+    cut = time.time() - days * 86400
+    for name in os.listdir(ATTACH):
+        d = os.path.join(ATTACH, name)
+        try:
+            if os.path.isdir(d) and os.path.getmtime(d) < cut:
+                for fn in os.listdir(d):
+                    os.remove(os.path.join(d, fn))
+                os.rmdir(d)
+        except OSError:
+            pass
+
+
+# 폰(Gmail) 페이지는 암호 단어를 제목 대신 본문 마지막 줄 '[k:단어]' 로 보낸다 — 제목의 알 수 없는 영숫자 조각이
+# 회사 스팸 장비의 의심을 살 수 있어서다. 지시문에는 넣지 않는다.
+BODY_KEY_RE = re.compile(r"^[ \t]*\[k:([^\]\s]{1,64})\][ \t\r]*$", re.M)
+
+
+def body_key(msg):
+    """본문 줄 '[k:단어]' 의 단어(없으면 None)."""
+    mt = BODY_KEY_RE.search(_plain_body_raw(msg))
+    return mt.group(1) if mt else None
+
+
 def plain_body(msg) -> str:
+    """text/plain 우선(없으면 HTML 에서 태그를 걷어낸다). 본문의 암호 단어 줄은 뗀다."""
+    return BODY_KEY_RE.sub("", _plain_body_raw(msg))
+
+
+def _plain_body_raw(msg) -> str:
     """text/plain 우선. 없으면 HTML 에서 태그를 걷어낸다."""
     def payload(part):
         try:
@@ -263,7 +341,7 @@ def plain_body(msg) -> str:
 # 폰 메일 서명·인용은 지시가 아니므로 잘라낸다
 SIG_RE = re.compile(
     r"(?m)^\s*(--\s*$|보낸 사람:|보낸사람:|From:|-----Original Message-----|"
-    r"iPhone에서 보냄|내 iPhone에서 보냄|Sent from my |Get Outlook for |"
+    r"iPhone에서 보냄|내 iPhone에서 보냄|나의 iPhone에서 보냄|Sent from my |Get Outlook for |"
     # 아이폰 메일 답장의 인용 머리줄 '2026. 10. 6. 오후 4:12, 이름 <a@b> 작성:' · 'On … wrote:'
     r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\..*작성:\s*$|On .+ wrote:\s*$)"
 )
@@ -271,6 +349,29 @@ SIG_RE = re.compile(
 # 폰 메일 앱이 답장할 때 제목 앞에 붙이는 접두어. 이걸 안 벗기면 "Re: #c ..." 가
 # 태그로 시작하지 않아 match_tag 에서 걸러져 답장이 지시로 인식되지 않는다.
 REPLY_PREFIX_RE = re.compile(r"(?i)^\s*(re|fw|fwd|회신|답장)\s*[:：]\s*")
+
+
+SUBJECT_KEY_RE = re.compile(r"\s*\[k:([^\]\s]{1,64})\]\s*$")
+
+
+def split_subject_key(subject: str):
+    """제목 끝의 암호 단어 '[k:단어]' 를 떼어 (나머지 제목, 단어 또는 None)."""
+    m = SUBJECT_KEY_RE.search(subject or "")
+    if not m:
+        return subject, None
+    return subject[:m.start()].rstrip(), m.group(1)
+
+
+def keyed_word(cfg: dict, sender):
+    """keyed_senders 에 있는 주소면 그 암호 단어, 아니면 None."""
+    keyed = {a.lower(): str(k) for a, k in (cfg.get("keyed_senders") or {}).items() if k}
+    return keyed.get((sender or "").lower())
+
+
+def key_sender_ok(cfg: dict, sender: str, key) -> bool:
+    """keyed_senders 에 있는 주소이고 암호 단어가 맞으면 True (시간차 비교를 막으려고 compare_digest)."""
+    want = keyed_word(cfg, sender)
+    return bool(want and key and hmac.compare_digest(key.encode("utf-8"), want.encode("utf-8")))
 
 
 def strip_reply_prefix(subject: str) -> str:
@@ -344,7 +445,8 @@ def build_instruction(subject: str, body: str, cfg: dict):
 
 
 def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=None, resume_id=None,
-            confirm=False, disallowed_tools=None, thread=None, allowed_tools=None) -> dict:
+            confirm=False, disallowed_tools=None, thread=None, allowed_tools=None, stopped=False,
+            attach_dir="") -> dict:
     os.makedirs(JOBS, exist_ok=True)
     # id 규칙(yyyymmdd-HHMMSS-4hex) — 파일 이름 순서가 곧 접수 순서다(워커가 이름순으로 집는다)
     jid = datetime.now().strftime("%Y%m%d-%H%M%S") + "-%04x" % random.randrange(0x10000)
@@ -367,6 +469,9 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
     }
     if thread:
         job["thread"] = thread
+    if attach_dir:
+        # 워커가 claude 에 --add-dir 로 넘겨 이 폴더의 사진을 Read 로 열 수 있게 한다(작업 폴더 밖이라)
+        job["attach_dir"] = attach_dir
     # 쓰기 태그로 온 지시에만 도구를 넓혀 준다. 읽기 지시는 이 값을 넣지 않아
     # 워커가 config.local.json 의 읽기 전용 기본값을 그대로 쓴다.
     if mode == "write" and cfg:
@@ -390,7 +495,12 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
     if disallowed_tools:
         # 이어받는 잡은 원래 잡의 거부 목록을 그대로 물려받는다(안 그러면 이어받는 순간 제한이 사라진다)
         job["disallowed_tools"] = list(disallowed_tools)
-    if confirm:
+    if stopped:
+        # 먼저 온 '멈춤' 이 가리킨 지시 — 처음부터 끝난 잡으로 써서 워커가 집지 않고, 게이트웨이가 '멈췄습니다' 를 회신한다
+        job["status"] = "done"
+        job["result"] = STOPPED_BEFORE_START
+        job["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    elif confirm:
         # 워커는 queued 만 집으므로 확인 답장이 와서 queued 로 바뀔 때까지 실행되지 않는다.
         job["status"] = "awaiting_confirm"
         job["confirm_sent"] = False
@@ -514,6 +624,19 @@ def find_resume_target(head):
     return j["session_id"], j.get("workdir"), j.get("workdir_label"), j.get("disallowed_tools") or []
 
 
+def find_live_job(head, thread_no=None):
+    """아직 끝나지 않은(대기·실행 중) 메일 잡 중 이 메일이 가리키는 것 — 대화 번호가 같거나, 답장 대상이 그 지시."""
+    refs = set()
+    for h in ("In-Reply-To", "References"):
+        refs.update(re.findall(r"<[^<>]+>", str(head.get(h) or "")))
+    for _path, j in iter_jobs():
+        if not isinstance(j, dict) or j.get("source") not in MAIL_SOURCES or j.get("status") not in ("queued", "running"):
+            continue
+        if (thread_no is not None and j.get("thread") == thread_no) or (j.get("mail_msgid") and j["mail_msgid"] in refs):
+            return j
+    return None
+
+
 def find_resume_job(head):
     """find_resume_target 과 같은 규칙으로 찾은 잡 자체(선택지 ask·스레드 번호가 필요해서)."""
     refs = []
@@ -553,6 +676,17 @@ THREAD_RE = re.compile(r"\[T(\d{1,6})\]")
 CHOICES_RE = re.compile(r"```choices[ \t]*\n(.*?)\n?```\s*$", re.S)
 STOP_WORDS = {"멈춤", "그만", "stop"}
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
+ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
+EARLY_STOP_PATH = os.path.join(INBOX, "early-stops.json")  # 지시보다 먼저 도착한 '멈춤' 이 가리키는 Message-ID → 받은 시각
+STOPPED_BEFORE_START = "멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다."
+
+
+def early_stops() -> dict:
+    """지시보다 먼저 온 멈춤 기록(하루 지난 것은 버린다)."""
+    got = read_json(EARLY_STOP_PATH) or {}
+    now = time.time()
+    return {k: v for k, v in got.items() if isinstance(v, (int, float)) and now - v < 86400} if isinstance(got, dict) else {}
+
 
 
 def is_issue_prompt(prompt, cfg) -> bool:
@@ -693,8 +827,46 @@ def reply_subject(job: dict) -> str:
 
 
 def mailto(cfg: dict, job: dict, body: str) -> str:
-    """'한 번에 답장' 링크 — 누르면 제목(태그·스레드 표식)과 본문이 채워진 메일 작성 화면이 열린다."""
-    return "mailto:%s?subject=%s&body=%s" % (cfg.get("user") or "", quote(reply_subject(job)), quote(body))
+    """'한 번에 답장' 링크 — 누르면 제목(태그·스레드 표식)과 본문이 채워진 메일 작성 화면이 열린다.
+    폰(개인 주소, keyed_senders)이 보낸 지시면 제목 끝에 그 암호 단어를 붙여 폰 메일 앱에서 단추만 눌러도 받아지게 한다."""
+    subject = reply_subject(job)
+    word = keyed_word(cfg, job.get("mail_from"))
+    if word:
+        subject += " [k:%s]" % word
+    return "mailto:%s?subject=%s&body=%s" % (cfg.get("user") or "", quote(subject), quote(body))
+
+
+def phone_to(cfg: dict, sender) -> str:
+    """폰(개인 주소) 지시의 회신·접수 신호를 받을 주소. 암호 단어 주소가 아니면 "".
+    phone_reply_to 로 바꿀 수 있다 — 새 지시는 폰 메일 앱으로 보내고 답은 폰 대화방(Gmail)으로 받는 식.
+    예: {"me@icloud.example": "me@gmail.example"}"""
+    sender = (sender or "").strip()
+    if not keyed_word(cfg, sender):
+        return ""
+    alias = {a.lower(): b for a, b in (cfg.get("phone_reply_to") or {}).items() if b}
+    return alias.get(sender.lower(), sender)
+
+
+def smtp_rcpts(cfg: dict, job: dict):
+    """reply_mode=smtp 의 받는 사람. 폰(암호 단어 주소) 지시면 폰 주소(phone_reply_to 반영) + 내 주소(PC 메신저가 읽는
+    회사 메일함) — 아니면 None(메일의 To 그대로)."""
+    to = phone_to(cfg, job.get("mail_from"))
+    return [to, cfg["user"]] if to and to.lower() != (cfg.get("user") or "").lower() else None
+
+
+def copy_to_phone(cfg: dict, password: str, job: dict, msg, smtp_box: list) -> None:
+    """폰(개인 주소)에서 온 지시는 회신을 그 주소로도 보낸다 — 회사 메일함(append)만으로는 폰 메일 앱에 안 보인다.
+    smtp_box 는 [연결] 한 칸짜리 목록(한 번 연결해서 여러 통 보내고 send_replies 끝에서 닫는다)."""
+    to = phone_to(cfg, job.get("mail_from"))
+    if not to:
+        return
+    try:
+        if not smtp_box:
+            smtp_box.append(smtp_connect(cfg, password))
+        smtp_box[0].send_message(msg, to_addrs=[to])
+        log("폰으로도 회신 %s → %s" % (job.get("id"), to))
+    except Exception as e:
+        log("폰 회신 실패 %s — %s" % (job.get("id"), e))
 
 
 def ask_lines(ask) -> list:
@@ -852,10 +1024,41 @@ def auth_results_summary(head) -> tuple:
     return ok, joined[:200]
 
 
-def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
+GMAIL_IMAP = {"imap_host": "imap.gmail.com", "imap_port": 993, "imap_mode": "ssl"}
+
+
+def gmail_account(cfg: dict):
+    """cfg["gmail"] 이 켜져 있으면 poll_once 에 넘길 계정 정보, 아니면 None."""
+    g = cfg.get("gmail") or {}
+    user = (g.get("user") or "").strip().lower()
+    if not user or not g.get("password_enc"):
+        return None
+    conn = dict(GMAIL_IMAP, user=user, login_user="")
+    conn.update({k: g[k] for k in GMAIL_IMAP if g.get(k)})
+    return {"user": user, "conn": conn, "password": kit.unprotect(g["password_enc"]),
+            "folders": g.get("folders") or ["INBOX"]}
+
+
+def mirror_to_company(cfg: dict, password: str, raws: list) -> None:
+    """Gmail 에서 받은 지시의 사본을 회사 INBOX 에 넣는다 — PC 메신저는 회사 메일함으로 대화를 그린다.
+    회사 쪽 폴링은 X-Dispatch-Mirror 를 보고 건너뛴다(같은 Message-ID 라 처리 기록으로도 걸러진다)."""
+    try:
+        m = imap_connect(cfg, password)
+        try:
+            for raw in raws:
+                m.append("INBOX", "(\\Seen)", imaplib.Time2Internaldate(time.time()), b"X-Dispatch-Mirror: gmail\r\n" + raw)
+        finally:
+            m.logout()
+    except Exception as e:
+        log("회사 메일함에 지시 사본 넣기 실패 — %s" % e)
+
+
+def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> int:
     """
     seed_only=True 면 실행하지 않고 지금 매칭되는 메일을 '처리됨'으로만 기록한다.
     (처음 붙일 때 과거 메일이 무더기로 실행되는 것을 막는 용도)
+    acct 가 있으면(gmail_account) 회사 메일 대신 그 Gmail 받은편지함을 본다 — 그 주소 자신이 보낸 메일만,
+    암호 단어가 맞을 때만 받고, 받은 메일은 회사 INBOX 에 사본을 넣는다.
     """
     allowed = [a.strip().lower() for a in (cfg.get("allowed_senders") or []) if a.strip()]
     if not allowed:
@@ -868,15 +1071,21 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
             _WARNED_NO_ALLOWED = True
         return 0
     expire_confirms(cfg)
+    prune_attachments()
     processed = load_processed()
     since_days = int(cfg.get("lookback_days", 2))
     since = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
     max_per_cycle = int(cfg.get("max_per_cycle", 3))
     own_reply_ids = load_own_reply_ids()
     n = 0
-    m = imap_connect(cfg, password)
+    mirrors = []                                   # Gmail 에서 받은 메일 원본 — 끝나고 회사 INBOX 에 사본으로
+    m = imap_connect(acct["conn"], acct["password"]) if acct else imap_connect(cfg, password)
     try:
-        for box in resolve_folders(m, cfg.get("folders") or ["INBOX"]):
+        junk = [] if acct else (cfg.get("junk_folders") or [])
+        junk_boxes = [b for b in resolve_folders(m, junk) if b != "INBOX" or "INBOX" in junk] if junk else []
+        boxes = resolve_folders(m, acct["folders"] if acct else (cfg.get("folders") or ["INBOX"]))
+        for box in boxes + [b for b in junk_boxes if b not in boxes]:
+            in_junk = box in junk_boxes
             typ, _ = m.select('"%s"' % box)
             if typ != "OK":
                 log("폴더를 열지 못했습니다: %s" % box)
@@ -902,6 +1111,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
                 # 폰이 답장하며 붙인 'Re:' 등을 벗겨야 태그 매칭이 된다(안 그러면
                 # 답장이 그냥 무시되어 대화가 이어지지 않는다).
                 clean_subject = strip_reply_prefix(subject)
+                clean_subject, subject_key = split_subject_key(clean_subject)   # 폰(개인 메일)이 붙인 암호 단어는 떼어 둔다
                 # match_tag 는 (태그, 모드) 튜플을 준다. 튜플 자체로 판정하면
                 # (None, None) 도 참이라 모든 메일이 통과해 버린다 — 반드시 태그를 꺼내 확인할 것.
                 tag_hit, _mode_hit = match_tag(clean_subject, cfg)
@@ -916,15 +1126,30 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
                     continue
                 # Message-ID 가 있으면 그것이 가장 안전하다(폴더를 옮겨도 같은 값).
                 # 없으면 폴더+UID 로 대신한다.
-                key = msgid or ("%s#uid%s" % (box, uid_s))
+                key = msgid or ("%s%s#uid%s" % ("gmail:" if acct else "", box, uid_s))
                 if key in processed:
                     continue
 
                 sender = email.utils.parseaddr(head.get("From", ""))[1].lower()
-                if sender not in allowed:
-                    log("허용되지 않은 발신자라 무시합니다: %s" % sender)
+                if acct and sender != acct["user"]:
+                    # Gmail 받은편지함엔 우리 회신·접수 신호(회사 주소)도 같은 제목으로 온다 — 나에게 보낸 것만 지시다
                     processed.add(key)
                     continue
+                if not acct and head.get("X-Dispatch-Mirror"):
+                    processed.add(key)                 # Gmail 에서 이미 받은 지시의 사본(mirror_to_company)
+                    continue
+                if sender not in allowed or in_junk or acct:
+                    if not subject_key and sender in {a.lower() for a in (cfg.get("keyed_senders") or {})}:
+                        typ, full = m.uid("FETCH", uid_s, "(BODY.PEEK[])")   # 암호 단어가 본문에 있을 수 있다
+                        if typ == "OK" and full and full[0]:
+                            subject_key = body_key(email.message_from_bytes(full[0][1]))
+                    if key_sender_ok(cfg, sender, subject_key):
+                        log("암호 단어로 확인한 발신자: %s%s" % (sender, " (스팸함에서 꺼냄)" if in_junk else ""))
+                    else:
+                        why = " (암호 단어가 없거나 틀림)" if sender in {a.lower() for a in (cfg.get("keyed_senders") or {})} else ""
+                        log("허용되지 않은 발신자라 무시합니다: %s%s" % (sender, why))
+                        processed.add(key)
+                        continue
 
                 auth_ok, auth_note = auth_results_summary(head)
                 log("[인증] %s → %s : %s" % (sender, "통과" if auth_ok else "미확인", auth_note))
@@ -942,6 +1167,8 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
                 if typ != "OK" or not full or not full[0]:
                     continue
                 msg = email.message_from_bytes(full[0][1])
+                if acct:
+                    mirrors.append(full[0][1])         # 받은 것은 무엇이든(지시·답·멈춤) PC 메신저에도 보이게
 
                 # 우리가 보낸 확인 메일에 대한 답장이면 새 지시가 아니라 승인/취소로 처리한다.
                 thread_no = thread_of(clean_subject)
@@ -967,6 +1194,32 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
                     else:
                         log("확인 답장을 알아듣지 못했습니다(1=실행, 2=취소) %s" % pjob["id"])
                     continue
+
+                # 돌고 있는(대기 중인) 일을 멈추라는 말이면 새 잡을 만들지 않고 워커에 멈춤 표시(jobs\<id>.stop)만 남긴다.
+                # 폰 대화방의 '멈춤' 단추는 그 지시에 대한 답장으로 '멈춤' 한 마디를 보낸다. 끝난 일에 대한 '멈춤' 은
+                # 지금처럼 그 세션에 '정리하고 보고해' 로 이어진다.
+                if reply_text(plain_body(msg)).strip().lower() in STOP_WORDS:
+                    live = find_live_job(head, thread_no)
+                    if live:
+                        processed.add(key)
+                        save_processed(processed)
+                        m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                        open(os.path.join(JOBS, live["id"] + ".stop"), "w").close()
+                        log("멈춤 요청 %s (%s)" % (live["id"], live.get("status")))
+                        continue
+                    if not find_resume_job(head) and not (thread_no is not None and find_thread_job(thread_no)):
+                        # 멈출 일이 없다 — 대개 메일 도착 순서가 뒤바뀌어 지시보다 '멈춤' 이 먼저 온 것(그대로 두면
+                        # 멈춤이 새 지시로 돌고 진짜 지시는 끝까지 돈다). 새 잡을 만들지 않고, 가리키는 지시를 기억해 둔다.
+                        refs = re.findall(r"<[^<>]+>", " ".join(str(head.get(h) or "") for h in ("In-Reply-To", "References")))
+                        if refs:
+                            stops = early_stops()
+                            stops.update({r: time.time() for r in refs})
+                            write_json(EARLY_STOP_PATH, stops)
+                        processed.add(key)
+                        save_processed(processed)
+                        m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                        log("멈춤 요청 — 멈출 일이 아직 없음(지시보다 먼저 옴). 그 지시가 오면 실행하지 않습니다: %s" % (", ".join(refs) or "대상 없음"))
+                        continue
 
                 prompt, workdir, label, mode = build_instruction(clean_subject, plain_body(msg), cfg)
 
@@ -999,15 +1252,29 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
                     processed.add(key)
                     continue
 
+                # 폰이 붙인 사진 — 저장하고 지시문 끝에 경로를 적어 Claude 가 Read 로 열어 보게 한다
+                attach_dir, photos = save_images(msg, datetime.now().strftime("%Y%m%d-%H%M%S-") + "%04x" % random.randrange(0x10000))
+                if photos:
+                    prompt = (prompt + "\n\n[첨부 사진 %d장 — Read 도구로 열어 보고 지시에 맞게 쓸 것]\n" % len(photos)
+                              + "\n".join("- " + p for p in photos))
+                    log("첨부 사진 %d장 → %s" % (len(photos), attach_dir))
+
                 # 실행 전에 먼저 기록한다. 중간에 죽어도 같은 지시가 다시 돌지 않게 하는 편이
                 # 안전하다(특히 쓰기 모드에서 재실행은 위험하다).
                 processed.add(key)
                 save_processed(processed)
-                needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True))
+                stops = early_stops()
+                stopped = bool(msgid and msgid in stops)          # 이 지시를 가리키는 멈춤이 먼저 와 있었다
+                needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True)) and not stopped
                 job = new_job(prompt, workdir, label, msgid, clean_subject, sender, mode, cfg,
                               resume_id=resume_id, confirm=needs_confirm, disallowed_tools=denied,
                               thread=thread_no if resume_id else None,
-                              allowed_tools=(prev or {}).get("allowed_tools") if resume_id else None)
+                              allowed_tools=(prev or {}).get("allowed_tools") if resume_id else None,
+                              stopped=stopped, attach_dir=attach_dir)
+                if stopped:
+                    stops.pop(msgid, None)
+                    write_json(EARLY_STOP_PATH, stops)
+                    log("먼저 온 멈춤에 따라 실행하지 않음 %s" % job["id"])
                 m.uid("STORE", uid_s, "+FLAGS", "\\Seen")   # 읽음 표시는 사람이 보기 편하라고
                 n += 1
                 tail = (" · 이어서 세션 %s" % resume_id) if resume_id else ""
@@ -1024,7 +1291,30 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False) -> int:
             m.logout()
         except Exception:
             pass
+        if mirrors:
+            mirror_to_company(cfg, password, mirrors)
     return n
+
+
+_GMAIL_ERR = [""]
+
+
+def poll_gmail(cfg: dict, password: str, seed_only: bool = False) -> int:
+    """Gmail 받은편지함 폴링. 꺼져 있으면 0. 실패해도 회사 메일 폴링은 계속 돌게 여기서 삼키고, 같은 오류는 한 번만 적는다."""
+    try:
+        ga = gmail_account(cfg)
+        if not ga:
+            return 0
+        n = poll_once(cfg, password, seed_only=seed_only, acct=ga)
+        if _GMAIL_ERR[0]:
+            log("Gmail 폴링 복구")
+            _GMAIL_ERR[0] = ""
+        return n
+    except Exception as e:
+        if str(e) != _GMAIL_ERR[0]:
+            log("Gmail 폴링 오류 — %s" % e)
+            _GMAIL_ERR[0] = str(e)
+        return 0
 
 
 def reply_parts(job: dict):
@@ -1136,6 +1426,62 @@ def build_confirm_message(cfg: dict, job: dict):
     return msg, mid
 
 
+def build_ack_message(cfg: dict, job: dict):
+    """폰(개인 주소)에서 온 지시를 받았다는 짧은 신호. 폰 페이지가 이걸 보고 말풍선의 '1' 을 지운다
+    (카톡 읽음 표시) — 스팸 격리 등으로 PC 가 아직 못 받은 것과 일하는 중을 가른다. 말풍선으로는 안 보인다."""
+    msg = EmailMessage()
+    msg["Subject"] = reply_subject(job)
+    msg["From"] = cfg["user"]
+    msg["To"] = job["mail_from"]
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
+    msg["Message-ID"] = email.utils.make_msgid(domain=domain)
+    if job.get("mail_msgid"):
+        msg["In-Reply-To"] = job["mail_msgid"]
+        msg["References"] = job["mail_msgid"]
+    msg.set_content("PC 가 지시를 받았습니다. 끝나면 답을 보냅니다.")
+    mark_bot(msg, job, kind="ack")
+    return msg
+
+
+def send_acks(cfg: dict, password: str) -> int:
+    """폰에서 온 새 잡에 접수 신호를 한 번 보낸다(회사 메일함에는 넣지 않는다). 30분 넘은 잡·이미 회신한 잡은 건너뛴다.
+    보냈다는 기록은 잡 파일이 아니라 acked.json 에 둔다 — 잡 파일은 워커가 돌면서 고쳐 쓰므로 여기서 쓰면 서로 덮어쓴다."""
+    if not os.path.isdir(JOBS):
+        return 0
+    acked = set(read_json(ACKED_PATH) or [])
+    smtp_box, n, before = [], 0, len(acked)
+    try:
+        for path, job in iter_jobs():
+            if not isinstance(job, dict) or job.get("source") != "mail" or job.get("id") in acked or job.get("replied") or not keyed_word(cfg, job.get("mail_from")):
+                continue
+            try:
+                age = (datetime.now() - datetime.strptime(job.get("created_at") or "", "%Y-%m-%d %H:%M:%S")).total_seconds()
+            except ValueError:
+                age = 1e9
+            acked.add(job["id"])                      # 실패해도 다시 보내지 않는다(회신이 어차피 간다)
+            if age > 1800:
+                continue
+            try:
+                if not smtp_box:
+                    smtp_box.append(smtp_connect(cfg, password))
+                to = phone_to(cfg, job["mail_from"])
+                smtp_box[0].send_message(build_ack_message(cfg, job), to_addrs=[to])
+                n += 1
+                log("접수 신호 %s → %s" % (job["id"], to))
+            except Exception as e:
+                log("접수 신호 실패 %s — %s" % (job["id"], e))
+    finally:
+        for s in smtp_box:
+            try:
+                s.quit()
+            except Exception:
+                pass
+        if len(acked) != before:
+            write_json(ACKED_PATH, sorted(acked)[-500:])
+    return n
+
+
 def send_replies(cfg: dict, password: str) -> int:
     if not os.path.isdir(JOBS):
         return 0
@@ -1162,6 +1508,7 @@ def send_replies(cfg: dict, password: str) -> int:
     n = 0
     mode = "append" if cfg.get("reply_mode") == "append" else "smtp"
     conn = imap_connect(cfg, password) if mode == "append" else smtp_connect(cfg, password)
+    phone_smtp = []                                    # 폰(개인 주소)으로 보낼 회신용 SMTP — 필요할 때만 연결
     try:
         for path, job in pending:
             if job.get("status") == "awaiting_confirm":
@@ -1171,8 +1518,9 @@ def send_replies(cfg: dict, password: str) -> int:
                     cmsg, cmid = build_confirm_message(cfg, job)
                     if mode == "append":
                         conn.append("INBOX", "", imaplib.Time2Internaldate(time.time()), cmsg.as_bytes())
+                        copy_to_phone(cfg, password, job, cmsg, phone_smtp)
                     else:
-                        conn.send_message(cmsg)
+                        conn.send_message(cmsg, to_addrs=smtp_rcpts(cfg, job))
                     job["confirm_sent"] = True
                     job["confirm_msgid"] = cmid
                     write_json(path, job)
@@ -1196,8 +1544,9 @@ def send_replies(cfg: dict, password: str) -> int:
                     # INBOX 에 직접 넣는다. 발송하면 메일 규칙에 걸려 다른 폴더로 옮겨지므로
                     # 이쪽이 결과를 확실히 보여준다. 폰에서는 똑같이 새 메일로 보인다.
                     conn.append("INBOX", "", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+                    copy_to_phone(cfg, password, job, msg, phone_smtp)
                 else:
-                    conn.send_message(msg)
+                    conn.send_message(msg, to_addrs=smtp_rcpts(cfg, job))
 
                 job["replied"] = True
                 job["reply_msgid"] = rmid
@@ -1217,6 +1566,11 @@ def send_replies(cfg: dict, password: str) -> int:
             conn.logout() if mode == "append" else conn.quit()
         except Exception:
             pass
+        for s in phone_smtp:
+            try:
+                s.quit()
+            except Exception:
+                pass
     return n
 
 
@@ -1231,6 +1585,97 @@ def cmd_setup() -> int:
     print("설정 마법사(setup.py)가 없습니다. config.example.json 을 config.local.json 으로 복사해 mail · dispatch 를 채우세요.")
     print("비밀번호는 평문으로 넣지 않습니다 — kit.protect() 로 암호화한 값을 mail.password_enc 에 넣습니다.")
     return 1
+
+
+def save_gmail(value: dict) -> None:
+    """config.local.json 의 dispatch.gmail 만 바꾼다(다른 값은 파일 그대로 — 기본값을 채워 쓰지 않는다)."""
+    full = kit._read(kit.F_CONFIG)
+    full["dispatch"] = dict(full.get("dispatch") or {}, gmail=value)
+    kit.save_config(full)
+
+
+def cmd_setup_gmail() -> int:
+    """
+    폰 지시를 Gmail 에서 직접 읽도록 Gmail 주소와 앱 비밀번호를 받는다(입력 창 — 터미널·기록에 안 남는다).
+    앱 비밀번호: Google 계정 > 보안 > 2단계 인증을 켠 뒤 '앱 비밀번호'에서 만든 16자리.
+    그 주소는 keyed_senders(암호 단어 주소)에 있어야 한다. 저장하면 지금 있는 메일은 실행하지 않고 처리됨으로 기록한다.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    cfg = load_cfg()
+    g = dict(cfg.get("gmail") or {})
+    keyed = list(cfg.get("keyed_senders") or {})
+
+    root = tk.Tk()
+    root.title("메일 게이트웨이 — Gmail 직접 읽기")
+    root.resizable(False, False)
+    root.attributes("-topmost", True)
+    frm = ttk.Frame(root, padding=16)
+    frm.grid(sticky="nsew")
+    ttk.Label(frm, text="폰이 '나에게' 보낸 지시를 Gmail 에서 바로 읽습니다(회사 스팸 장비를 거치지 않음).\n"
+                        "비밀번호는 Google 계정의 '앱 비밀번호'(16자리)를 넣으세요. 비우면 이 기능을 끕니다.",
+              justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+    ttk.Label(frm, text="Gmail 주소").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=4)
+    e_user = ttk.Entry(frm, width=34)
+    e_user.insert(0, g.get("user") or (keyed[0] if keyed else ""))
+    e_user.grid(row=1, column=1, pady=4)
+    ttk.Label(frm, text="앱 비밀번호").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=4)
+    e_pw = ttk.Entry(frm, width=34, show="*")
+    e_pw.grid(row=2, column=1, pady=4)
+    e_pw.focus()
+    status = ttk.Label(frm, text="", foreground="#555")
+    status.grid(row=3, column=0, columnspan=2, sticky="w", pady=(12, 0))
+    btns = ttk.Frame(frm)
+    btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(14, 0))
+    state = {"ok": False}
+
+    def say(msg, color="#555"):
+        status.configure(text=msg, foreground=color)
+        root.update()
+
+    def on_ok():
+        user = e_user.get().strip().lower()
+        pw = e_pw.get().replace(" ", "")              # Google 은 'abcd efgh ijkl mnop' 처럼 띄어 보여 준다
+        if not pw:
+            cfg["gmail"] = {}
+            save_gmail({})
+            log("Gmail 직접 읽기를 껐습니다")
+            say("껐습니다. 창을 닫습니다.", "#070")
+            state["ok"] = True
+            root.after(900, root.destroy)
+            return
+        if user not in {a.lower() for a in (cfg.get("keyed_senders") or {})}:
+            say("이 주소는 암호 단어 주소(dispatch.keyed_senders)가 아닙니다 — config.local.json 에 먼저 넣으세요.", "#c00")
+            return
+        b_ok.configure(state="disabled")
+        try:
+            say("Gmail IMAP 로그인 확인 중...")
+            m = imap_connect(dict(GMAIL_IMAP, user=user, login_user=""), pw)
+            m.select("INBOX")
+            m.logout()
+            cfg["gmail"] = dict(g, user=user, password_enc=kit.protect(pw))
+            save_gmail(cfg["gmail"])
+            say("과거 메일을 처리됨으로 기록하는 중...")
+            n = poll_gmail(cfg, get_password(cfg), seed_only=True)
+            log("Gmail 직접 읽기를 켰습니다: %s (과거 메일 %d건 처리됨으로 기록)" % (user, n))
+            state["ok"] = True
+            say("저장했습니다. 창을 닫습니다.", "#070")
+            root.after(900, root.destroy)
+        except Exception as ex:
+            log("Gmail 설정 실패 [%s] %s" % (type(ex).__name__, ex))
+            say("실패: %s" % str(ex)[:90], "#c00")
+            b_ok.configure(state="normal")
+
+    b_ok = ttk.Button(btns, text="확인", command=on_ok)
+    b_ok.grid(row=0, column=0, padx=(0, 6))
+    ttk.Button(btns, text="취소", command=root.destroy).grid(row=0, column=1)
+    root.bind("<Return>", lambda _e: on_ok())
+    root.update_idletasks()
+    w, h = root.winfo_width(), root.winfo_height()
+    root.geometry("+%d+%d" % ((root.winfo_screenwidth() - w) // 2, (root.winfo_screenheight() - h) // 3))
+    root.mainloop()
+    return 0 if state["ok"] else 1
 
 
 def get_password(cfg: dict) -> str:
@@ -1257,6 +1702,8 @@ def cmd_test() -> int:
 
 def main() -> int:
     args = sys.argv[1:]
+    if "--setup-gmail" in args:
+        return cmd_setup_gmail()
     if "--setup" in args or "--setup-gui" in args:
         return cmd_setup()
     if "--test" in args:
@@ -1264,7 +1711,7 @@ def main() -> int:
     if "--seed" in args:
         # 지금 조건에 맞는 메일을 실행하지 않고 '처리됨'으로만 기록한다.
         cfg = load_cfg()
-        n = poll_once(cfg, get_password(cfg), seed_only=True)
+        n = poll_once(cfg, get_password(cfg), seed_only=True) + poll_gmail(cfg, get_password(cfg), seed_only=True)
         print("기존 메일 %d건을 처리됨으로 기록했습니다(실행하지 않음)." % n)
         return 0
 
@@ -1306,7 +1753,8 @@ def main() -> int:
                     set_state("paused", "일시정지 중")
                     last_state = time.time()
             else:
-                got = poll_once(cfg, pw)
+                got = poll_once(cfg, pw) + poll_gmail(cfg, pw)
+                send_acks(cfg, pw)
                 sent = send_replies(cfg, pw)
                 if time.time() - last_state >= 30 or got or sent:
                     set_state("idle", "감시 중 (태그 %s)" % cfg["tag"])

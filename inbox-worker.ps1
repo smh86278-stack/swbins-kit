@@ -148,6 +148,17 @@ function Add-Notify([string] $title, [string] $text, [string] $level) {
 }
 
 # 대기 중인 작업 하나(가장 오래된 것). 파일명이 시각순이라 이름 오름차순이 곧 접수순이다.
+function Stop-ProcessTree($p) {
+    # 프로세스 트리째 끝낸다(Kill() 은 claude 본체만 끝내고 node·도구 자식을 남긴다).
+    # taskkill 은 이미 끝난 자식에 대해 stderr 로 경고를 내는데, 이 스크립트는 ErrorActionPreference=Stop 이라
+    # PS 5.1 이 그 경고를 오류로 바꿔 catch 로 튄다 — 멈춤이 '오류' 로 끝난다. 여기서만 삼킨다.
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null } catch { }
+    finally { $ErrorActionPreference = $old }
+    try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+}
+
 function Get-NextJob {
     $files = @(Get-ChildItem -LiteralPath $jobsDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)
     foreach ($f in $files) {
@@ -199,6 +210,15 @@ function Test-JobInputs($job, $cfg) {
         if ($null -eq $t) { continue }
         if ([string]$t -notmatch $script:ToolPattern) { return "허용되지 않는 거부 규칙 표기입니다: $t" }
     }
+    # 사진 폴더(게이트웨이 attach_dir)도 --add-dir 로 명령줄에 붙는다 — 인박스 사진 폴더 아래만, 따옴표 없이
+    if ($job.attach_dir) {
+        $dir = [string]$job.attach_dir
+        $att = Join-Path (Split-Path -Parent $jobsDir) 'attachments'
+        try { $full = [System.IO.Path]::GetFullPath($dir); $att = [System.IO.Path]::GetFullPath($att) } catch { return 'attach_dir 형식이 올바르지 않습니다.' }
+        if ($dir.Contains('"') -or -not $full.StartsWith($att + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return 'attach_dir 는 인박스 사진 폴더(inbox\attachments) 아래여야 합니다.'
+        }
+    }
     return $null
 }
 
@@ -212,6 +232,18 @@ function Invoke-Job($entry) {
     $fresh = Read-JsonFile $path
     if (-not $fresh -or $fresh.status -ne 'queued') {
         Write-Log "건너뜀 $id (상태가 queued 가 아님)"
+        return
+    }
+
+    # 시작 전에 이미 멈춤 요청이 왔으면(폰 대화방 '멈춤') 돌리지 않는다 — 게이트웨이가 'done' 회신으로 알린다
+    $stopFile = Join-Path $jobsDir "$id.stop"
+    if (Test-Path -LiteralPath $stopFile) {
+        Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
+        $job.status = 'done'
+        $job.result = '멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다.'
+        $job.finished_at = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+        Write-JsonFile $path $job
+        Write-Log "멈춤(시작 전) $id"
         return
     }
 
@@ -274,7 +306,10 @@ function Invoke-Job($entry) {
             $proto = Join-Path $root 'chat-protocol.md'
             if (Test-Path -LiteralPath $proto) { $chatArg = ' --append-system-prompt-file "' + $proto + '"' }
         }
-        $argLine  = "-p ${resumeArg}--output-format json --allowedTools $toolArgs$denyArgs$chatArg"
+        # 폰이 지시와 함께 보낸 사진 폴더(게이트웨이 attach_dir) — 작업 폴더 밖이라 --add-dir 로 읽기를 열어 준다
+        $addDirArg = ''
+        if ($job.attach_dir -and (Test-Path -LiteralPath $job.attach_dir)) { $addDirArg = '--add-dir "' + $job.attach_dir + '" ' }
+        $argLine  = "-p ${resumeArg}${addDirArg}--output-format json --allowedTools $toolArgs$denyArgs$chatArg"
 
         $p = Start-Process -FilePath 'claude' -ArgumentList $argLine `
                 -WorkingDirectory $job.workdir `
@@ -285,19 +320,34 @@ function Invoke-Job($entry) {
 
         # 한 번에 TimeoutSec 를 통째로 기다리면 그동안 state.json 이 갱신되지 않아
         # 150초만 넘어도 허브 트레이가 워커를 "멈춤"으로 표시한다. 30초씩 끊어 기다리며 상태를 갱신한다.
+        # 2초마다 멈춤 요청(jobs\<id>.stop — 메일 게이트웨이가 폰 대화방 '멈춤' 을 받으면 만든다)도 본다.
         $deadline = (Get-Date).AddSeconds($cfg.TimeoutSec)
         $finished = $false
+        $stopped = $false
+        $beat = Get-Date
         while ($true) {
-            if ($p.WaitForExit(30000)) { $finished = $true; break }
+            if ($p.WaitForExit(2000)) { $finished = $true; break }
+            if (Test-Path -LiteralPath $stopFile) { $stopped = $true; break }
             if ((Get-Date) -ge $deadline) { break }
-            Set-WorkerState 'busy' "실행 중: $id" $id
+            if (((Get-Date) - $beat).TotalSeconds -ge 30) { Set-WorkerState 'busy' "실행 중: $id" $id; $beat = Get-Date }
         }
         $sw.Stop()
 
+        if ($stopped) {
+            Stop-ProcessTree $p
+            Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
+            $job.status = 'done'
+            $job.result = '멈췄습니다 — 폰에서 멈춤을 받아 하던 일을 중간에 끊었습니다. 이어서 하려면 다시 말해 주세요.'
+            $job.duration_ms = $sw.Elapsed.TotalMilliseconds
+            $job.finished_at = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+            Write-JsonFile $path $job
+            Write-Log "멈춤 $id ($([int]$sw.Elapsed.TotalSeconds)초에 끊음)"
+            return
+        }
+
         if (-not $finished) {
             # Kill() 은 claude 본체만 끝내고 node·도구 자식 프로세스는 남긴다 — 프로세스 트리째 종료한다
-            & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null
-            try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+            Stop-ProcessTree $p
             $job.status = 'error'
             $job.error = "제한 시간($($cfg.TimeoutSec)초)을 넘겨 중단했습니다."
             $job.duration_ms = $sw.Elapsed.TotalMilliseconds

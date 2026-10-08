@@ -39,6 +39,25 @@ class StripReplyPrefix(unittest.TestCase):
     def test_untouched(self):
         self.assertEqual(mg.strip_reply_prefix("#c 확인"), "#c 확인")
 
+    def test_subject_key(self):
+        # 폰 페이지가 제목 끝에 붙이는 암호 단어 — 떼어 내고, 주소·단어가 둘 다 맞아야 통과
+        self.assertEqual(mg.split_subject_key("#c 확인해줘 [k:abc123]"), ("#c 확인해줘", "abc123"))
+        self.assertEqual(mg.split_subject_key("#c [k:x] 중간에 있으면 아님"), ("#c [k:x] 중간에 있으면 아님", None))
+        cfg = {"keyed_senders": {"Me@iCloud.test": "abc123"}}
+        self.assertTrue(mg.key_sender_ok(cfg, "me@icloud.test", "abc123"))
+        self.assertFalse(mg.key_sender_ok(cfg, "me@icloud.test", "wrong"))
+        self.assertFalse(mg.key_sender_ok(cfg, "me@icloud.test", None))
+        self.assertFalse(mg.key_sender_ok(cfg, "other@icloud.test", "abc123"))
+        self.assertFalse(mg.key_sender_ok({"keyed_senders": {"me@icloud.test": ""}}, "me@icloud.test", ""))
+
+    def test_mailto_adds_key_for_phone(self):
+        # 폰(개인 주소)에서 온 지시의 회신 단추에는 암호 단어가 붙고, 회사 주소 지시에는 안 붙는다
+        cfg = {"user": "me@company.test", "keyed_senders": {"me@icloud.test": "abc123"}}
+        phone = {"mail_subject": "#c [T3] 확인", "mail_from": "me@icloud.test"}
+        corp = {"mail_subject": "#c [T3] 확인", "mail_from": "me@company.test"}
+        self.assertIn(mg.quote(" [k:abc123]"), mg.mailto(cfg, phone, "1"))
+        self.assertNotIn("k%3A", mg.mailto(cfg, corp, "1"))
+
 
 class MatchTag(unittest.TestCase):
     def test_tuple_is_truthy_even_when_no_match(self):
@@ -244,18 +263,22 @@ class WriteConfirmFlow(unittest.TestCase):
 class FakeImap:
     """poll_once / send_replies 가 쓰는 IMAP 메서드만 흉내 낸다."""
 
-    def __init__(self, mails, appended):
+    def __init__(self, mails, appended, by_box=None):
         self.mails = mails            # {uid(str): 원문 bytes}
         self.appended = appended      # append() 로 들어온 메일 원문 bytes 목록
+        self.by_box = by_box          # {폴더: {uid: 원문}} — 폴더마다 다른 메일이 필요한 시험만
+        self.cur = mails
 
     def select(self, box):
+        if self.by_box is not None:
+            self.cur = self.by_box.get(box.strip('"'), {})
         return "OK", [b""]
 
     def uid(self, cmd, *args):
         if cmd == "SEARCH":
-            return "OK", [" ".join(self.mails).encode()]
+            return "OK", [" ".join(self.cur).encode()]
         if cmd == "FETCH":
-            raw = self.mails[args[0]]
+            raw = self.cur[args[0]]
             if "HEADER" in args[1]:
                 raw = raw.split(b"\r\n\r\n", 1)[0] + b"\r\n\r\n"
             return "OK", [(b"1", raw)]
@@ -281,8 +304,10 @@ class PollOnceConfirmFlow(unittest.TestCase):
         self.workdir = os.path.join(self.tmp, "work")
         os.makedirs(self.workdir)
         self._saved = {k: getattr(mg, k) for k in ("JOBS", "SEEN_PATH", "LOG_PATH", "NOTIFY_PATH", "THREAD_SEQ_PATH",
-                                                    "imap_connect", "resolve_folders", "notify")}
+                                                    "imap_connect", "resolve_folders", "notify", "EARLY_STOP_PATH", "ATTACH")}
         mg.JOBS = self.jobs
+        mg.EARLY_STOP_PATH = os.path.join(self.tmp, "early-stops.json")
+        mg.ATTACH = os.path.join(self.tmp, "attachments")
         mg.THREAD_SEQ_PATH = os.path.join(self.tmp, "thread-seq.json")
         mg.SEEN_PATH = os.path.join(self.tmp, "seen.json")
         mg.LOG_PATH = os.path.join(self.tmp, "gw.log")
@@ -315,7 +340,8 @@ class PollOnceConfirmFlow(unittest.TestCase):
     def _jobs(self):
         out = []
         for fn in os.listdir(self.jobs):
-            out.append(mg.read_json(os.path.join(self.jobs, fn)))
+            if fn.endswith(".json"):
+                out.append(mg.read_json(os.path.join(self.jobs, fn)))
         return out
 
     def _send_confirm(self):
@@ -373,6 +399,151 @@ class PollOnceConfirmFlow(unittest.TestCase):
         self._send_confirm()
         # 확인 메일이 INBOX 에 들어온 것처럼 다음 폴링에서 보이게 한다
         self.mails["9"] = self.appended[-1]
+        mg.poll_once(self.cfg, "pw")
+        self.assertEqual(len(self._jobs()), 1)
+
+
+    def test_stop_running_job_leaves_stop_file(self):
+        # 폰 대화방 '멈춤' — 돌고 있는 일에 대한 '멈춤' 은 새 잡이 아니라 워커에게 끊으라는 표시(jobs\<id>.stop)
+        self._mail("1", "#c 오래 걸리는 일", "", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        job["status"] = "running"
+        mg.write_json(os.path.join(self.jobs, job["id"] + ".json"), job)
+        self._mail("2", "Re: #c 오래 걸리는 일", "멈춤\n\n나의 iPhone에서 보냄", "<m2@x>", in_reply_to="<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        self.assertEqual(len(self._jobs()), 1)                   # 새 잡을 만들지 않았다
+        self.assertTrue(os.path.exists(os.path.join(self.jobs, job["id"] + ".stop")))
+
+    def test_stop_before_instruction_arrives(self):
+        # 2026-10-08 실측: 메일 도착 순서가 뒤바뀌어 '멈춤' 이 지시보다 먼저 왔다 → 멈춤이 새 지시로 돌고 진짜 지시는 끝까지 돌았다.
+        # 이제 먼저 온 멈춤은 잡을 만들지 않고, 나중에 온 그 지시는 실행하지 않은 채 '멈췄습니다' 로 끝난다.
+        self._mail("1", "Re: #c 멈춤", "멈춤", "<s1@x>", in_reply_to="<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        self.assertEqual(self._jobs(), [])
+        self._mail("2", "#c 오래 걸리는 일", "", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        self.assertEqual(job["status"], "done")                   # 워커가 집지 않는다
+        self.assertEqual(job["result"], mg.STOPPED_BEFORE_START)
+        self.assertNotIn("<m1@x>", mg.early_stops())             # 한 번 쓰면 지운다
+
+    def test_stop_after_done_continues_session(self):
+        # 끝난 일에 대한 '멈춤' 은 예전처럼 그 세션에 이어 붙는다(정리하고 보고)
+        self._mail("1", "#c 일", "", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        job.update(status="done", session_id="s1", replied=True)
+        mg.write_json(os.path.join(self.jobs, job["id"] + ".json"), job)
+        self._mail("2", "Re: #c 일", "멈춤", "<m2@x>", in_reply_to="<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        jobs = self._jobs()
+        self.assertEqual(len(jobs), 2)
+        self.assertFalse(any(fn.endswith(".stop") for fn in os.listdir(self.jobs)))
+        self.assertIn("s1", [j.get("resume_id") for j in jobs])
+
+
+    def test_photos_are_saved_and_listed_in_prompt(self):
+        # 폰 대화방 📎 — 사진은 잡마다 폴더에 저장하고 지시문 끝에 경로를 적는다. 사진이 아닌 첨부는 버린다.
+        m = email.message.EmailMessage()
+        m["Subject"], m["From"], m["To"], m["Message-ID"] = "#c 이 화면 오류 봐줘", "me@example.com", "me@example.com", "<p1@x>"
+        m.set_content("빨간 글씨 부분")
+        m.add_attachment(b"\xff\xd8jpegdata", maintype="image", subtype="jpeg", filename="../../evil.jpg")
+        m.add_attachment(b"%PDF-1.4", maintype="application", subtype="pdf", filename="doc.pdf")
+        self.mails["1"] = m.as_bytes().replace(b"\n", b"\r\n") if b"\r\n" not in m.as_bytes() else m.as_bytes()
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        folder = job["attach_dir"]
+        self.assertTrue(folder.startswith(mg.ATTACH))
+        self.assertEqual(os.listdir(folder), ["photo1.jpg"])               # 보낸 쪽 파일 이름은 쓰지 않는다
+        with open(os.path.join(folder, "photo1.jpg"), "rb") as f:
+            self.assertEqual(f.read(), b"\xff\xd8jpegdata")
+        self.assertIn("[첨부 사진 1장", job["prompt"])
+        self.assertIn(os.path.join(folder, "photo1.jpg"), job["prompt"])
+        self.assertIn("빨간 글씨 부분", job["prompt"])
+
+    def test_no_photos_no_attach_dir(self):
+        self._mail("1", "#c 그냥 지시", "", "<p2@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        self.assertNotIn("attach_dir", job)
+
+    def _phone(self, uid, subject, body, msgid, in_reply_to=None):
+        m = email.message.EmailMessage()
+        m["Subject"], m["From"], m["To"], m["Message-ID"] = subject, "me@gmail.test", "me@example.com", msgid
+        if in_reply_to:
+            m["In-Reply-To"] = in_reply_to
+        m.set_content(body)
+        self.mails[uid] = m.as_bytes().replace(b"\n", b"\r\n") if b"\r\n" not in m.as_bytes() else m.as_bytes()
+
+    def test_key_in_body_line(self):
+        # 2026-10-08: 폰(Gmail) 새 지시가 회사 스팸 장비에 1~10분 붙잡혔다 → 암호 단어를 제목 대신 본문 마지막 줄로.
+        # 받기는 하되 Claude 에게 넘기는 지시문에는 들어가지 않아야 한다.
+        self.cfg["keyed_senders"] = {"me@gmail.test": "word"}
+        self._phone("1", "#c 로그 봐줘", "에러 위주로\n\n[k:word]", "<k1@x>")
+        self._phone("2", "#c 단어 틀림", "아무거나\n\n[k:nope]", "<k2@x>")
+        self._phone("3", "#c 단어 없음", "그냥", "<k3@x>")
+        mg.poll_once(self.cfg, "pw")
+        jobs = self._jobs()
+        self.assertEqual([j["mail_msgid"] for j in jobs], ["<k1@x>"])
+        self.assertIn("에러 위주로", jobs[0]["prompt"])
+        self.assertNotIn("word", jobs[0]["prompt"])
+
+    def test_stop_with_key_in_body(self):
+        self.cfg["keyed_senders"] = {"me@gmail.test": "word"}
+        self._phone("1", "#c 오래 걸리는 일", "[k:word]", "<k4@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        job["status"] = "running"
+        mg.write_json(os.path.join(self.jobs, job["id"] + ".json"), job)
+        self._phone("2", "Re: #c 멈춤", "멈춤\n\n[k:word]", "<k5@x>", in_reply_to="<k4@x>")
+        mg.poll_once(self.cfg, "pw")
+        self.assertEqual(len(self._jobs()), 1)
+        self.assertTrue(os.path.exists(os.path.join(self.jobs, job["id"] + ".stop")))
+
+    def test_junk_folder_takes_only_keyed_mail(self):
+        # 2026-10-08: 폰(Gmail) 지시가 가끔 회사 스팸함으로 떨어진다 → 스팸함도 보되, 암호 단어가 맞는 메일만.
+        # 회사 주소(allowed_senders)를 사칭한 메일이 흔히 떨어지는 곳이라 그 주소라도 믿지 않는다.
+        def raw(subject, sender, msgid):
+            m = email.message.EmailMessage()
+            m["Subject"], m["From"], m["To"], m["Message-ID"] = subject, sender, "me@example.com", msgid
+            m.set_content("")
+            return m.as_bytes().replace(b"\n", b"\r\n")
+        spam = {"1": raw("#c 스팸에 빠진 지시 [k:word]", "me@gmail.test", "<j1@x>"),
+                "2": raw("#c 회사 주소 사칭", "me@example.com", "<j2@x>"),
+                "3": raw("#c 단어 틀림 [k:nope]", "me@gmail.test", "<j3@x>")}
+        mg.imap_connect = lambda cfg, pw: FakeImap({}, self.appended, by_box={"INBOX": {}, "Spam": spam})
+        mg.resolve_folders = lambda m, folders: ["Spam"] if folders == ["Spam"] else ["INBOX"]
+        self.cfg.update(junk_folders=["Spam"], keyed_senders={"me@gmail.test": "word"})
+        mg.poll_once(self.cfg, "pw")
+        jobs = self._jobs()
+        self.assertEqual([j["mail_msgid"] for j in jobs], ["<j1@x>"])
+
+    def test_gmail_inbox_direct(self):
+        # 2026-10-08: 회사 스팸 장비가 Gmail 새 지시를 붙잡아 → 폰이 '나에게' 보내고 PC 가 Gmail 받은편지함을 직접 읽는다.
+        # 그 주소 자신 + 암호 단어만 지시. 같은 제목으로 오는 우리 회신(회사 주소)은 지시가 아니다.
+        def raw(subject, sender, msgid, body):
+            m = email.message.EmailMessage()
+            m["Subject"], m["From"], m["To"], m["Message-ID"] = subject, sender, "me@gmail.test", msgid
+            m.set_content(body)
+            return m.as_bytes().replace(b"\n", b"\r\n")
+        gbox = {"1": raw("#c 지금 시각", "me@gmail.test", "<g1@x>", "[k:word]"),
+                "2": raw("Re: #c [T3] 회신", "me@example.com", "<g2@x>", "답입니다"),
+                "3": raw("#c 단어 없음", "me@gmail.test", "<g3@x>", "그냥"),
+                "4": raw("#c 남이 보냄", "other@gmail.test", "<g4@x>", "[k:word]")}
+        company = {}
+        mg.imap_connect = lambda cfg, pw: FakeImap(gbox if cfg.get("imap_host") == "imap.gmail.com" else company, self.appended)
+        self.cfg["keyed_senders"] = {"me@gmail.test": "word", "other@gmail.test": "word"}
+        acct = {"user": "me@gmail.test", "conn": dict(mg.GMAIL_IMAP, user="me@gmail.test"), "password": "app", "folders": ["INBOX"]}
+        mg.poll_once(self.cfg, "pw", acct=acct)
+        self.assertEqual([j["mail_msgid"] for j in self._jobs()], ["<g1@x>"])
+        # 받은 지시는 PC 메신저용 사본으로 회사 INBOX 에 — 표시 머리글을 달고
+        mirrored = [a for a in self.appended if b"<g1@x>" in a]
+        self.assertEqual(len(mirrored), 1)
+        self.assertTrue(mirrored[0].startswith(b"X-Dispatch-Mirror: gmail\r\n"))
+        # 회사 쪽 폴링은 그 사본을 다시 지시로 받지 않는다(처리 기록을 지워도)
+        company["9"] = mirrored[0]
+        os.remove(mg.SEEN_PATH)
         mg.poll_once(self.cfg, "pw")
         self.assertEqual(len(self._jobs()), 1)
 
@@ -615,6 +786,110 @@ class Config(unittest.TestCase):
         self.assertTrue(mg.is_issue_prompt("/issue PROJ-1", on))
         self.assertFalse(mg.is_issue_prompt("/issue PROJ-1 그리고 rm -rf", on))
         self.assertFalse(mg.is_issue_prompt("/issuex PROJ-1", on))
+
+
+
+class SendAcks(unittest.TestCase):
+    """폰 지시 접수 신호(폰 페이지의 읽음 '1'). 2026-10-08 Gmail 지시가 회사 스팸에 10분 갇혀 있는 동안
+    폰은 'PC 가 일하는 중' 으로 보였다 — 접수 신호가 있어야 못 받은 것과 일하는 중이 갈린다."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._old = (mg.JOBS, mg.ACKED_PATH, mg.smtp_connect)
+        mg.JOBS, mg.ACKED_PATH = self.tmp, os.path.join(tempfile.mkdtemp(), "acked.json")
+        self.sent = []
+        test = self
+
+        class FakeSmtp:
+            def send_message(self, msg, to_addrs=None):
+                test.sent.append((msg, to_addrs))
+
+            def quit(self):
+                pass
+        mg.smtp_connect = lambda cfg, pw: FakeSmtp()
+        self.cfg = dict(CFG, user="me@company.test", keyed_senders={"me@gmail.test": "word"})
+
+    def tearDown(self):
+        mg.JOBS, mg.ACKED_PATH, mg.smtp_connect = self._old
+
+    def job(self, jid, sender, created="now", **kw):
+        if created == "now":
+            created = mg.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        j = dict({"id": jid, "source": "mail", "mail_from": sender, "mail_msgid": "<%s@gmail>" % jid,
+                  "mail_subject": "#c 시험", "status": "queued", "created_at": created}, **kw)
+        mg.write_json(os.path.join(self.tmp, jid + ".json"), j)
+        return j
+
+    def test_phone_job_gets_one_ack(self):
+        self.job("20261008-090000-aaaa", "me@gmail.test")
+        self.assertEqual(mg.send_acks(self.cfg, "pw"), 1)
+        msg, to = self.sent[0]
+        self.assertEqual(to, ["me@gmail.test"])
+        self.assertEqual(msg["X-Dispatch-Kind"], "ack")
+        self.assertEqual(msg["In-Reply-To"], "<20261008-090000-aaaa@gmail>")
+        self.assertEqual(mg.send_acks(self.cfg, "pw"), 0)           # 두 번 보내지 않는다
+
+    def test_phone_reply_to_redirects(self):
+        # 새 지시는 아이폰 메일 앱(iCloud)으로 보내고 답은 폰 대화방(Gmail)으로 받는다 — 회사 스팸이 Gmail 새 지시만 붙잡아서
+        self.cfg["keyed_senders"] = {"me@icloud.test": "word", "me@gmail.test": "word"}
+        self.cfg["phone_reply_to"] = {"ME@icloud.test": "me@gmail.test"}
+        self.job("20261008-090000-ffff", "me@icloud.test")
+        self.assertEqual(mg.send_acks(self.cfg, "pw"), 1)
+        self.assertEqual(self.sent[0][1], ["me@gmail.test"])
+        self.assertEqual(mg.phone_to(self.cfg, "me@gmail.test"), "me@gmail.test")   # 바꾸지 않은 주소는 그대로
+        self.assertEqual(mg.phone_to(self.cfg, "me@company.test"), "")              # 폰 주소가 아니면 안 보낸다
+
+    def test_job_file_untouched(self):
+        # 워커가 돌면서 같은 잡 파일을 고쳐 쓴다 — 여기서 쓰면 서로 덮어쓴다
+        self.job("20261008-090000-bbbb", "me@gmail.test")
+        path = os.path.join(self.tmp, "20261008-090000-bbbb.json")
+        before = open(path, encoding="utf-8").read()
+        mg.send_acks(self.cfg, "pw")
+        self.assertEqual(open(path, encoding="utf-8").read(), before)
+
+    def test_skips_company_sender_old_and_replied(self):
+        self.job("20261008-090000-cccc", "me@company.test")
+        self.job("20261008-090000-dddd", "me@gmail.test", created="2026-10-01 09:00:00")
+        self.job("20261008-090000-eeee", "me@gmail.test", replied=True)
+        self.assertEqual(mg.send_acks(self.cfg, "pw"), 0)
+        self.assertEqual(self.sent, [])
+
+    def test_smtp_reply_goes_to_phone_and_me(self):
+        # 키트 기본 reply_mode=smtp — 폰 지시의 회신은 폰 주소(phone_reply_to 반영)와 내 주소(대화 앱이 읽는 메일함)로
+        self.cfg["keyed_senders"] = {"me@icloud.test": "word", "me@gmail.test": "word"}
+        self.cfg["phone_reply_to"] = {"me@icloud.test": "me@gmail.test"}
+        self.assertEqual(mg.smtp_rcpts(self.cfg, {"mail_from": "me@icloud.test"}), ["me@gmail.test", "me@company.test"])
+        self.assertEqual(mg.smtp_rcpts(self.cfg, {"mail_from": "me@gmail.test"}), ["me@gmail.test", "me@company.test"])
+        self.assertIsNone(mg.smtp_rcpts(self.cfg, {"mail_from": "me@company.test"}))   # 회사 주소 지시는 메일 To 그대로
+
+
+class GmailSetup(unittest.TestCase):
+    """--setup-gmail 이 쓰는 dispatch.gmail 저장 · 읽기."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._saved = (mg.kit.F_CONFIG, mg.kit.unprotect)
+        mg.kit.F_CONFIG = os.path.join(self.tmp, "config.local.json")
+        mg.kit.unprotect = lambda b64: "app-" + b64
+
+    def tearDown(self):
+        mg.kit.F_CONFIG, mg.kit.unprotect = self._saved
+
+    def test_save_gmail_keeps_other_settings(self):
+        with open(mg.kit.F_CONFIG, "w", encoding="utf-8") as f:
+            json.dump({"mail": {"user": "me@example.com"}, "dispatch": {"enabled": True, "keyed_senders": {"me@gmail.test": "w"}}}, f)
+        mg.save_gmail({"user": "me@gmail.test", "password_enc": "enc"})
+        with open(mg.kit.F_CONFIG, encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved["mail"], {"user": "me@example.com"})          # 기본값을 채워 쓰지 않는다
+        self.assertTrue(saved["dispatch"]["enabled"])
+        self.assertEqual(saved["dispatch"]["gmail"]["user"], "me@gmail.test")
+        acct = mg.gmail_account(mg.load_cfg())
+        self.assertEqual((acct["user"], acct["password"], acct["conn"]["imap_host"]), ("me@gmail.test", "app-enc", "imap.gmail.com"))
+
+    def test_off_when_empty(self):
+        self.assertIsNone(mg.gmail_account({"gmail": {}}))
+        self.assertIsNone(mg.gmail_account({"gmail": {"user": "me@gmail.test"}}))   # 비밀번호 없으면 끈 것
 
 
 if __name__ == "__main__":
