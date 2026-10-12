@@ -142,6 +142,7 @@ FEATURES = (
     ('monitors', '사이트·서버 감시'),
     ('pc_watch', 'PC 디스크 감시'),
     ('backups', '폴더 백업'),
+    ('jira', 'Jira 새 이슈 감시'),     # 예약 작업이 아니라 상시 서비스(svc_jira_watch)가 남긴다
 )
 
 

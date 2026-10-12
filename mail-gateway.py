@@ -84,7 +84,9 @@ SEEN_PATH = os.path.join(INBOX, "mail-seen.json")
 
 # 메일 스레드로 이어받을 수 있는 잡의 출처. 다른 자동화가 메일로 첫 잡을 내보내게 하려면 여기에 출처를 더한다
 # (inbox-worker.ps1 의 같은 목록도 함께).
-MAIL_SOURCES = ("mail",)
+#   mail  폰·대화 앱에서 보낸 지시(이 게이트웨이가 만든다)
+#   jira  Jira 새 이슈 감시(jira-watch.py)가 '처리할까요?' 로 남긴 잡 — 확인 메일·결과 회신·이어받기를 여기서 맡는다
+MAIL_SOURCES = ("mail", "jira")
 
 # config.local.json 의 dispatch 갈래가 이 위에 덮인다. 회사마다 다른 값(서버·주소·폴더)은 여기에 두지 않는다.
 DEFAULT_CFG = {
@@ -508,8 +510,9 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
     return job
 
 
-CONFIRM_YES = {"1", "확인", "실행", "ok", "yes", "y", "네", "예", "go"}
-CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "멈춤", "그만"}
+# '지금 처리' · '내가 직접' 은 Jira 새 이슈 질문의 선택지 글자 그대로다(대화 앱이 번호 대신 글자로 답할 때)
+CONFIRM_YES = {"1", "확인", "실행", "ok", "yes", "y", "네", "예", "go", "지금 처리", "처리"}
+CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "멈춤", "그만", "내가 직접", "직접", "건너뜀"}
 
 
 def parse_confirm_answer(text: str):
@@ -559,9 +562,25 @@ def find_pending_confirm(head, thread=None):
     return None
 
 
+def confirm_ttl(cfg: dict, job: dict) -> int:
+    """확인 대기 제한 시간(분). 잡이 자기 값(confirm_ttl_min)을 들고 오면 그것을 쓴다 —
+    Jira 새 이슈 질문은 기본 하루(jira.ask_ttl_min). 자리에 있어도 회의 중이면 바로 못 본다."""
+    try:
+        own = int(job.get("confirm_ttl_min") or 0)
+    except (TypeError, ValueError):
+        own = 0
+    return own if own > 0 else int(cfg.get("confirm_ttl_min", 60))
+
+
+def ttl_text(minutes: int) -> str:
+    """60 → '1시간' · 1440 → '24시간' · 90 → '90분'."""
+    if minutes >= 60 and minutes % 60 == 0:
+        return "%d시간" % (minutes // 60)
+    return "%d분" % minutes
+
+
 def expire_confirms(cfg: dict) -> None:
-    """확인 답장이 제한 시간 안에 오지 않은 잡을 취소한다."""
-    ttl = int(cfg.get("confirm_ttl_min", 60))
+    """확인 답장이 제한 시간(잡별 — confirm_ttl) 안에 오지 않은 잡을 취소한다."""
     try:
         names = os.listdir(JOBS)
     except Exception:
@@ -578,9 +597,10 @@ def expire_confirms(cfg: dict) -> None:
             born = datetime.strptime(j.get("created_at", ""), "%Y-%m-%d %H:%M:%S")
         except ValueError:
             continue
+        ttl = confirm_ttl(cfg, j)
         if now - born > timedelta(minutes=ttl):
             j["status"] = "canceled"
-            j["error"] = "확인 답장이 %d분 안에 오지 않아 취소했습니다." % ttl
+            j["error"] = "확인 답장이 %s 안에 오지 않아 취소했습니다." % ttl_text(ttl)
             j["finished_at"] = now.strftime("%Y-%m-%d %H:%M:%S")
             write_json(path, j)
             log("확인 시간 초과로 취소 %s" % j.get("id"))
@@ -1401,7 +1421,26 @@ def build_confirm_message(cfg: dict, job: dict):
     if job.get("mail_msgid"):
         msg["In-Reply-To"] = job["mail_msgid"]
         msg["References"] = job["mail_msgid"]
-    ttl = int(cfg.get("confirm_ttl_min", 60))
+    ttl = confirm_ttl(cfg, job)
+    if job.get("source") == "jira":
+        # Jira 새 이슈 감시(jira-watch.py)가 남긴 잡 — 지금 Claude 에게 맡길지, 사람이 직접 할지 묻는다
+        text = "\n".join([
+            "새 Jira 이슈가 들어왔습니다.",
+            "",
+            "%s %s" % (job.get("jira_key") or "", job.get("jira_summary") or ""),
+        ] + ([job["jira_url"]] if job.get("jira_url") else []) + [
+            "",
+            "-- 이 메일에 답장하세요",
+            "  1  (또는 '확인')  →  지금 처리 (작업 폴더 %s)" % job.get("workdir"),
+            "  2  (또는 '취소')  →  내가 직접 (건너뜀)",
+            "%s 안에 답이 없으면 건너뜁니다." % ttl_text(ttl),
+        ])
+        msg.set_content(text)
+        ask = {"question": "새 Jira 이슈 %s — 처리할까요?" % (job.get("jira_key") or ""), "multi": False,
+               "options": ["지금 처리", "내가 직접"]}
+        mark_bot(msg, job, ask, kind="confirm")
+        msg.add_alternative(reply_html(cfg, job, ask, text, "[T%s]" % job.get("thread", "?")), subtype="html")
+        return msg, mid
     prompt = (job.get("prompt") or "")
     shown = prompt if len(prompt) <= 600 else prompt[:600] + "…"
     text = "\n".join([
@@ -1416,7 +1455,7 @@ def build_confirm_message(cfg: dict, job: dict):
         "-- 이 메일에 답장하세요",
         "  1  (또는 '확인')  →  실행",
         "  2  (또는 '취소')  →  취소",
-        "%d분 안에 답이 없으면 자동으로 취소됩니다." % ttl,
+        "%s 안에 답이 없으면 자동으로 취소됩니다." % ttl_text(ttl),
         "내가 보낸 지시가 아니라면 답하지 말고 두세요(자동 취소됩니다).",
     ])
     msg.set_content(text)
@@ -1490,8 +1529,8 @@ def send_replies(cfg: dict, password: str) -> int:
         if not fn.endswith(".json"):
             continue
         job = read_json(os.path.join(JOBS, fn))
-        # 확인 메일을 아직 안 보낸 쓰기 지시
-        if job and job.get("source") == "mail" and job.get("status") == "awaiting_confirm" \
+        # 확인 메일을 아직 안 보낸 쓰기 지시 · Jira 새 이슈 감시가 '처리할까요?' 로 남긴 잡
+        if job and job.get("source") in MAIL_SOURCES and job.get("status") == "awaiting_confirm" \
                 and not job.get("confirm_sent"):
             pending.append((os.path.join(JOBS, fn), job))
             continue
@@ -1526,7 +1565,11 @@ def send_replies(cfg: dict, password: str) -> int:
                     write_json(path, job)
                     n += 1
                     log("확인 메일 전달 %s (%s)" % (job["id"], mode))
-                    notify("메일 인박스 · 확인 필요", "쓰기 지시 실행 확인 메일을 보냈습니다.", "Info")
+                    if job.get("source") == "jira":
+                        notify("Jira 새 이슈 · 확인 필요", "%s %s — 대화 앱에서 처리할지 골라 주세요."
+                               % (job.get("jira_key") or "", (job.get("jira_summary") or "")[:60]), "Info")
+                    else:
+                        notify("메일 인박스 · 확인 필요", "쓰기 지시 실행 확인 메일을 보냈습니다.", "Info")
                 except Exception as e:
                     log("확인 메일 실패 %s — %s" % (job["id"], e))
                     job["status"] = "error"

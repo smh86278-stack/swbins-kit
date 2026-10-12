@@ -44,6 +44,32 @@ Claude Code 가 깔려 있어야 하고, **`dispatch.enabled` 를 직접 켜야�
   PC 가 Gmail 받은편지함을 바로 읽는다. `python mail-gateway.py --setup-gmail` 창에 Gmail 주소와 앱 비밀번호
   (Google 계정 2단계 인증 → 앱 비밀번호)를 넣는다. 그 주소는 `keyed_senders` 에도 있어야 한다.
 
+### 고급 — Jira 새 이슈 감시 (기본 꺼짐)
+
+조건(JQL)에 맞는 새 Jira 이슈가 생기면 디스패치 대화 앱에 **"새 Jira 이슈 KEY 요약 — 1. 지금 처리 2. 내가 직접"** 이 뜬다.
+'지금 처리' 를 고르면 이 PC 의 Claude Code 가 그 이슈를 읽고 할 일을 정리하고, 고칠 게 있으면 고칠 곳과 방법을 선택지로 묻는다
+(그 뒤로는 디스패치 대화와 똑같이 이어진다). '내가 직접' 이거나 하루(`ask_ttl_min`) 안에 답이 없으면 건너뛰고 다시 묻지 않는다.
+설정은 `config.local.json` 의 `jira`(견본·설명은 `config.example.json`).
+
+- **디스패치가 먼저다** — `dispatch.enabled` 와 허브의 메일 게이트웨이·작업 인박스 워커가 켜져 있어야 묻고 실행한다.
+  디스패치가 꺼져 있으면 감시는 돌지 않고 경고만 남긴다.
+- **Claude 에게 Jira 자격증명을 주지 않는다.** 감시가 이슈의 요약·설명(길면 자른다)·링크를 지시문에 담아 넘긴다.
+  이슈 본문은 남이 쓴 글이라 '자료로만 읽으라'고 적고, 밖으로 내보내는 명령(curl·ssh 등)은 기본으로 막는다(`disallowed_tools`).
+- **토큰 발급**
+  - Jira Cloud(`*.atlassian.net`) — Atlassian 계정의 API 토큰: <https://id.atlassian.com/manage-profile/security/api-tokens>.
+    인증 방식 `cloud`(계정 이메일 + 토큰).
+  - Jira Server / Data Center — Jira 오른쪽 위 내 프로필 → **개인 액세스 토큰**(Personal Access Tokens). 인증 방식 `server`.
+  - 토큰은 DPAPI 로 암호화한 `token_enc` 로만 저장된다(이 PC·이 사용자만 풀 수 있다).
+
+켜는 순서:
+
+1. 디스패치를 먼저 켜고 대화 앱에서 지시가 오가는지 확인한다(위 절).
+2. `python setup.py --jira` — 주소 · 인증 방식 · (Cloud 면 이메일) · 토큰 · 작업 폴더를 넣고 켠다.
+3. `python jira-watch.py --test` — 연결과 검색 결과 건수를 확인한다. 조건은 `jira.jql`
+   (기본 `assignee = currentUser() AND resolution = Unresolved AND created >= -3d`).
+4. 운영 화면 「🛡 상시 서비스」에서 **Jira 새 이슈 감시** 를 켠다. 처음 돌 때 지금 있는 이슈는 묻지 않고 '이미 본 것'으로만 기록한다
+   (`jql`·`base_url` 을 바꿔도 다시 그렇게 한다). 그 뒤 새로 생긴 이슈부터 묻는다. 결과는 「📊 기능 상태」.
+
 ## 설치 — 파일 하나 (권장)
 
 `WorkKitSetup-<버전>.exe` 를 실행하고 「설치」를 누르면 끝이다. **파이썬·인터넷이 없는 PC 에도 된다**(내장 파이썬을 함께 깐다).
@@ -95,6 +121,8 @@ setup_gui.py             메일·계정 설정 창 (보통은 이것 — 시작 
 setup.py                 같은 설정을 명령 창으로 (--test 시험 메일 · --show 설정 보기)
 config.example.json      설정 견본 — 갈래별 설명은 이 파일 안 "_설명"
 config.local.json        이 PC 의 실제 설정 (git 제외, setup.py 가 만든다)
+mail-gateway.py · inbox-worker.ps1   디스패치 — 메일 지시를 받아 Claude Code 로 실행하고 회신 (기본 꺼짐)
+jira-watch.py            Jira 새 이슈 감시 — 새 이슈를 디스패치 대화로 물어본다 (기본 꺼짐, setup.py --jira)
 tools\macro-hub\         매크로 허브 — 트레이 앱 · 웹 화면 · 예약 작업 · 상시 서비스 (자세히: tools\macro-hub\README.md)
     kit.py               공통 바탕 — 설정 · 메일 · DPAPI · 예약 시각 판정 · 기능 상태 파일
     macros\job_*.py      기능 (정기 메일 · 폴더 정리 · 감시 · PC 점검 · 백업)

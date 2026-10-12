@@ -183,10 +183,11 @@ function Count-Queued {
 # 잡 파일이 들고 온 도구 목록·세션 ID 를 명령줄에 붙이기 전에 검증한다.
 # 잡 JSON 은 inbox\jobs 에 쓸 수 있는 누구나 만들 수 있고, 값이 그대로 claude 인자가 되므로
 # 따옴표가 든 값은 인자 주입이 되고, 목록에 없는 도구는 권한 확대가 된다.
-# 자기 도구 목록을 실어 올 수 있는 것은 메일 게이트웨이(source=mail)뿐이다.
+# 자기 도구 목록을 실어 올 수 있는 것은 메일 게이트웨이(source=mail)와 Jira 새 이슈 감시(source=jira)뿐이다
+# (mail-gateway.py 의 MAIL_SOURCES 와 같은 목록).
 # 상한은 기본 도구 + 설정의 dispatch.extra_tools(예: 이슈 조회용 MCP 도구 이름)다.
 $script:ToolCeiling = @('Read', 'Glob', 'Grep', 'Edit', 'Write', 'NotebookEdit', 'Bash')
-$script:MailSources = @('mail')
+$script:MailSources = @('mail', 'jira')
 $script:ToolPattern = '^[A-Za-z0-9_]+(\([^"''`\r\n]*\))?$'
 
 # 통과하면 $null, 막으면 사유 문자열

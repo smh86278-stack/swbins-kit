@@ -4,6 +4,7 @@
     python setup.py            묻는 대로 답하면 config.local.json 을 만들고 메일 계정을 채운다
     python setup.py --test     알림 메일 시험만 (설정대로 실제로 한 통 보낸다)
     python setup.py --show     지금 설정 보기 (비밀번호는 가린다)
+    python setup.py --jira     Jira 새 이슈 감시 — 주소·인증 방식·토큰 넣기 (토큰도 DPAPI 로 암호화)
 
 - config.local.json 이 없으면 config.example.json 을 복사해 시작한다. 이 파일은 git 에 넣지 않는다.
 - 비밀번호는 Windows DPAPI 로 이 PC·이 Windows 사용자에 묶어 암호화한 값(password_enc)만 저장한다.
@@ -123,6 +124,9 @@ def masked(cfg):
     m = c.get('mail') or {}
     if m.get('password_enc'):
         m['password_enc'] = '(암호화돼 있음 — %d자)' % len(m['password_enc'])
+    j = c.get('jira') if isinstance(c.get('jira'), dict) else {}
+    if j.get('token_enc'):
+        j['token_enc'] = '(암호화돼 있음 — %d자)' % len(j['token_enc'])
     return c
 
 
@@ -217,6 +221,59 @@ def step_alert(m):
     m['alert_via'] = via
 
 
+def step_jira(cfg, protect=None, secret=None):
+    """Jira 새 이슈 감시 설정 — 주소 · 인증 방식(cloud/server) · 이메일 · 토큰 · 작업 폴더 · 켜기.
+    토큰은 protect(기본 kit.protect)로 암호화한 token_enc 만 남긴다. secret 은 화면에 안 보이는 입력(기본 getpass)."""
+    protect = protect or kit.protect
+    secret = secret or getpass.getpass
+    j = cfg.setdefault('jira', {})
+    print('\n[Jira 새 이슈 감시] 새 이슈를 대화 앱으로 "지금 처리 / 내가 직접" 묻는다 — 디스패치(dispatch)가 켜져 있어야 한다')
+    cur = j.get('base_url') or ''
+    j['base_url'] = ask('Jira 주소 (예: https://your-team.atlassian.net)', '' if looks_sample(cur) else cur,
+                        allow_empty=False).rstrip('/')
+    print('  cloud  = Jira Cloud(atlassian.net) — 이메일 + API 토큰')
+    print('           토큰 만들기: https://id.atlassian.com/manage-profile/security/api-tokens')
+    print('  server = Jira Server / Data Center — 개인 액세스 토큰(PAT)')
+    print('           토큰 만들기: Jira 오른쪽 위 내 프로필 → 개인 액세스 토큰(Personal Access Tokens)')
+    default = j.get('auth') or ('cloud' if 'atlassian.net' in j['base_url'] else 'server')
+    j['auth'] = ask_choice('인증 방식', ('cloud', 'server'), default)
+    if j['auth'] == 'cloud':
+        mail_user = (cfg.get('mail') or {}).get('user') or ''
+        j['email'] = ask('Atlassian 계정 이메일', j.get('email') or ('' if looks_sample(mail_user) else mail_user),
+                         allow_empty=False)
+    have = bool(j.get('token_enc'))
+    if not have or yes('토큰이 이미 저장돼 있습니다. 바꿀까요?', False):
+        while True:
+            tok = secret('API 토큰 / PAT (화면에 보이지 않습니다): ').strip()
+            if tok:
+                j['token_enc'] = protect(tok)
+                print('  이 PC·이 Windows 사용자만 풀 수 있게 암호화해 저장합니다.')
+                break
+            if have:
+                break
+            print('  토큰을 넣어 주세요.')
+    print('  Claude 가 일할 폴더 — 비우면 디스패치의 기본 작업 폴더(dispatch.default_workdir)')
+    j['workdir'] = ask('작업 폴더', j.get('workdir') or '')
+    if j['workdir'] and not os.path.isdir(kit.expand(j['workdir'])):
+        print('  ⚠ 폴더가 없습니다 — 그래도 적어 둡니다: %s' % j['workdir'])
+    j['enabled'] = yes('지금 감시를 켤까요? (처음 켤 때 지금 있는 이슈는 묻지 않고 "이미 본 것"으로만 기록합니다)',
+                       bool(j.get('enabled')))
+    if j['enabled'] and not (cfg.get('dispatch') or {}).get('enabled'):
+        print('  ⚠ 디스패치(dispatch.enabled)가 꺼져 있어 감시는 돌지 않습니다 — 새 이슈를 물을 길이 없습니다.')
+    return j
+
+
+def jira_wizard():
+    ensure_config()
+    cfg = kit.load_config()
+    step_jira(cfg)
+    kit.save_config(cfg)
+    print('\n저장했습니다: %s' % kit.F_CONFIG)
+    print('연결 확인: python jira-watch.py --test')
+    print('허브 운영 화면 「🛡 상시 서비스」에서 "Jira 새 이슈 감시" 를 켜면 돈다(메일 게이트웨이·작업 인박스 워커도 켜져 있어야 한다).')
+    return 0
+
+
 # ---------------------------------------------------------------- 명령
 
 def send_test():
@@ -289,9 +346,16 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description='업무 자동화 키트 — 처음 설정')
     ap.add_argument('--test', action='store_true', help='알림 시험 메일만 보낸다')
     ap.add_argument('--show', action='store_true', help='지금 설정을 보여 준다(비밀번호는 가림)')
+    ap.add_argument('--jira', action='store_true', help='Jira 새 이슈 감시 — 주소·인증·토큰 넣기')
     a = ap.parse_args(argv)
     if a.show:
         return show()
+    if a.jira:
+        try:
+            return jira_wizard()
+        except KeyboardInterrupt:
+            print('\n그만뒀습니다. 저장하지 않은 값은 버려졌습니다.')
+            return 1
     if a.test:
         return send_test()
     try:
