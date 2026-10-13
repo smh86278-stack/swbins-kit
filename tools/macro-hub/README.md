@@ -165,6 +165,7 @@ def run(ctx):
 | `job_monitors` | 사이트·서버 감시 — 주소·포트·인증서 만료 | `monitors` |
 | `job_pc_watch` | PC 디스크 감시 — 드라이브 남은 공간 | `pc_watch` |
 | `job_cred_watch` | 로그인·키 만료 예고 — Claude Code 로그인·메일 로그인·Jira 토큰·적어 둔 키 만료일 | `cred_watch` |
+| `job_rate_meter` | API 호출 한도 미터기 — `ratelimit.py` 를 쓰는 도구들의 사용량·429 (보기만) | `rate_limits` |
 | `job_market_notice` | 마켓 장애 공지 감시 — 공개 공지(RSS·statuspage·HTML) 모으기 + 내 실패 로그 급증과 시간 맞추기 | `market_notice` |
 | `job_category_watch` | 카테고리·정보고시 변경 감시 — 스냅숏 비교 + 내 매핑 CSV 의 깨진 줄, 보고서 CSV | `category_watch` |
 | `job_backup` | 폴더 백업 — 폴더를 날짜별로 복사, 오래된 것 정리 | `backups` |
