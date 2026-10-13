@@ -747,14 +747,15 @@ class Config(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self._saved = (mg.kit.F_CONFIG, mg.STATE_PATH, mg.LOG_PATH, mg.INBOX)
+        self._saved = (mg.kit.F_CONFIG, mg.STATE_PATH, mg.LOG_PATH, mg.INBOX, mg.kit.DATA)
         mg.kit.F_CONFIG = os.path.join(self.tmp, "config.local.json")
+        mg.kit.DATA = os.path.join(self.tmp, "data")                 # save_config 의 변경 이력도 임시 폴더로
         mg.STATE_PATH = os.path.join(self.tmp, "mail-state.json")
         mg.LOG_PATH = os.path.join(self.tmp, "gw.log")
         mg.INBOX = self.tmp
 
     def tearDown(self):
-        mg.kit.F_CONFIG, mg.STATE_PATH, mg.LOG_PATH, mg.INBOX = self._saved
+        mg.kit.F_CONFIG, mg.STATE_PATH, mg.LOG_PATH, mg.INBOX, mg.kit.DATA = self._saved
 
     def _write(self, obj):
         with open(mg.kit.F_CONFIG, "w", encoding="utf-8") as f:
@@ -889,12 +890,13 @@ class GmailSetup(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self._saved = (mg.kit.F_CONFIG, mg.kit.unprotect)
+        self._saved = (mg.kit.F_CONFIG, mg.kit.unprotect, mg.kit.DATA)
         mg.kit.F_CONFIG = os.path.join(self.tmp, "config.local.json")
+        mg.kit.DATA = os.path.join(self.tmp, "data")                 # save_config 의 변경 이력도 임시 폴더로
         mg.kit.unprotect = lambda b64: "app-" + b64
 
     def tearDown(self):
-        mg.kit.F_CONFIG, mg.kit.unprotect = self._saved
+        mg.kit.F_CONFIG, mg.kit.unprotect, mg.kit.DATA = self._saved
 
     def test_save_gmail_keeps_other_settings(self):
         with open(mg.kit.F_CONFIG, "w", encoding="utf-8") as f:

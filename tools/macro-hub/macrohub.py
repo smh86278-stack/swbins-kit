@@ -69,6 +69,7 @@ _spec.loader.exec_module(pl)
 
 sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
+import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
 import winevents  # noqa: E402
 
@@ -348,13 +349,40 @@ def stop_owned(m):
     return extsvc.kill(m['owns'])
 
 
+_via = threading.local()
+
+
+def set_via(where):
+    """이 스레드에서 일어나는 변경의 출처(변경 이력의 '어디서') — HTTP 는 '화면 /ops', 트레이는 '트레이'. 안 정하면 '허브'."""
+    _via.v = where
+
+
+def audit(action, target='', detail=''):
+    m = find_macro(target) if target else None
+    kit.audit(action, target, detail, via=getattr(_via, 'v', None) or '허브', name=(m or {}).get('name') or '')
+    broadcast({'t': 'audit'})
+
+
+def sched_text(triggers):
+    """예약 트리거 → '09:30 daily · 매 1h' (변경 이력용)."""
+    out = []
+    for t in triggers or []:
+        if t.get('type') != 'schedule':
+            continue
+        out.append(('매 %s' % t['every']) if t.get('every') else '%s %s' % (t.get('at', '?'), t.get('days') or 'daily'))
+    return ' · '.join(out) or '없음'
+
+
 def set_enabled(mid, on):
     """상시 매크로·예약 매크로 켜기/끄기. 상시 매크로를 끄면 지키던 바깥 프로그램까지 멈춘다."""
     m = find_macro(mid)
     if not m:
         return False
+    was = bool(state['enabled'].get(mid))
     state['enabled'][mid] = bool(on)
     save_state()
+    if was != bool(on):
+        audit(('켬' if on else '끔') + (' (상시 서비스)' if m['service'] else ' (예약 작업)'), mid)
     if not on and m['service']:
         r = running_run(mid)
         if r:
@@ -380,12 +408,14 @@ def service_action(mid, action):
             if not state['enabled'].get(mid):
                 set_enabled(mid, True)
             killed = stop_owned(m)
+            audit('다시 띄움', mid, ('끈 PID %s' % ', '.join(map(str, killed))) if killed else '')
             return True, '%s — 다시 띄웁니다%s' % (m['name'], ' (끈 PID %s)' % ', '.join(map(str, killed)) if killed else '')
         action = 'run'
     if action == 'run':
         if m['service']:
             return service_action(mid, 'restart')
         run, err = run_macro(mid, None, {'kind': 'manual', 'detail': '지금 실행'})
+        audit('지금 실행', mid, '' if run else '실패: %s' % err)
         return (True, '%s — 실행했습니다' % m['name']) if run else (False, err)
     return False, '알 수 없는 동작: %s' % action
 
@@ -971,6 +1001,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/schedule':
             return self._send(200, schedule_view())
+        if u.path == '/api/audit':                    # 변경 이력 — 새것 먼저
+            try:
+                limit = max(1, min(2000, int(q.get('limit', ['300'])[0])))
+            except ValueError:
+                limit = 300
+            return self._send(200, {'items': kit.audit_tail(limit), 'file': kit.audit_path()})
         if u.path.startswith('/api/ops/'):            # 운영 화면 — 기능 상태·설정·에이전트(읽기 전용)
             import ops
             what = u.path[len('/api/ops/'):]
@@ -1004,9 +1040,11 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._send(400, {'error': 'bad json'})
         path = urlparse(self.path).path
+        set_via('화면 ' + (urlparse(self.headers.get('Referer') or '').path or '?'))   # 변경 이력의 '어디서'
 
         if path == '/api/run':
             run, err = run_macro(body.get('id', ''), body.get('params'), {'kind': 'manual'})
+            audit('지금 실행', body.get('id', ''), '' if run else '실패: %s' % err)
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/stop':
             return self._send(200, {'ok': stop_run(int(body.get('run', 0)))})
@@ -1019,6 +1057,7 @@ class Handler(BaseHTTPRequestHandler):
             if not m or m['service']:
                 return self._send(404, {'error': '예약 매크로가 아닙니다'})
             ov = state.setdefault('schedule', {})
+            before = sched_text(m['triggers'])
             if body.get('reset'):
                 ov.pop(m['id'], None)
             else:
@@ -1027,6 +1066,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {'error': err})
                 ov[m['id']] = items
             save_state()
+            audit('예약 시각 ' + ('기본값으로' if body.get('reset') else '바꿈'), m['id'],
+                  '%s → %s' % (before, sched_text((find_macro(m['id']) or m)['triggers'])))
             broadcast({'t': 'macros'})
             return self._send(200, {'ok': True})
         if path == '/api/service':                    # 운영 화면(/ops): {"id", "action": start|stop|restart|run}
@@ -1036,6 +1077,7 @@ class Handler(BaseHTTPRequestHandler):
             mid, err = new_macro(body.get('name', ''), body.get('kind', 'web'))
             if err:
                 return self._send(400, {'error': err})
+            audit('매크로 만듦', mid)
             broadcast({'t': 'macros'})
             return self._send(200, {'id': mid})
         if path == '/api/record/web':

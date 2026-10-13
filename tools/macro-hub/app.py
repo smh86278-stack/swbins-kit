@@ -354,6 +354,7 @@ def _balloon(icon, title, text):
 
 def hub_action(mid, action):
     def run(icon, item):
+        hub.set_via('트레이')                          # 변경 이력의 '어디서'
         ok, msg = hub.service_action(mid, action)
         _balloon(icon, '매크로 허브', msg)
         refresh(icon)
@@ -535,6 +536,7 @@ def build_menu():
 
 def toggle_service(m):
     def action(icon, item):
+        hub.set_via('트레이')
         hub.set_enabled(m['id'], not hub.state['enabled'].get(m['id']))
         refresh(icon)
     return action

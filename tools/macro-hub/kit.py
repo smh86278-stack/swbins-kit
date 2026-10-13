@@ -23,6 +23,7 @@ import mimetypes
 import os
 import smtplib
 import ssl
+import sys
 import time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
@@ -63,11 +64,37 @@ def load_config():
     return cfg
 
 
-def save_config(cfg):
+def save_config(cfg, via=None):
+    """설정 저장. 바뀐 갈래·키 이름을 변경 이력에 남긴다(값은 남기지 않는다 — 비밀번호·토큰이 섞여 있다).
+    via 를 안 주면 저장한 프로그램 이름(setup_gui.py 등)."""
+    before = _read(F_CONFIG)
     tmp = F_CONFIG + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
     os.replace(tmp, F_CONFIG)
+    changed = config_changes(before, cfg)
+    if changed:
+        audit('설정 바꿈', detail=changed, via=via or os.path.basename(sys.argv[0] or '') or 'kit')
+
+
+def config_changes(before, after):
+    """두 설정의 차이를 이름만으로 — 'mail(password_enc) · monitors'. 같으면 ''.
+    갈래가 dict 면 바뀐 하위 키 이름까지, 목록·값이면 갈래 이름만. '_' 로 시작하는 설명 키는 뺀다."""
+    out = []
+    for k in sorted(set(before) | set(after)):
+        if k.startswith('_'):
+            continue
+        a, b = before.get(k), after.get(k)
+        if a == b:
+            continue
+        if a is None or b is None:
+            out.append('%s(%s)' % (k, '새로' if a is None else '지움'))
+        elif isinstance(a, dict) and isinstance(b, dict):
+            sub = sorted(x for x in set(a) | set(b) if not x.startswith('_') and a.get(x) != b.get(x))
+            out.append('%s(%s)' % (k, ', '.join(sub)) if sub else k)
+        else:
+            out.append(k)
+    return ' · '.join(out)
 
 
 def section(name, default=None, cfg=None):
@@ -341,6 +368,52 @@ def write_status(feature, items, note=''):
     """운영 화면(/ops) '기능 상태' 탭이 읽는 상태 파일. items = [{'name', 'ok': True/False/None, 'text'}]."""
     write_json(os.path.join(data_dir(feature), 'status.json'),
                {'feature': feature, 'updated': int(time.time()), 'note': note, 'items': items})
+
+
+# ---------------------------------------------------------------- 변경 이력(감사 기록)
+# 누가(Windows 사용자)·어디서(화면 주소 · 트레이 · 설정 프로그램)·언제·무엇을. 덧붙이기만 하고, 비밀값은 적지 않는다.
+# 허브(켜고 끄기·다시 띄우기·지금 실행·예약 시각·매크로 만듦)와 save_config(설정 바꿈)가 쓴다. 운영 화면 「📜 변경 이력」.
+
+AUDIT_MAX = 2 * 1024 * 1024
+
+
+def audit_path():
+    return os.path.join(DATA, 'audit.jsonl')
+
+
+def audit(action, target='', detail='', via=None, name=''):
+    rec = {'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+           'user': os.environ.get('USERNAME') or os.environ.get('USER') or '',
+           'via': via or 'kit', 'action': action, 'target': target, 'name': name, 'detail': str(detail or '')[:300]}
+    path = audit_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path) and os.path.getsize(path) > AUDIT_MAX:     # 넘으면 한 번 넘기고 새로 — 둘 다 읽는다
+            os.replace(path, path.replace('.jsonl', '.1.jsonl'))
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    except OSError:
+        pass
+    return rec
+
+
+def audit_tail(limit=300):
+    """최근 이력(새것 먼저)."""
+    out = []
+    for path in (audit_path(), audit_path().replace('.jsonl', '.1.jsonl')):
+        try:
+            with open(path, encoding='utf-8') as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+            if len(out) >= limit:
+                return out
+    return out
 
 
 def read_status(feature):

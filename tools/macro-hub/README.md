@@ -189,6 +189,7 @@ def run(ctx):
 | 📊 기능 상태 | 정기 메일 · 폴더 정리 · 사이트·서버 감시 · PC 디스크 감시 · 폴더 백업 — 각 기능이 마지막에 남긴 결과(대상별 정상/문제). 아직 안 돈 기능은 "설정 안 됨" |
 | ⚙ 설정 | 보기 전용 — 메일 계정 준비 여부 · 설정 파일 위치. 바꾸는 건 `python setup.py` |
 | 🧵 에이전트 | Claude Code 디스패치 보드 보기 전용 |
+| 📜 변경 이력 | 켜고 끄기·다시 띄우기·지금 실행·예약 시각·매크로 만듦·설정 변경(바뀐 갈래·키 이름만, 값 없음)을 누가(Windows 사용자)·어디서(화면 주소·트레이·설정 프로그램)·언제 — `kit.audit()` → `data.local\audit.jsonl`(2MB 넘으면 `.1` 로 한 번), `GET /api/audit`. 보안 심사용 |
 
 API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,settings,agents}` · `POST /api/service`.
 **허브를 `127.0.0.1` 밖으로 열지 말 것** — 프로그램을 띄우는 화면이다.

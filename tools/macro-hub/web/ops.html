@@ -58,6 +58,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
     <button data-tab="feat">📊 기능 상태</button>
     <button data-tab="set">⚙ 설정</button>
     <button data-tab="agents">🧵 에이전트</button>
+    <button data-tab="audit">📜 변경 이력</button>
   </nav>
   <span id="modeSw" style="margin-left:auto"></span>
 </header>
@@ -79,6 +80,9 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
   </section>
   <section id="set"><h2>⚙ 설정</h2><div id="setBox"><div class="empty">준비 중</div></div></section>
   <section id="agents"><h2>🧵 에이전트</h2><div id="agentBox"><div class="empty">준비 중</div></div></section>
+  <section id="audit"><h2>📜 변경 이력</h2>
+    <p class="note">서비스·예약 작업을 켜고 끈 것, 다시 띄우기·지금 실행, 예약 시각, 설정 변경(바뀐 갈래·키 이름만 — 값은 남기지 않음)을 누가(Windows 사용자)·어디서(화면 · 트레이 · 설정 프로그램)·언제 했는지. 덧붙이기만 하는 기록입니다.</p>
+    <div id="auditBox"><div class="empty">준비 중</div></div></section>
 </main>
 <div id="toast"></div>
 <script src="/static/theme.js"></script>
@@ -265,8 +269,24 @@ async function loadAgents(verify){
   group('💬 열린 세션', v.interactive || []);
 }
 
+/* ---------- 변경 이력 ---------- */
+async function loadAudit(){
+  const box = $('#auditBox');
+  let v; try { v = await api('/api/audit?limit=300'); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  if (!v.items.length) { box.replaceChildren(el('div', 'empty', '아직 기록이 없습니다 — 서비스를 켜고 끄거나 설정을 바꾸면 여기 남습니다')); return; }
+  const c = el('div', 'card');
+  for (const it of v.items){
+    const r = el('div', 'row');
+    r.append(el('span', 'sub', it.ts), el('span', 'chip', it.action), el('span', 'name grow', (it.name || it.target || '') + (it.detail ? ' — ' + it.detail : '')),
+      el('span', 'sub', (it.user || '?') + ' · ' + it.via));
+    c.append(r);
+  }
+  c.append(el('div', 'sub', '파일: ' + v.file));
+  box.replaceChildren(c);
+}
+
 /* ---------- 탭 ---------- */
-const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false)};
+const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false), audit: loadAudit};
 function show(tab){
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === tab);
   for (const s of document.querySelectorAll('main section')) s.classList.toggle('on', s.id === tab);
@@ -278,7 +298,8 @@ let start = location.hash.slice(1); if (!LOAD[start] && !document.getElementById
 show(document.getElementById(start) ? start : 'sched');
 const es = new EventSource('/events');
 es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); const on = document.querySelector('main section.on');
-  if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); } };
+  if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); }
+  if (on && m.t === 'audit' && on.id === 'audit') { clearTimeout(es.t); es.t = setTimeout(loadAudit, 300); } };
 setInterval(() => { const on = document.querySelector('main section.on'); if (on && LOAD[on.id]) LOAD[on.id](); }, 30000);
 </script>
 </body>
