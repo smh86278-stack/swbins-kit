@@ -141,6 +141,7 @@ FEATURES = (
     ('tidy', '폴더 정리'),
     ('monitors', '사이트·서버 감시'),
     ('pc_watch', 'PC 디스크 감시'),
+    ('cred_watch', '로그인·키 만료 예고'),
     ('backups', '폴더 백업'),
     ('jira', 'Jira 새 이슈 감시'),     # 예약 작업이 아니라 상시 서비스(svc_jira_watch)가 남긴다
     ('weekly_report', '주간 업무 보고 초안'),

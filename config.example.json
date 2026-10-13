@@ -60,6 +60,18 @@
     "disk_free_min_pct": 10
   },
 
+  "cred_watch": {
+    "_설명": "로그인·키 만료 예고 — 끊기기 전에 알린다. warn_days 일 전부터 '곧 만료', 하루 안·지난 것은 '위험'. claude = Claude Code 로그인(디스패치·주간 보고 초안이 씀, 로그인 파일이 없으면 건너뜀) · mail = 위 메일 계정에 로그인해 보고 거부되면 바로 알림 · jira = jira 갈래의 토큰(Server/Data Center 는 서버가 알려 주는 만료일, Cloud 는 로그인만 확인) · keys = 직접 적어 두는 만료일(쇼핑몰·마켓 API 키, 인증서, 라이선스 등 — 사이트 인증서는 monitors 가 따로 본다). 상태가 나빠지면 바로, 계속 나쁘면 하루 한 번 메일.",
+    "every_min": 60,
+    "warn_days": 7,
+    "claude": true,
+    "mail": true,
+    "jira": true,
+    "keys": [
+      {"name": "예시 — 쇼핑몰 API 키", "expires": "2099-12-31", "fix": "판매자 센터 → API 키 재발급 후 쓰는 곳에 바꿔 넣기"}
+    ]
+  },
+
   "tidy": [
     {
       "name": "다운로드 정리",
