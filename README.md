@@ -7,6 +7,9 @@
 
 Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 
+**도움말·개발자 안내**: [`docs/index.html`](docs/index.html) — 기능별 설정 견본, 알림 웹훅 받는 쪽(JSON·서명 검증), 매크로 만들기(META·ctx), 허브 API.
+코드에서 만든다(`python docs/build_docs.py`, 시험 `tests/test_docs.py` 가 어긋나면 알려 줌).
+
 ## 기능
 
 | 기능 | 하는 일 | 설정 (`config.local.json`) |
