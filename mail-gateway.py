@@ -448,7 +448,7 @@ def build_instruction(subject: str, body: str, cfg: dict):
 
 def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=None, resume_id=None,
             confirm=False, disallowed_tools=None, thread=None, allowed_tools=None, stopped=False,
-            attach_dir="") -> dict:
+            attach_dir="", retry_of="") -> dict:
     os.makedirs(JOBS, exist_ok=True)
     # id 규칙(yyyymmdd-HHMMSS-4hex) — 파일 이름 순서가 곧 접수 순서다(워커가 이름순으로 집는다)
     jid = datetime.now().strftime("%Y%m%d-%H%M%S") + "-%04x" % random.randrange(0x10000)
@@ -474,6 +474,8 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
     if attach_dir:
         # 워커가 claude 에 --add-dir 로 넘겨 이 폴더의 사진을 Read 로 열 수 있게 한다(작업 폴더 밖이라)
         job["attach_dir"] = attach_dir
+    if retry_of:
+        job["retry_of"] = retry_of                 # '다시 실행' 으로 다시 돌린 실패 잡
     # 쓰기 태그로 온 지시에만 도구를 넓혀 준다. 읽기 지시는 이 값을 넣지 않아
     # 워커가 config.local.json 의 읽기 전용 기본값을 그대로 쓴다.
     if mode == "write" and cfg:
@@ -657,6 +659,22 @@ def find_live_job(head, thread_no=None):
     return None
 
 
+def find_failed_job(head, thread_no=None):
+    """이 메일이 가리키는 대화의 가장 최근 잡이 실패(error)했으면 그 잡 — '다시 실행' 으로 같은 지시를 다시 돌린다.
+    가장 최근 잡이 실패가 아니면(이미 다시 돌렸거나 잘 끝남) None — 그때 '다시 실행' 은 평범한 이어 말하기다."""
+    refs = set()
+    for h in ("In-Reply-To", "References"):
+        refs.update(re.findall(r"<[^<>]+>", str(head.get(h) or "")))
+    hits = [j for _path, j in iter_jobs() if j.get("source") in MAIL_SOURCES and (
+        (thread_no is not None and j.get("thread") == thread_no) or
+        ({x for x in (j.get("reply_msgid"), j.get("mail_msgid")) if x} & refs))]
+    retried = {j.get("retry_of") for j in hits}          # 잡 id 는 초 단위라 같은 초의 다시 실행이 실패보다 뒤로 정렬될 수 있다
+    for j in hits:
+        if j["id"] not in retried:
+            return j if j.get("status") == "error" else None
+    return None
+
+
 def find_resume_job(head):
     """find_resume_target 과 같은 규칙으로 찾은 잡 자체(선택지 ask·스레드 번호가 필요해서)."""
     refs = []
@@ -695,6 +713,7 @@ THREAD_SEQ_PATH = os.path.join(INBOX, "thread-seq.json")
 THREAD_RE = re.compile(r"\[T(\d{1,6})\]")
 CHOICES_RE = re.compile(r"```choices[ \t]*\n(.*?)\n?```\s*$", re.S)
 STOP_WORDS = {"멈춤", "그만", "stop"}
+RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
 ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
 EARLY_STOP_PATH = os.path.join(INBOX, "early-stops.json")  # 지시보다 먼저 도착한 '멈춤' 이 가리키는 Message-ID → 받은 시각
@@ -1239,6 +1258,24 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         save_processed(processed)
                         m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
                         log("멈춤 요청 — 멈출 일이 아직 없음(지시보다 먼저 옴). 그 지시가 오면 실행하지 않습니다: %s" % (", ".join(refs) or "대상 없음"))
+                        continue
+
+                # 실패한 대화에 '다시 실행' — 그 지시를 같은 대화 번호·폴더·권한으로 그대로 다시 돌린다.
+                # 시간 초과처럼 세션 없이 실패한 대화는 이어받을 세션이 없어, 그냥 답하면 새 번호의 엉뚱한 지시가 됐다.
+                # 처음 실행 때 쓰기 확인을 이미 거쳤으므로 다시 묻지 않는다.
+                if reply_text(plain_body(msg)).strip().lower() in RETRY_WORDS:
+                    failed = find_failed_job(head, thread_no)
+                    if failed:
+                        processed.add(key)
+                        save_processed(processed)
+                        m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                        job = new_job(failed.get("prompt") or "", failed.get("workdir") or "", failed.get("workdir_label") or "",
+                                      msgid, failed.get("mail_subject") or clean_subject, sender, failed.get("mode") or "read",
+                                      resume_id=failed.get("resume_id"), disallowed_tools=failed.get("disallowed_tools"),
+                                      thread=failed.get("thread") or thread_no, allowed_tools=failed.get("allowed_tools"),
+                                      attach_dir=failed.get("attach_dir") or "", retry_of=failed["id"])
+                        n += 1
+                        log("다시 실행 %s ← 실패한 %s" % (job["id"], failed["id"]))
                         continue
 
                 prompt, workdir, label, mode = build_instruction(clean_subject, plain_body(msg), cfg)

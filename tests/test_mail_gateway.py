@@ -442,6 +442,27 @@ class PollOnceConfirmFlow(unittest.TestCase):
         self.assertFalse(any(fn.endswith(".stop") for fn in os.listdir(self.jobs)))
         self.assertIn("s1", [j.get("resume_id") for j in jobs])
 
+    def test_retry_failed_job_reruns_same_instruction(self):
+        # 세션 없이 실패한(시간 초과 등) 대화에 '다시 실행' 을 보내면 같은 지시·번호·폴더·도구로 다시 돈다
+        self.cfg["confirm_write"] = False
+        self._mail("1", "cw 파일 고쳐줘", "자세히", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        job.update(status="error", error="제한 시간을 넘겨 중단했습니다.", thread=7, reply_msgid="<r1@x>", replied=True)
+        mg.write_json(os.path.join(self.jobs, job["id"] + ".json"), job)
+        self.cfg["confirm_write"] = True                          # 처음에 확인을 거친 지시라 다시 묻지 않는다
+        self._mail("2", "Re: cw [T7] 파일 고쳐줘", "다시 실행", "<m2@x>", in_reply_to="<r1@x>")
+        mg.poll_once(self.cfg, "pw")
+        new = [j for j in self._jobs() if j["id"] != job["id"]]
+        self.assertEqual(len(new), 1)
+        r = new[0]
+        self.assertEqual((r["status"], r["prompt"], r["thread"], r["mode"], r["retry_of"], r["mail_msgid"]),
+                         ("queued", job["prompt"], 7, "write", job["id"], "<m2@x>"))
+        self.assertEqual(r["allowed_tools"], ["Read", "Bash"])
+        self.assertNotIn("resume_id", r)
+        # 다시 실행이 같은 초에 생겨 실패보다 뒤로 정렬돼도, 이미 다시 돌린 실패를 또 집지 않는다
+        self.assertIsNone(mg.find_failed_job({"In-Reply-To": "<r1@x>"}, 7))
+
 
     def test_photos_are_saved_and_listed_in_prompt(self):
         # 폰 대화방 📎 — 사진은 잡마다 폴더에 저장하고 지시문 끝에 경로를 적는다. 사진이 아닌 첨부는 버린다.
