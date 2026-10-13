@@ -155,6 +155,8 @@
     "keyed_senders": {},
     "_company_workdirs_설명": "회사 모드 — 이 폴더(와 그 아래)에서 돈 일의 결과·질문은 회사 메일함에만 둔다. 폰(keyed_senders·Gmail 개인 주소)으로는 내용 없는 알림(끝남 · 질문 N개 — 회사 메일함에서 보기)만 가고, 거기에 번호로 답장하면 그대로 이어진다. null 이면 default_workdir 하나(기본으로 켜짐), [] 면 끈다. %USERPROFILE% 같은 환경 변수를 써도 된다.",
     "company_workdirs": null,
+    "_folder_policy_설명": "폴더별 정책 — 키는 workdir_keys 이름(또는 \"default\"), 실제 경로로 맞춘다. from = 지시를 받아 줄 출처(\"company\" = allowed_senders 회사 주소, \"phone\" = 암호 단어 개인 주소·Gmail, 없으면 둘 다) · write_from = 수정 지시(#cw)를 받아 줄 출처(없으면 from 과 같음, [] 면 수정 지시 안 받음). 걸리면 실행하지 않고 이유를 회신한다. 예: {\"default\": {\"write_from\": [\"company\"]}}",
+    "folder_policy": {},
     "_phone_reply_to_설명": "암호 단어 주소의 회신·접수 신호를 다른 주소로 받을 때 — 예: {\"me@icloud.example\": \"me@gmail.example\"} (새 지시는 폰 메일 앱으로, 답은 폰 페이지(Gmail)로).",
     "phone_reply_to": {},
     "_junk_folders_설명": "스팸함도 볼 때 그 폴더 이름(서버마다 다르다 — 예: [\"Spam\"]). 회사 메일이 폰에서 온 지시를 스팸으로 돌릴 때 쓴다. 여기서는 암호 단어가 맞는 메일만 받는다(회사 주소라도 믿지 않는다).",

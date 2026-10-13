@@ -949,3 +949,15 @@ class CompanyMode(unittest.TestCase):
         for secret in ("order.py", "주문 수집만", "클레임도"):
             self.assertNotIn(secret, raw)
         self.assertEqual(json.loads(base64.b64decode(note["X-Dispatch-Ask"]).decode("utf-8"))["options"], ["1", "2"])
+
+    def test_folder_policy(self):
+        cfg = dict(self.cfg, allowed_senders=["me@company.test"], workdir_keys={"docs": r"C:\work\docs"},
+                   folder_policy={"default": {"write_from": ["company"]}, "docs": {"from": ["company"]}})
+        phone, company = mg.sender_kind(cfg, "me@gmail.test"), mg.sender_kind(cfg, "ME@company.test")
+        self.assertEqual((phone, company), ("phone", "company"))
+        self.assertEqual(mg.policy_block(cfg, r"C:\work", "read", phone), "")
+        self.assertIn("수정 지시", mg.policy_block(cfg, "C:\work\\", "write", phone))
+        self.assertEqual(mg.policy_block(cfg, r"C:\work", "write", company), "")
+        self.assertIn("받지 않습니다", mg.policy_block(cfg, r"C:\work\docs", "read", phone))
+        job = dict(self.job, status="error", error="막힘", policy_denied=True, result=None)
+        self.assertEqual(mg.build_reply_message(self.cfg, job)[0]["To"], "me@gmail.test")   # 거절 이유는 폰에도 그대로

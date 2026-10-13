@@ -137,6 +137,11 @@ DEFAULT_CFG = {
     # 내용 없는 알림('끝남 · 질문 있음 — 회사 메일함에서 보기')만 가고, 거기에 번호로 답장하면 그대로 이어진다(회사 정보 유출 방지).
     # None 이면 default_workdir 하나 — 회사에 깔면 기본으로 켜진다. [] 면 끈다.
     "company_workdirs": None,
+    # 폴더별 정책 — 키는 workdir_keys 이름(또는 "default"), 실제 경로로 맞춘다(@키와 기본 폴더가 같으면 같은 규칙).
+    #   from       = 지시를 받아 줄 출처: "company"(allowed_senders 회사 주소) · "phone"(암호 단어 개인 주소·Gmail). 없으면 둘 다
+    #   write_from = 수정 지시(#cw)를 받아 줄 출처. 없으면 from 과 같다. [] 면 그 폴더는 수정 지시를 받지 않는다
+    # 걸리면 실행하지 않고 이유를 회신한다(이어서 하는 답·다시 실행에도 같다). 예: {"default": {"write_from": ["company"]}}
+    "folder_policy": {},
     "default_workdir": r"%USERPROFILE%\Documents",
     # 제목의 '@키' 로 고르는 작업 폴더. 예(JSON): {"docs": "D:\\work\\docs"} → '#c @docs 요약해줘'
     "workdir_keys": {},
@@ -452,7 +457,7 @@ def build_instruction(subject: str, body: str, cfg: dict):
 
 def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=None, resume_id=None,
             confirm=False, disallowed_tools=None, thread=None, allowed_tools=None, stopped=False,
-            attach_dir="", retry_of="") -> dict:
+            attach_dir="", retry_of="", blocked="") -> dict:
     os.makedirs(JOBS, exist_ok=True)
     # id 규칙(yyyymmdd-HHMMSS-4hex) — 파일 이름 순서가 곧 접수 순서다(워커가 이름순으로 집는다)
     jid = datetime.now().strftime("%Y%m%d-%H%M%S") + "-%04x" % random.randrange(0x10000)
@@ -503,7 +508,13 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
     if disallowed_tools:
         # 이어받는 잡은 원래 잡의 거부 목록을 그대로 물려받는다(안 그러면 이어받는 순간 제한이 사라진다)
         job["disallowed_tools"] = list(disallowed_tools)
-    if stopped:
+    if blocked:
+        # 폴더별 정책에 걸린 지시 — 실행하지 않고 이유만 회신한다(회사 내용이 없어 폰에도 그대로 보낸다)
+        job["status"] = "error"
+        job["error"] = blocked
+        job["policy_denied"] = True
+        job["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    elif stopped:
         # 먼저 온 '멈춤' 이 가리킨 지시 — 처음부터 끝난 잡으로 써서 워커가 집지 않고, 게이트웨이가 '멈췄습니다' 를 회신한다
         job["status"] = "done"
         job["result"] = STOPPED_BEFORE_START
@@ -913,6 +924,33 @@ def is_company_job(cfg: dict, job: dict) -> bool:
     return any(w == d or w.startswith(d + os.sep) for d in company_dirs(cfg))
 
 
+SENDER_KIND_NAME = {"company": "회사 메일", "phone": "폰(개인 메일)"}
+
+
+def sender_kind(cfg: dict, sender, in_junk=False, acct=None) -> str:
+    """'company'(allowed_senders 회사 주소, 받은편지함) 또는 'phone'(암호 단어로 받은 개인 주소·Gmail·스팸함)."""
+    allowed = {a.lower() for a in cfg.get("allowed_senders") or []}
+    return "company" if (sender or "").lower() in allowed and not in_junk and not acct else "phone"
+
+
+def policy_block(cfg: dict, workdir, mode: str, kind: str) -> str:
+    """폴더별 정책(folder_policy)에 걸리면 사람이 읽을 이유, 아니면 ''."""
+    w = os.path.normcase(os.path.abspath(workdir or "")).rstrip("\\/")
+    for key, pol in (cfg.get("folder_policy") or {}).items():
+        path = cfg.get("default_workdir") if key == "default" else (cfg.get("workdir_keys") or {}).get(key)
+        if not path or not isinstance(pol, dict) or os.path.normcase(os.path.abspath(path)).rstrip("\\/") != w:
+            continue
+        frm = pol.get("from")
+        if frm is not None and kind not in frm:
+            return "이 폴더(@%s)는 %s 에서 온 지시를 받지 않습니다(폴더별 정책)." % (key, SENDER_KIND_NAME[kind])
+        wf = pol.get("write_from", frm)
+        if mode == "write" and wf is not None and kind not in wf:
+            other = [SENDER_KIND_NAME[k] for k in wf if k in SENDER_KIND_NAME]
+            return "이 폴더(@%s)는 %s 에서 온 수정 지시(#cw)를 받지 않습니다(폴더별 정책) — 읽기 지시(#c)로 보내거나%s." % (
+                key, SENDER_KIND_NAME[kind], " %s 에서 보내세요" % "·".join(other) if other else " PC 에서 직접 하세요")
+    return ""
+
+
 def build_phone_notice(cfg: dict, job: dict, ask=None):
     """회사 모드 폴더의 회신을 폰으로 보낼 때 쓰는 내용 없는 알림 — 끝남·실패·질문 수만.
     선택지 글자는 빼고 번호만 단추로 남겨 폰에서 번호로 답장하면 그대로 이어진다(mailto 에 암호 단어가 붙는다)."""
@@ -1319,13 +1357,15 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         processed.add(key)
                         save_processed(processed)
                         m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                        blocked = policy_block(cfg, failed.get("workdir"), failed.get("mode") or "read",
+                                               sender_kind(cfg, sender, in_junk, acct))
                         job = new_job(failed.get("prompt") or "", failed.get("workdir") or "", failed.get("workdir_label") or "",
                                       msgid, failed.get("mail_subject") or clean_subject, sender, failed.get("mode") or "read",
                                       resume_id=failed.get("resume_id"), disallowed_tools=failed.get("disallowed_tools"),
                                       thread=failed.get("thread") or thread_no, allowed_tools=failed.get("allowed_tools"),
-                                      attach_dir=failed.get("attach_dir") or "", retry_of=failed["id"])
+                                      attach_dir=failed.get("attach_dir") or "", retry_of=failed["id"], blocked=blocked)
                         n += 1
-                        log("다시 실행 %s ← 실패한 %s" % (job["id"], failed["id"]))
+                        log("다시 실행 %s ← 실패한 %s%s" % (job["id"], failed["id"], " — 정책으로 막음: " + blocked if blocked else ""))
                         continue
 
                 prompt, workdir, label, mode = build_instruction(clean_subject, plain_body(msg), cfg)
@@ -1372,12 +1412,15 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 save_processed(processed)
                 stops = early_stops()
                 stopped = bool(msgid and msgid in stops)          # 이 지시를 가리키는 멈춤이 먼저 와 있었다
-                needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True)) and not stopped
+                blocked = policy_block(cfg, workdir, mode, sender_kind(cfg, sender, in_junk, acct))
+                needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True)) and not stopped and not blocked
                 job = new_job(prompt, workdir, label, msgid, clean_subject, sender, mode, cfg,
                               resume_id=resume_id, confirm=needs_confirm, disallowed_tools=denied,
                               thread=thread_no if resume_id else None,
                               allowed_tools=(prev or {}).get("allowed_tools") if resume_id else None,
-                              stopped=stopped, attach_dir=attach_dir)
+                              stopped=stopped, attach_dir=attach_dir, blocked=blocked)
+                if blocked:
+                    log("폴더별 정책으로 막음 %s — %s" % (job["id"], blocked))
                 if stopped:
                     stops.pop(msgid, None)
                     write_json(EARLY_STOP_PATH, stops)
@@ -1475,7 +1518,7 @@ def build_reply_message(cfg: dict, job: dict):
     msg["Subject"] = reply_subject(job)
     msg["From"] = cfg["user"]
     # 회사 모드 폴더의 일을 폰(개인 주소)이 시켰으면 본 회신은 회사 주소로만 — 폰엔 build_phone_notice 가 간다
-    personal = phone_to(cfg, job.get("mail_from")) and is_company_job(cfg, job)
+    personal = phone_to(cfg, job.get("mail_from")) and is_company_job(cfg, job) and not job.get("policy_denied")
     msg["To"] = cfg["user"] if personal else (job.get("mail_from") or cfg["user"])
     msg["Date"] = email.utils.formatdate(localtime=True)
     domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
@@ -1673,7 +1716,7 @@ def send_replies(cfg: dict, password: str) -> int:
                 job["ask"] = parse_choices(job.get("result") or "")[1] if job.get("status") == "done" else None
                 msg, rmid = build_reply_message(cfg, job)
                 # 회사 모드 폴더의 일이면 폰엔 내용 없는 알림만(결과·선택지 글자는 회사 메일함에만)
-                company = is_company_job(cfg, job)
+                company = is_company_job(cfg, job) and not job.get("policy_denied")   # 정책 거절 이유는 폰에도 그대로
                 phone_msg = build_phone_notice(cfg, job, job.get("ask")) if company else msg
                 if mode == "append":
                     # INBOX 에 직접 넣는다. 발송하면 메일 규칙에 걸려 다른 폴더로 옮겨지므로
