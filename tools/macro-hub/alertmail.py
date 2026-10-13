@@ -9,7 +9,8 @@
   마지막으로 보낸 시각은 data.local\alertmail.json 에 남겨 허브를 다시 켜도 이어진다.
 - 보내는 길은 kit.alert() 하나 — config.local.json 의 mail.alert_via 가 'smtp' 면 alert_to(없으면 내 주소)로 발송,
   'append' 면 내 INBOX 에 직접 넣는다(자기에게 보낸 메일을 딴 폴더로 치우는 서버용). 계정은 `python setup.py` 로 채운다.
-- 메일 설정이 아직 없으면(kit.mail_ready() 가 False) 조용히 건너뛴다 — 로그에 한 번만 남기고 예외를 내지 않는다.
+- config "notify" 의 출구(슬랙·Teams·디스코드·구글 챗·웹훅)가 있으면 그쪽으로도 같이 간다(kit.alert).
+- 메일도 출구도 아직 없으면(kit.alert_ready() 가 False) 조용히 건너뛴다 — 로그에 한 번만 남기고 예외를 내지 않는다.
 - 설정: state.local.json 의 "alert": {"on": true, "cooldown_min": 60}. 없으면 켜짐·60분.
   허브 트레이 ⚙ 설정 → '실패 알림 메일' 로 켜고 끈다.
 - 표준 라이브러리만 쓴다(허브와 같은 규칙).
@@ -89,9 +90,9 @@ _unready_logged = False
 
 
 def _mail_ready():
-    """(준비됨?, 설명). 설정을 읽다 실패해도 준비 안 됨으로 본다."""
+    """(보낼 곳이 있나, 설명) — 메일 또는 notify 출구(슬랙·Teams 등). 설정을 읽다 실패해도 준비 안 됨으로 본다."""
     try:
-        return kit.mail_ready()
+        return kit.alert_ready()
     except Exception as e:
         return False, str(e)
 

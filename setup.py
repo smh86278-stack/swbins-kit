@@ -5,6 +5,7 @@
     python setup.py --test     알림 메일 시험만 (설정대로 실제로 한 통 보낸다)
     python setup.py --show     지금 설정 보기 (비밀번호는 가린다)
     python setup.py --jira     Jira 새 이슈 감시 — 주소·인증 방식·토큰 넣기 (토큰도 DPAPI 로 암호화)
+    python setup.py --webhook  알림 출구 추가 — 슬랙·Teams·디스코드·구글 챗·웹훅 (주소도 DPAPI 로 암호화)
 
 - config.local.json 이 없으면 config.example.json 을 복사해 시작한다. 이 파일은 git 에 넣지 않는다.
 - 비밀번호는 Windows DPAPI 로 이 PC·이 Windows 사용자에 묶어 암호화한 값(password_enc)만 저장한다.
@@ -127,6 +128,13 @@ def masked(cfg):
     j = c.get('jira') if isinstance(c.get('jira'), dict) else {}
     if j.get('token_enc'):
         j['token_enc'] = '(암호화돼 있음 — %d자)' % len(j['token_enc'])
+    n = c.get('notify') if isinstance(c.get('notify'), dict) else {}
+    for ch in n.get('channels') or []:
+        for k in ('url_enc', 'secret_enc'):
+            if isinstance(ch, dict) and ch.get(k):
+                ch[k] = '(암호화돼 있음 — %d자)' % len(ch[k])
+        if isinstance(ch, dict) and ch.get('url'):
+            ch['url'] = '(평문 주소 — python setup.py --webhook 으로 다시 넣어 암호화하세요)'
     return c
 
 
@@ -263,6 +271,61 @@ def step_jira(cfg, protect=None, secret=None):
     return j
 
 
+WEBHOOK_HELP = {
+    'slack': '슬랙 — 앱 「Incoming Webhooks」 로 채널 웹훅을 만들면 https://hooks.slack.com/services/… 주소가 나옵니다',
+    'teams': 'Teams — 채널 ⋯ → 워크플로 → "웹후크 요청이 수신되면 채널에 게시" 로 만든 주소(옛 Office 365 커넥터 대신)',
+    'discord': '디스코드 — 채널 설정 → 연동 → 웹후크 → 새 웹후크 → 주소 복사',
+    'google_chat': '구글 챗 — 스페이스 이름 → 앱 및 통합 → 웹훅 추가',
+    'webhook': '일반 웹훅 — JSON {subject, body, ts, source} 를 POST. 비밀 문자열을 주면 X-Kit-Signature: sha256=HMAC 을 붙입니다',
+}
+
+
+def step_webhook(cfg, protect=None, secret=None):
+    """알림 출구 하나 추가 — 종류 · 이름 · 주소(화면에 안 보이게, url_enc 로 암호화) · (일반 웹훅이면) 서명 비밀."""
+    protect = protect or kit.protect
+    secret = secret or getpass.getpass
+    n = cfg.setdefault('notify', {})
+    chans = n.setdefault('channels', [])
+    print('\n[알림 출구] 실패 알림·감시 알림을 메일과 함께 이 방에도 보냅니다')
+    for k in kit.CHANNEL_TYPES:
+        print('  %-11s %s' % (k, WEBHOOK_HELP[k]))
+    kind = ask_choice('종류', kit.CHANNEL_TYPES, 'slack')
+    name = ask('이름 (보낸 기록에 보입니다)', {'slack': '팀 슬랙', 'teams': '팀 Teams', 'discord': '디스코드',
+                                          'google_chat': '구글 챗', 'webhook': '웹훅'}[kind], allow_empty=False)
+    while True:
+        url = secret('웹훅 주소 (화면에 보이지 않습니다 — 주소를 아는 사람은 누구나 그 방에 글을 쓸 수 있어 비밀번호처럼 다룹니다): ').strip()
+        if url.startswith('https://'):
+            break
+        print('  https:// 로 시작하는 주소를 넣어 주세요.')
+    ch = {'name': name, 'type': kind, 'url_enc': protect(url), 'on': True}
+    if kind == 'webhook':
+        sig = secret('서명 비밀 문자열 (받는 쪽 검증용, 없으면 Enter): ').strip()
+        if sig:
+            ch['secret_enc'] = protect(sig)
+    chans[:] = [c for c in chans if not (isinstance(c, dict) and c.get('name') == name)] + [ch]
+    if 'mail' not in n:
+        n['mail'] = True
+    print('  이 PC·이 Windows 사용자만 풀 수 있게 암호화해 저장합니다.')
+    return ch
+
+
+def webhook_wizard():
+    ensure_config()
+    cfg = kit.load_config()
+    ch = step_webhook(cfg)
+    kit.save_config(cfg)
+    print('\n저장했습니다: %s' % kit.F_CONFIG)
+    if yes('지금 시험 알림을 이 출구로 한 번 보낼까요?'):
+        try:
+            code = kit.post_channel(ch, '알림 시험 — 업무 자동화 키트', '이 글이 보이면 매크로 허브의 실패 알림·감시 알림이 이 방에도 옵니다.')
+            print('보냈습니다 (HTTP %s). 방을 확인하세요.' % code)
+        except Exception as e:
+            print('실패: %s — 주소가 맞는지, 그 웹훅이 켜져 있는지 확인하세요.' % e)
+            return 1
+    print('끄려면 config.local.json 의 notify.channels 에서 그 출구의 "on" 을 false 로. 메일은 빼고 출구로만 받으려면 notify.mail 을 false 로.')
+    return 0
+
+
 def jira_wizard():
     ensure_config()
     cfg = kit.load_config()
@@ -347,9 +410,16 @@ def main(argv=None):
     ap.add_argument('--test', action='store_true', help='알림 시험 메일만 보낸다')
     ap.add_argument('--show', action='store_true', help='지금 설정을 보여 준다(비밀번호는 가림)')
     ap.add_argument('--jira', action='store_true', help='Jira 새 이슈 감시 — 주소·인증·토큰 넣기')
+    ap.add_argument('--webhook', action='store_true', help='알림 출구 추가 — 슬랙·Teams·디스코드·구글 챗·웹훅')
     a = ap.parse_args(argv)
     if a.show:
         return show()
+    if a.webhook:
+        try:
+            return webhook_wizard()
+        except KeyboardInterrupt:
+            print('\n그만뒀습니다. 저장하지 않은 값은 버려졌습니다.')
+            return 1
     if a.jira:
         try:
             return jira_wizard()

@@ -72,6 +72,12 @@
     ]
   },
 
+  "notify": {
+    "_설명": "알림 출구 — 실패 알림·감시·로그인·키·마켓 공지 알림(kit.alert)을 메일과 함께 슬랙·Teams·디스코드·구글 챗·웹훅으로도 보낸다. 출구는 python setup.py --webhook 으로 추가한다(주소는 이 PC·이 사용자만 풀 수 있게 암호화한 url_enc 로만 저장). mail=false 면 메일은 빼고 출구로만. 출구마다 on=false 로 잠시 끌 수 있다. 보낸 기록은 tools/macro-hub/data.local/notify/sent.jsonl, 운영 화면 「📊 기능 상태」 → 알림 출구.",
+    "mail": true,
+    "channels": []
+  },
+
   "market_notice": {
     "_설명": "'우리 문제냐 마켓 문제냐' — 마켓·결제·택배의 공개 장애·점검 공지(로그인 없이 보이는 것만)를 every_min 분마다(15분 이상) 모아, 제목에 keywords 가 든 공지가 새로 뜨면 알린다. 처음 읽을 때 이미 있던 공지는 알리지 않는다. failures 의 로그에서 match 줄을 실패로 세어, 지난 1시간이 spike_min 건 이상이고 평소(그 전 24시간 시간당 평균)의 spike_ratio 배 이상이면 같은 시간대(앞뒤 window_min 분) 공지를 붙여 알린다.",
     "_sources_설명": "type: rss(RSS·Atom 주소) · statuspage(statuspage.io 상태 페이지 주소 — 뒤에 /api/v2/incidents.json 을 붙여 읽음) · html(정적 목록 페이지 — item 정규식에 (?P<title>…) 필수, (?P<link>…)·(?P<date>…) 선택). 출처마다 keywords 를 따로 줄 수 있다.",

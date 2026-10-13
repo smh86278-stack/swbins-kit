@@ -115,7 +115,7 @@ class MailReady(unittest.TestCase):
 
     def test_alert_refuses_when_not_ready(self):
         with self.assertRaises(RuntimeError):
-            kit.alert('제목', '본문', m=dict(self.FULL, user=''))
+            kit.alert('제목', '본문', m=dict(self.FULL, user=''), channels=[])
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'DPAPI 는 Windows 전용')

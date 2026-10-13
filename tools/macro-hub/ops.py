@@ -143,6 +143,7 @@ FEATURES = (
     ('pc_watch', 'PC 디스크 감시'),
     ('cred_watch', '로그인·키 만료 예고'),
     ('market_notice', '마켓 장애 공지 감시'),
+    ('notify', '알림 출구 · 보낸 기록'),
     ('backups', '폴더 백업'),
     ('jira', 'Jira 새 이슈 감시'),     # 예약 작업이 아니라 상시 서비스(svc_jira_watch)가 남긴다
     ('weekly_report', '주간 업무 보고 초안'),

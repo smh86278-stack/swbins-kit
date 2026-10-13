@@ -267,19 +267,153 @@ def append_inbox(subject, body, folder='INBOX', m=None):
             pass
 
 
-def alert(subject, body, m=None):
-    """알림 메일 — mail.alert_via 가 'append' 면 내 INBOX 에 넣고, 아니면 alert_to(없으면 내 주소)로 보낸다."""
+def alert(subject, body, m=None, channels=None, post=None):
+    """알림 — 메일(mail.alert_via 가 'append' 면 내 INBOX, 아니면 alert_to/내 주소로 발송)과 config "notify" 의 출구
+    (슬랙·Teams·디스코드·구글 챗·웹훅)로 같이 보낸다. 하나라도 가면 성공, 다 실패하면 마지막 예외.
+    메일도 출구도 준비 안 됐으면 RuntimeError. 보낸 기록은 data.local/notify/sent.jsonl.
+    channels·post 는 시험용(안 주면 설정의 출구 · urllib)."""
     m = m or mail_config()
+    conf = section('notify', {}) or {}
+    conf = conf if isinstance(conf, dict) else {}
+    chans = [c for c in (channels if channels is not None else conf.get('channels') or [])
+             if isinstance(c, dict) and c.get('on', True) is not False and (c.get('url_enc') or c.get('url'))]
     ok, why = mail_ready(m)
-    if not ok:
-        raise RuntimeError(why)
+    use_mail = ok and conf.get('mail', True) is not False
+    if not use_mail and not chans:
+        raise RuntimeError(why or '알림 출구가 없습니다 — 메일 설정 또는 notify.channels')
     name = company_name()
     if name and not subject.startswith('['):
         subject = '[%s] %s' % (name, subject)
-    if m.get('alert_via') == 'append':
-        append_inbox(subject, body, m=m)
-    else:
-        send_mail(m.get('alert_to') or m['user'], subject, body, m=m)
+    sent, last_err = 0, None
+    if use_mail:
+        try:
+            if m.get('alert_via') == 'append':
+                append_inbox(subject, body, m=m)
+            else:
+                send_mail(m.get('alert_to') or m['user'], subject, body, m=m)
+            sent += 1
+            _notify_log('메일', 'mail', subject, True)
+        except Exception as e:
+            last_err = e
+            _notify_log('메일', 'mail', subject, False, e)
+    for c in chans:
+        cname = str(c.get('name') or c.get('type') or 'webhook')
+        try:
+            code = post_channel(c, subject, body, post=post)
+            sent += 1
+            _notify_log(cname, c.get('type'), subject, True, code=code)
+        except Exception as e:
+            last_err = e
+            _notify_log(cname, c.get('type'), subject, False, e)
+    if not sent and last_err is not None:
+        raise last_err
+    return sent
+
+
+def alert_ready(m=None):
+    """(알림을 보낼 곳이 있나, 설명) — 메일이 준비됐거나 켜진 출구가 하나라도 있으면 True."""
+    ok, why = mail_ready(m)
+    conf = section('notify', {}) or {}
+    conf = conf if isinstance(conf, dict) else {}
+    chans = [c for c in conf.get('channels') or [] if isinstance(c, dict) and c.get('on', True) is not False
+             and (c.get('url_enc') or c.get('url'))]
+    return (ok and conf.get('mail', True) is not False) or bool(chans), why
+
+
+# ---------------------------------------------------------------- 알림 출구(웹훅) · 보낸 기록
+# 웹훅 주소는 그 자체가 비밀번호다(아는 사람 누구나 그 방에 글을 쓴다) — url_enc(kit.protect) 로 저장하고
+# 기록·화면·오류 문구에 주소를 남기지 않는다. 등록은 python setup.py --webhook.
+
+CHANNEL_TYPES = ('slack', 'teams', 'discord', 'google_chat', 'webhook')
+CHANNEL_TEXT_MAX = 3500
+
+
+def channel_payload(kind, subject, body, now=None):
+    """출구 종류별 JSON 본문."""
+    text = body if len(body) <= CHANNEL_TEXT_MAX else body[:CHANNEL_TEXT_MAX] + '\n… (잘림)'
+    if kind == 'slack':
+        return {'text': '*%s*\n%s' % (subject, text)}
+    if kind == 'google_chat':
+        return {'text': '*%s*\n%s' % (subject, text)}
+    if kind == 'discord':
+        return {'content': ('**%s**\n%s' % (subject, text))[:2000]}
+    if kind == 'teams':                                   # Teams 'Workflows' 웹훅(옛 Office 365 커넥터를 대신한다) — 적응형 카드
+        return {'type': 'message', 'attachments': [{
+            'contentType': 'application/vnd.microsoft.card.adaptive', 'contentUrl': None,
+            'content': {'$schema': 'http://adaptivecards.io/schemas/adaptive-card.json', 'type': 'AdaptiveCard', 'version': '1.4',
+                        'body': [{'type': 'TextBlock', 'text': subject, 'weight': 'Bolder', 'wrap': True},
+                                 {'type': 'TextBlock', 'text': text, 'wrap': True}]}}]}
+    return {'subject': subject, 'body': text, 'ts': int(now if now is not None else time.time()),
+            'source': company_name() or 'work-automation-kit'}
+
+
+def post_channel(c, subject, body, post=None):
+    """출구 하나로 보낸다 → HTTP 상태 코드. 실패하면 예외(주소는 문구에 넣지 않는다)."""
+    import hashlib
+    import hmac
+    import urllib.error
+    import urllib.request
+    kind = str(c.get('type') or 'webhook').lower()
+    if kind not in CHANNEL_TYPES:
+        raise ValueError('출구 type 은 %s 중 하나: %s' % (' · '.join(CHANNEL_TYPES), kind))
+    url = unprotect(c['url_enc']) if c.get('url_enc') else str(c.get('url') or '')
+    if not url.startswith('https://') and not url.startswith('http://127.0.0.1') and not url.startswith('http://localhost'):
+        raise ValueError('웹훅 주소는 https 여야 합니다')
+    data = json.dumps(channel_payload(kind, subject, body), ensure_ascii=False).encode('utf-8')
+    headers = {'Content-Type': 'application/json; charset=utf-8', 'User-Agent': 'work-automation-kit/notify'}
+    if kind == 'webhook' and c.get('secret_enc'):         # 받는 쪽이 진짜 키트에서 온 것인지 확인할 수 있게
+        headers['X-Kit-Signature'] = 'sha256=' + hmac.new(unprotect(c['secret_enc']).encode('utf-8'), data, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+    if post is not None:
+        return post(req)
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ssl_context()) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        raise RuntimeError('HTTP %d %s' % (e.code, e.reason)) from None
+    except urllib.error.URLError as e:
+        raise RuntimeError('연결 실패 — %s' % (e.reason,)) from None
+
+
+NOTIFY_KEEP = 20                                          # 화면(기능 상태)에 보일 최근 보낸 기록 수
+
+
+def _notify_log(channel, kind, subject, ok, err=None, code=None):
+    rec = {'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'channel': channel, 'type': kind or '',
+           'subject': str(subject)[:200], 'ok': bool(ok)}
+    if code is not None:
+        rec['code'] = code
+    if err is not None:
+        rec['error'] = ('%s: %s' % (type(err).__name__, err))[:200]
+    path = os.path.join(DATA, 'notify', 'sent.jsonl')
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path) and os.path.getsize(path) > 1024 * 1024:
+            os.replace(path, path.replace('.jsonl', '.1.jsonl'))
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+        recent = notify_log_tail(NOTIFY_KEEP)
+        write_status('notify', [{'name': '%s · %s' % (r['ts'][5:16], r['channel']), 'ok': r['ok'],
+                                 'text': r['subject'] + ('' if r['ok'] else ' — 실패: ' + r.get('error', ''))} for r in recent],
+                     note='최근 보낸 알림 %d건' % len(recent))
+    except OSError:
+        pass
+
+
+def notify_log_tail(limit=50):
+    path = os.path.join(DATA, 'notify', 'sent.jsonl')
+    try:
+        with open(path, encoding='utf-8') as f:
+            lines = f.readlines()[-limit:]
+    except OSError:
+        return []
+    out = []
+    for line in reversed(lines):
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
+    return out
 
 
 # ---------------------------------------------------------------- 예약 시각
