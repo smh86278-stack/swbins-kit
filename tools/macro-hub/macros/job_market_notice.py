@@ -12,11 +12,13 @@ config 의 "market_notice" 갈래.
                     "spike_min": 5, "spike_ratio": 3}]
     }
 
-공지(sources) — 로그인 없이 공개로 읽히는 것만. type:
+공지(sources) — 로그인 없이 공개로 읽히는 것만. 그 사이트 robots.txt 가 막으면 읽지 않는다(끄는 설정 없음). type:
     rss         RSS 2.0 · Atom
-    statuspage  statuspage.io 형식 상태 페이지(주소 뒤에 /api/v2/incidents.json 을 붙여 읽는다)
-    html        정적 HTML 목록 — item 정규식의 이름 붙은 묶음 title(필수)·link·date 로 항목을 뽑는다
-  제목에 keywords 중 하나가 있어야 장애·점검 공지로 본다(statuspage 는 전부 장애). 출처마다 "keywords" 로 바꿀 수 있다.
+    statuspage  statuspage.io 형식 상태 페이지(주소 뒤에 /history.rss 를 붙여 읽는다 — /api/ 는 robots.txt 로 막힌 곳이 많다)
+    html        정적 HTML 목록 — item 정규식의 이름 붙은 묶음 title(필수)·link·date·tag(제목 밖 분류 칸)로 항목을 뽑는다
+    json        JSON 목록 — items(목록 위치)·title·date·link·tag·emergency 키 경로(점으로 이음, 예 "category.categoryName")
+  제목에 keywords 중 하나가 있어야 장애·점검 공지로 본다(statuspage 와 emergency 가 참인 것은 전부 장애).
+  출처마다 "keywords" 로 바꿀 수 있다.
   처음 읽을 때 이미 있던 공지는 '본 것'으로만 남기고 알리지 않는다. 그 뒤 새로 뜬 것은 한 건씩 메일로 알린다.
 실패(failures) — 내 프로그램의 로그. match 정규식에 맞는 줄이 실패 한 건, 줄의 시각은 time 정규식(기본: 줄 안의
   2026-10-14 09:30[:00] · 2026.10.14 09:30 꼴)으로 읽는다. 파일마다 끝 2MB 만 본다.
@@ -39,7 +41,7 @@ import kit
 
 FEATURE = 'market_notice'
 DEFAULT_KEYWORDS = ['장애', '점검', '지연', '오류', '중단', '불안정', '복구', '긴급']
-UA = 'work-automation-kit/market-notice (+공개 공지 확인)'
+UA = 'work-automation-kit/market-notice (+public notices only)'     # HTTP 머리글이라 ASCII 만
 KEEP_NOTICES = 300
 TAIL_BYTES = 2 * 1024 * 1024
 HOUR = 3600
@@ -58,8 +60,8 @@ META = {
 # ---------------------------------------------------------------- 시각
 
 DATE_RES = (
-    (re.compile(r'(\d{4})[-./](\d{1,2})[-./](\d{1,2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?'), 'ymdhms'),
-    (re.compile(r'(\d{4})[-./](\d{1,2})[-./](\d{1,2})'), 'ymd'),
+    (re.compile(r'(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?'), 'ymdhms'),
+    (re.compile(r'(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})'), 'ymd'),     # '2026. 10. 08' 도
     (re.compile(r'(?<!\d)(\d{2})[-./](\d{1,2})[-./](\d{1,2})(?!\d)'), 'yymd'),
 )
 
@@ -125,33 +127,63 @@ def parse_rss(xml_text):
     return [x for x in out if x['title']]
 
 
-def parse_statuspage(data):
-    """statuspage.io /api/v2/incidents.json → [{title, link, ts, status}]. 장애 페이지라 전부 장애로 본다."""
-    out = []
-    for i in (data or {}).get('incidents') or []:
-        if not isinstance(i, dict) or not i.get('name'):
-            continue
-        st = {'investigating': '조사 중', 'identified': '원인 확인', 'monitoring': '지켜보는 중',
-              'resolved': '해결', 'postmortem': '사후 보고', 'scheduled': '예정 점검', 'in_progress': '점검 중',
-              'verifying': '확인 중', 'completed': '점검 끝'}.get(i.get('status'), i.get('status') or '')
-        out.append({'title': i['name'] + (' (%s)' % st if st else ''), 'link': i.get('shortlink') or '',
-                    'ts': parse_when(i.get('created_at') or i.get('updated_at')), 'incident': True})
-    return out
+def _clean(s):
+    return re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', '', str(s or '')))).strip()
 
 
 def parse_html(text, item_re, base_url=''):
-    """정적 HTML 목록 → [{title, link, ts}]. item_re 의 이름 붙은 묶음 title(필수)·link·date."""
+    """정적 HTML 목록 → [{title, link, ts}]. item_re 의 이름 붙은 묶음 title(필수)·link·date·tag.
+    tag(분류 칸 — 카페24 의 [긴급] 처럼 제목 밖에 있는 것)는 제목 앞에 붙여 키워드로 거를 수 있게 한다."""
     rx = re.compile(item_re, re.S | re.I)
     if 'title' not in rx.groupindex:
         raise ValueError('item 정규식에 (?P<title>…) 묶음이 있어야 합니다')
     out = []
     for m in rx.finditer(text):
         g = m.groupdict()
-        title = re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', '', g.get('title') or ''))).strip()
+        title = _clean(g.get('title'))
         if not title:
             continue
+        tag = _clean(g.get('tag'))
+        if tag and tag not in title:
+            title = '%s %s' % (tag, title)
         link = html.unescape(g.get('link') or '').strip()
         out.append({'title': title, 'link': urllib.parse.urljoin(base_url, link) if link else '', 'ts': parse_when(g.get('date'))})
+    return out
+
+
+def get_path(d, path):
+    """'category.categoryName' 처럼 점으로 이은 키를 따라간다. 없으면 None."""
+    for k in str(path or '').split('.'):
+        if not k:
+            continue
+        if isinstance(d, dict):
+            d = d.get(k)
+        elif isinstance(d, list) and k.isdigit() and int(k) < len(d):
+            d = d[int(k)]
+        else:
+            return None
+    return d
+
+
+def parse_json(data, src):
+    """JSON 공지 목록 → [{title, link, ts}]. src 의 items(목록 위치)·title·date·link·tag·emergency 는 키 경로.
+    emergency 값이 참이면 키워드와 상관없이 장애로 본다."""
+    items = get_path(data, src.get('items')) if src.get('items') else data
+    if not isinstance(items, list):
+        raise ValueError('items 경로에 목록이 없습니다: %s' % src.get('items'))
+    out = []
+    for it in items:
+        title = _clean(get_path(it, src.get('title') or 'title'))
+        if not title:
+            continue
+        tag = _clean(get_path(it, src['tag'])) if src.get('tag') else ''
+        if tag and tag not in title:
+            title = '[%s] %s' % (tag, title) if not tag.startswith('[') else '%s %s' % (tag, title)
+        x = {'title': title, 'link': str(get_path(it, src.get('link') or 'link') or ''),
+             'ts': parse_when(get_path(it, src.get('date') or 'date'))}
+        if src.get('emergency') and get_path(it, src['emergency']):
+            x['incident'] = True
+        out.append(x)
     return out
 
 
@@ -242,25 +274,52 @@ def fetch(url, sslctx=None, timeout=15):
         raw = r.read(3 * 1024 * 1024)
         cs = r.headers.get_content_charset() or ''
     if not cs:
-        m = re.search(rb'charset=["\']?([\w-]+)', raw[:2048])
+        m = re.search(rb'charset=["\']?([\w-]+)', raw[:4096])
         cs = m.group(1).decode('ascii') if m else 'utf-8'
+    if cs.lower().replace('_', '-') in ('euc-kr', 'ks-c-5601-1987', 'ksc5601', 'x-windows-949'):
+        cs = 'cp949'                                         # EUC-KR 보다 넓다(옛 한국 사이트의 확장 한글)
     return raw.decode(cs, 'replace')
+
+
+def source_url(src):
+    """실제로 읽는 주소 — statuspage 는 /history.rss(여러 상태 페이지가 robots.txt 로 /api/ 를 막는다)."""
+    url = str(src.get('url') or '').strip()
+    if (src.get('type') or 'rss').lower() == 'statuspage':
+        return url.rstrip('/') + '/history.rss'
+    return url
+
+
+def robots_allowed(url, get):
+    """그 사이트 robots.txt 가 이 주소를 막는지. robots.txt 가 없거나 못 읽으면 허용으로 본다."""
+    import urllib.robotparser
+    p = urllib.parse.urlsplit(url)
+    try:
+        text = get('%s://%s/robots.txt' % (p.scheme, p.netloc))
+    except Exception:
+        return True
+    rp = urllib.robotparser.RobotFileParser()
+    rp.parse(text.splitlines())
+    return rp.can_fetch(UA, url)
 
 
 def read_source(src, sslctx=None, get=None):
     get = get or (lambda u: fetch(u, sslctx))
-    kind, url = (src.get('type') or 'rss').lower(), str(src.get('url') or '').strip()
+    kind, url = (src.get('type') or 'rss').lower(), source_url(src)
     if not url.startswith(('http://', 'https://')):
         raise ValueError('url 이 http(s) 주소가 아닙니다')
+    if kind not in ('rss', 'statuspage', 'html', 'json'):
+        raise ValueError('type 은 rss · statuspage · html · json 중 하나: %s' % kind)
+    if kind == 'html' and not src.get('item'):
+        raise ValueError('html 출처는 item 정규식이 있어야 합니다')
+    if not robots_allowed(url, get):                         # 끄는 설정은 두지 않는다
+        raise PermissionError('그 사이트 robots.txt 가 자동 수집을 막아 읽지 않습니다')
     if kind == 'rss':
         return parse_rss(get(url))
-    if kind == 'statuspage':
-        return parse_statuspage(json.loads(get(url.rstrip('/') + '/api/v2/incidents.json')))
-    if kind == 'html':
-        if not src.get('item'):
-            raise ValueError('html 출처는 item 정규식이 있어야 합니다')
-        return parse_html(get(url), src['item'], url)
-    raise ValueError('type 은 rss · statuspage · html 중 하나: %s' % kind)
+    if kind == 'statuspage':                                 # 상태 페이지는 올라오는 것이 전부 장애·점검이다
+        return [dict(x, incident=True) for x in parse_rss(get(url))]
+    if kind == 'json':
+        return parse_json(json.loads(get(url)), src)
+    return parse_html(get(url), src['item'], url)
 
 
 def tail_lines(path, limit=TAIL_BYTES):

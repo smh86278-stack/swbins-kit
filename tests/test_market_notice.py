@@ -44,12 +44,6 @@ class Parse(unittest.TestCase):
         a = mn.parse_rss(ATOM)
         self.assertEqual((a[0]['title'], a[0]['link']), ('API 점검 예정', 'https://example.com/a/1'))
 
-    def test_statuspage(self):
-        r = mn.parse_statuspage({'incidents': [{'name': 'Orders API degraded', 'status': 'monitoring',
-                                                'shortlink': 'https://stspg.io/x', 'created_at': '2026-10-14T11:00:00+09:00'}]})
-        self.assertEqual(r[0]['title'], 'Orders API degraded (지켜보는 중)')
-        self.assertTrue(mn.is_incident(r[0], ['장애']))
-
     def test_html(self):
         rx = r'<a href="(?P<link>[^"]+)">(?P<title>[^<]+)</a><span>(?P<date>[^<]+)</span>'
         r = mn.parse_html(HTML, rx, 'https://example.com/board/')
@@ -58,13 +52,62 @@ class Parse(unittest.TestCase):
         with self.assertRaises(ValueError):
             mn.parse_html(HTML, r'<a>(?P<x>.*)</a>')
 
-    def test_read_source_rejects_bad(self):
+    def test_html_tag_goes_before_title(self):
+        page = '<i>[긴급]</i><a href="/n/9"><b>주문 API 응답 지연</b></a><em>2026. 10. 08</em>'
+        r = mn.parse_html(page, r'<i>(?P<tag>[^<]*)</i><a href="(?P<link>[^"]+)">(?P<title>.*?)</a><em>(?P<date>[^<]+)</em>', 'https://example.com/')
+        self.assertEqual((r[0]['title'], r[0]['ts']), ('[긴급] 주문 API 응답 지연', D(2026, 10, 8).timestamp()))
+
+    def test_json(self):
+        data = {'item': [{'title': '[장애] 상품 API 오류', 'regDate': '2026-09-10T10:00:00', 'viewUrl': 'https://example.com/1',
+                          'category': {'categoryName': '시스템'}, 'isEmergency': False},
+                         {'title': '문서 변경', 'regDate': '2026-09-30T18:53:00', 'viewUrl': 'https://example.com/2',
+                          'category': {'categoryName': '일반'}, 'isEmergency': True}]}
+        src = {'items': 'item', 'title': 'title', 'date': 'regDate', 'link': 'viewUrl', 'tag': 'category.categoryName', 'emergency': 'isEmergency'}
+        r = mn.parse_json(data, src)
+        self.assertEqual([x['title'] for x in r], ['[시스템] [장애] 상품 API 오류', '[일반] 문서 변경'])
+        self.assertEqual(r[0]['ts'], D(2026, 9, 10, 10, 0).timestamp())
+        self.assertEqual([mn.is_incident(x, ['장애']) for x in r], [True, True])        # 두 번째는 isEmergency
+        with self.assertRaises(ValueError):
+            mn.parse_json({'item': {}}, src)
+
+    def test_read_source(self):
         with self.assertRaises(ValueError):
             mn.read_source({'type': 'rss', 'url': 'file:///c:/x'}, get=lambda u: '')
         with self.assertRaises(ValueError):
             mn.read_source({'type': 'html', 'url': 'https://example.com'}, get=lambda u: '')
-        self.assertEqual(len(mn.read_source({'type': 'statuspage', 'url': 'https://status.example.com/'},
-                                            get=lambda u: '{"incidents": []}' if u.endswith('/api/v2/incidents.json') else 'x')), 0)
+        asked = []
+
+        def get(u):
+            asked.append(u)
+            return '' if u.endswith('/robots.txt') else RSS
+        r = mn.read_source({'type': 'statuspage', 'url': 'https://status.example.com/'}, get=get)
+        self.assertEqual(asked, ['https://status.example.com/robots.txt', 'https://status.example.com/history.rss'])
+        self.assertTrue(all(x['incident'] for x in r))                                   # 상태 페이지는 전부 장애·점검
+
+    def test_robots_blocks(self):
+        def get(u):
+            if u.endswith('/robots.txt'):
+                return 'User-agent: *\nDisallow: /board/\n'
+            raise AssertionError('robots.txt 가 막았는데 읽으러 갔다: ' + u)
+        with self.assertRaises(PermissionError):
+            mn.read_source({'type': 'rss', 'url': 'https://example.com/board/rss'}, get=get)
+        self.assertTrue(mn.robots_allowed('https://example.com/notice', lambda u: 'User-agent: *\nDisallow: /board/\n'))
+        self.assertTrue(mn.robots_allowed('https://example.com/x', lambda u: (_ for _ in ()).throw(OSError('404'))))
+
+
+class ExampleConfig(unittest.TestCase):
+    def test_example_sources_are_valid(self):
+        import json
+        import re
+        with open(os.path.join(HUB, '..', '..', 'config.example.json'), encoding='utf-8') as f:
+            conf = json.load(f)['market_notice']
+        self.assertTrue(conf['sources'])
+        for src in conf['sources']:
+            with self.subTest(src=src['name']):
+                self.assertIn(src['type'], ('rss', 'statuspage', 'html', 'json'))
+                self.assertTrue(src['url'].startswith('https://'))
+                if src['type'] == 'html':
+                    self.assertIn('title', re.compile(src['item'], re.S).groupindex)
 
 
 class Flow(unittest.TestCase):
