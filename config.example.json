@@ -72,6 +72,22 @@
     ]
   },
 
+  "market_notice": {
+    "_설명": "'우리 문제냐 마켓 문제냐' — 마켓·결제·택배의 공개 장애·점검 공지(로그인 없이 보이는 것만)를 every_min 분마다(15분 이상) 모아, 제목에 keywords 가 든 공지가 새로 뜨면 알린다. 처음 읽을 때 이미 있던 공지는 알리지 않는다. failures 의 로그에서 match 줄을 실패로 세어, 지난 1시간이 spike_min 건 이상이고 평소(그 전 24시간 시간당 평균)의 spike_ratio 배 이상이면 같은 시간대(앞뒤 window_min 분) 공지를 붙여 알린다.",
+    "_sources_설명": "type: rss(RSS·Atom 주소) · statuspage(statuspage.io 상태 페이지 주소 — 뒤에 /api/v2/incidents.json 을 붙여 읽음) · html(정적 목록 페이지 — item 정규식에 (?P<title>…) 필수, (?P<link>…)·(?P<date>…) 선택). 출처마다 keywords 를 따로 줄 수 있다.",
+    "every_min": 30,
+    "window_min": 120,
+    "keywords": ["장애", "점검", "지연", "오류", "중단", "불안정", "복구", "긴급"],
+    "sources": [
+      {"name": "예시 — 상태 페이지", "type": "statuspage", "url": "https://status.example.com"},
+      {"name": "예시 — 공지 RSS", "type": "rss", "url": "https://example.com/notice/rss"}
+    ],
+    "_failures_설명": "path 는 와일드카드 가능(최근 26시간 안에 바뀐 파일만, 파일마다 끝 2MB). 줄의 시각은 기본으로 '2026-10-14 09:30[:00]' · '2026.10.14 09:30' 꼴을 찾는다 — 다르면 time 에 (시각) 묶음 하나짜리 정규식.",
+    "failures": [
+      {"name": "예시 — 주문 수집 실패", "path": "%USERPROFILE%\\shop-tool\\logs\\*.log", "match": "주문.*(실패|ERROR)", "spike_min": 5, "spike_ratio": 3}
+    ]
+  },
+
   "tidy": [
     {
       "name": "다운로드 정리",
