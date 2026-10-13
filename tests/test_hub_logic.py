@@ -120,6 +120,29 @@ class ExtsvcMatch(unittest.TestCase):
         self.assertFalse(extsvc._matches(spec, 'php.exe', 'php.exe -S 0.0.0.0:8000 -t public'))
 
 
+class RunOnceTimeout(unittest.TestCase):
+    """예약 실행형이 멈추면 timeout 에 끊겨야 한다(예전엔 출력을 다 읽은 뒤에 기다려 영영 안 끝났다)."""
+
+    class Ctx:
+        def __init__(self):
+            self.lines = []
+
+        def log(self, s):
+            self.lines.append(s)
+
+    def test_hung_program_is_killed(self):
+        ctx, t0 = self.Ctx(), datetime.datetime.now()
+        with self.assertRaises(RuntimeError):
+            extsvc.run_once(ctx, [sys.executable, '-c', 'import time; print("hi", flush=True); time.sleep(60)'], timeout=2)
+        self.assertLess((datetime.datetime.now() - t0).total_seconds(), 20)
+        self.assertIn('hi', ctx.lines)
+
+    def test_normal_exit_logs_output(self):
+        ctx = self.Ctx()
+        extsvc.run_once(ctx, [sys.executable, '-c', 'print("done")'], timeout=30)
+        self.assertIn('done', ctx.lines)
+
+
 class UiMode(unittest.TestCase):
     """화면 모드(자동·라이트·다크) — 허브가 기억한 값을 페이지 <html data-mode> 에 심는다."""
     def setUp(self):

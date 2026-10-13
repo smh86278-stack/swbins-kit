@@ -19,6 +19,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -304,12 +305,24 @@ def run_once(ctx, cmd, cwd=None, timeout=None):
     env['PYTHONIOENCODING'] = 'utf-8'                        # 출력만 utf-8 로 받는다(동작에는 영향 없음)
     p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
-    for raw in iter(p.stdout.readline, b''):
-        try:
-            line = raw.decode('utf-8')
-        except UnicodeDecodeError:
-            line = raw.decode('cp949', 'replace')
-        ctx.log(line.rstrip('\r\n'))
-    code = p.wait(timeout=timeout)
+
+    def pump():
+        for raw in iter(p.stdout.readline, b''):
+            try:
+                line = raw.decode('utf-8')
+            except UnicodeDecodeError:
+                line = raw.decode('cp949', 'replace')
+            ctx.log(line.rstrip('\r\n'))
+
+    # 출력은 따로 읽는다 — 다 읽은 뒤에 기다리면 멈춘 프로그램에 timeout 이 안 걸린다
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+    try:
+        code = p.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
+        reader.join(5)
+        raise RuntimeError('%d초 안에 끝나지 않아 껐습니다' % timeout)
+    reader.join(5)
     if code:
         raise SystemExit(code)

@@ -165,6 +165,7 @@ def run(ctx):
 | `job_monitors` | 사이트·서버 감시 — 주소·포트·인증서 만료 | `monitors` |
 | `job_pc_watch` | PC 디스크 감시 — 드라이브 남은 공간 | `pc_watch` |
 | `job_backup` | 폴더 백업 — 폴더를 날짜별로 복사, 오래된 것 정리 | `backups` |
+| `job_weekly_report` | 주간 업무 보고 초안 — 이번 주 이슈·커밋을 모아 AI 가 초안, 메일로 (`toolsi-share-agent`) | `ai_share.weekly_report` |
 
 - 기능 매크로는 결과를 `kit.write_status(기능, items)` 로 남기고, 운영 화면 「📊 기능 상태」 탭이 읽는다.
 - **진짜 프로그램은 허브와 떨어진 프로세스다.** `extsvc.launch` 가 잠깐 사는 중간 프로세스로 띄워 부모 관계를 끊는다.

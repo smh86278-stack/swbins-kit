@@ -18,6 +18,7 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | 💾 폴더 백업 | 폴더를 정한 시각에 날짜별 폴더로 복사하고, 오래된 백업은 정리한다 | `backups` |
 | 🔔 실패 알림 메일 | 위 작업이 실패하면 나에게 메일로 알린다(같은 작업은 60분에 한 번) | `mail.alert_to` · `mail.alert_via` |
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
+| 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
 | 🤖 매크로 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 매크로로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
 
 운영 화면 <http://127.0.0.1:8630/ops> 에서 기능마다 켜고 끄고, 시각을 바꾸고, 「📊 기능 상태」 탭에서 마지막 결과를 본다.
@@ -69,6 +70,70 @@ Claude Code 가 깔려 있어야 하고, **`dispatch.enabled` 를 직접 켜야�
    (기본 `assignee = currentUser() AND resolution = Unresolved AND created >= -3d`).
 4. 운영 화면 「🛡 상시 서비스」에서 **Jira 새 이슈 감시** 를 켠다. 처음 돌 때 지금 있는 이슈는 묻지 않고 '이미 본 것'으로만 기록한다
    (`jql`·`base_url` 을 바꿔도 다시 그렇게 한다). 그 뒤 새로 생긴 이슈부터 묻는다. 결과는 「📊 기능 상태」.
+
+### 고급 — AI 공유 위키 · 주간 업무 보고 초안 (기본 꺼짐)
+
+`tools\ai-share-agent\` — 내가 이번 주에 한 일(이슈 도구의 담당 이슈 + git 커밋 + 선택 기능)을 **이슈 키로 묶어**
+주간 업무 보고 초안을 쓰고, 쌓인 기록으로 팀 "업무 공유" 발표 준비 자료도 만든다. 이슈 도구가 Jira 가 아니어도 된다
+(GitHub · GitLab · 없음). 설정은 `config.local.json` 의 `ai_share`(견본·설명은 `config.example.json`).
+LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 없음) 또는 로컬 **ollama** 로만 돈다. 모은 자료는
+`wiki_dir`(기본 `tools\macro-hub\data.local\ai_share\wiki`, git 제외)에만 쌓이고, Claude 에게 이슈 도구 토큰을 주지 않는다.
+
+**1) 주간 업무 보고 초안** — 허브 예약 작업 `job_weekly_report`(`ai_share.weekly_report`)
+
+- 정한 요일·시각(기본 금 16:00, `days`·`at` 은 다른 예약과 같은 표기)에 **이번 주 월요일~오늘**을 모아
+  "이번 주 한 일 / 진행 중 / 다음 주 할 일 / 막힌 것"(이슈 키·링크, Claude 공동작성 커밋 비율 한 줄) 초안을 쓰게 하고
+  `<wiki_dir>\reports\YYYYMMDD_주간보고.md` 로 저장한 뒤 `to`(비면 `mail.user` — 내가 먼저 보고 고쳐 보내게)에게 메일로 보낸다.
+- **빈손이 되지 않게** — LLM 이 실패하면 모은 원자료(이슈·커밋 목록)를 대신 보낸다. 메일 설정이 안 돼 있으면 파일만 남기고
+  「📊 기능 상태」에 이유를 적는다. 이슈 도구 조회가 실패해도 git 커밋만으로 계속한다.
+- 손으로: `python tools\ai-share-agent\agent.py weekly [--since YYYY-MM-DD --until YYYY-MM-DD] [--no-mail]`,
+  또는 웹 화면의 **📝 주간 보고 초안** 단추(미리 보고 **✉ 메일로 보내기** 는 따로 누른다).
+- 프롬프트는 `prompt_weekly.md` — 팀 양식이 다르면 복사해 고치고 `weekly_report.prompt_file` 로 가리킨다.
+
+**2) AI 공유 위키 화면** — 허브 상시 서비스 `svc_ai_share`, <http://127.0.0.1:8640/> (허브 머리의 📚 AI 위키)
+
+- 이슈 목록·검색·담당자/선택 필터, 이슈마다 커밋·댓글·(선택) MR·하네스 기록, 요약 카드. 이 PC 에서만 열린다(127.0.0.1,
+  쓰기 요청은 전용 헤더 필수). **수집** 은 LLM 없이 몇 초. 팀 명단·이름 별칭은 👥 에서 고치면 `ai_share` 에 저장된다.
+- 🔒 내 프롬프트 — 이 PC 의 Claude Code 대화 기록에서 내가 친 프롬프트를 이슈별로 보여 준다. 화면에만 보이고 보고·발표·위키 문서에는 안 들어간다.
+
+**3) 업무 공유 발표 준비 (선택)** — `python tools\ai-share-agent\agent.py present` (claude CLI, 사용량 큼 · `--engine ollama` 맛보기)
+
+- 화면에서 이슈마다 **발표고정 / 발표제외 / 비공개** 를 고르고(`wiki\select.txt`), ⭐ 추천(점수: 되돌린 커밋 +2 · 여러 레포 +1 ·
+  커밋 3개↑ +1 · 이슈 댓글 +1 · 이번 주 +2/지난주 +1, 하네스 grilling +3·문서 +1·리뷰 +1, AI 리뷰 지적 +1 — 꺼진 기능은 0)
+  상위 10건이 먼저 들어간다. 결과 `<wiki_dir>\reports\YYYYMMDD_<report_name>.md`. 프롬프트 `prompt_present.md`(`prompt_file` 로 교체),
+  지난 발표 주제 목록은 `history_file`.
+- `mask()` 가 비밀번호·토큰·계정 꼴 값을 `[masked]` 로 가리지만 **휴리스틱**이다 — 위키를 남과 나누기 전에는 사람이 한 번 훑는다.
+
+**켜는 순서**
+
+1. `ai_share.repos`(커밋을 볼 레포 경로 목록) 또는 `workspace_root`(서브모듈 `.gitmodules` 가 있으면 그 레포들, 아니면 그 폴더 자체)를 적는다.
+   내 git 이름은 비워 두면 토큰 주인·`git config user.name`·이메일 아이디로 알아낸다(`my_authors` 로 지정 가능).
+2. 이슈 출처 `ai_share.tracker.type` 을 고른다 —
+
+   | type | 접속 | 이슈 키 |
+   |---|---|---|
+   | `none`(기본) | 없음 — 커밋 메시지·브랜치 이름의 키로만 묶고 제목은 그 키가 처음 나온 커밋 제목 | `key_regex`(기본 `[A-Z][A-Z0-9]+-\d+`) |
+   | `jira` | 키트의 `jira` 갈래(주소·cloud/server·이메일·토큰)를 그대로 — `python setup.py --jira` (마지막의 "감시를 켤까요?" 는 아니요여도 된다). Server/DC 는 PAT(Bearer)·`/rest/api/2`, Cloud 는 이메일+API 토큰·accountId·`/rest/api/3/search/jql` | `jira_project_keys`(예 `["PROJ"]`), 비면 `[A-Z][A-Z0-9]+-\d+` |
+   | `github` | `repos`(`["owner/name"]`) · `api_url`(GitHub Enterprise 면 `https://<호스트>/api/v3`) · 토큰 `python agent.py set-token` | `owner/name#123`(화면엔 `name#123`), 레포가 하나면 커밋의 `#123` 도 |
+   | `gitlab` | `api_url`(`https://gitlab.example.com/api/v4`) · `projects`(경로 목록) · 토큰 `python agent.py set-token` | `경로#123`, 프로젝트가 하나면 커밋의 `#123` 도 |
+
+   GitHub·GitLab 은 `type_labels`(라벨 중 유형으로 볼 것)를 줄 수 있다. 토큰은 DPAPI 로 암호화한 `token_enc` 로만 저장된다.
+   브랜치 이름 규칙이 따로 있으면 `branch_ticket_re`(예 `feature/(\d+)-` — 숫자면 레포·프로젝트 키가 하나일 때 그것으로 붙인다).
+3. `ai_share.enabled` 를 켜고 운영 화면 「🛡 상시 서비스」에서 **AI 공유 위키** 를 켠다 → 화면에서 **수집**.
+4. 주간 보고를 받으려면 `ai_share.weekly_report.enabled` 를 켜고 「⏰ 예약 작업」에서 **주간 업무 보고 초안** 을 켠다
+   (메일 설정 필요, claude CLI 로그인 또는 ollama).
+
+**선택 기능** — 비워 두면 그 수집·점수·화면 칸이 통째로 빠지고 나머지는 그대로 돈다.
+
+| 설정 | 하는 일 |
+|---|---|
+| `team` · `aliases` | 팀원 이슈·커밋도 모아 담당자별로 본다(보고·추천·발표는 내 것만). `aliases` = git author → 표시 이름 |
+| `comment_prefixes` | 이 머리말로 시작하는 담당자 댓글만 기록에 — 비면 담당자 본인 댓글 모두 |
+| `gitlab` · `review_bot` | 내 GitLab MR 을 이슈에 붙인다(출처가 gitlab 이면 그 토큰, 아니면 `set-token --gitlab`). `review_bot.name`·`issue_heading` 이 있으면 AI 코드 리뷰 봇의 지적을 세어 점수·카드에 |
+| `tag` | 제목 꼬리표(예 `[고객사]`)를 열·'자주 나온 …' 카드로 — `label`·`regex`(첫 묶음)·`ignore` |
+| `harness` | 작업 폴더(`tasks_dir/<작업>/state.md·grilling·review`)·이슈 문서·패턴·결정 기록을 두는 팀이면 켠다 |
+| `other` | (harness 와 함께) 다른 파트 하네스 레포를 읽기 전용 clone 으로 참고 — clone/pull 은 5분 제한, 토큰은 환경변수로만 넘긴다 |
+| `exclude_types` | 추천·발표 후보에서 뺄 이슈 유형 |
 
 ## 설치 — 파일 하나 (권장)
 
@@ -123,6 +188,7 @@ config.example.json      설정 견본 — 갈래별 설명은 이 파일 안 "_
 config.local.json        이 PC 의 실제 설정 (git 제외, setup.py 가 만든다)
 mail-gateway.py · inbox-worker.ps1   디스패치 — 메일 지시를 받아 Claude Code 로 실행하고 회신 (기본 꺼짐)
 jira-watch.py            Jira 새 이슈 감시 — 새 이슈를 디스패치 대화로 물어본다 (기본 꺼짐, setup.py --jira)
+tools\ai-share-agent\    AI 공유 위키 — 주간 업무 보고 초안 · 이슈별 작업 기록 · 발표 준비 (기본 꺼짐, ai_share)
 tools\macro-hub\         매크로 허브 — 트레이 앱 · 웹 화면 · 예약 작업 · 상시 서비스 (자세히: tools\macro-hub\README.md)
     kit.py               공통 바탕 — 설정 · 메일 · DPAPI · 예약 시각 판정 · 기능 상태 파일
     macros\job_*.py      기능 (정기 메일 · 폴더 정리 · 감시 · PC 점검 · 백업)
