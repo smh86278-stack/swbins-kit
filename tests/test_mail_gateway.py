@@ -917,3 +917,35 @@ class GmailSetup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompanyMode(unittest.TestCase):
+    """회사 모드 — 회사 폴더 일의 결과·선택지는 폰(개인 주소)으로 내보내지 않는다(2026-10-14)."""
+
+    def setUp(self):
+        self.cfg = dict(CFG, user="me@company.test", keyed_senders={"me@gmail.test": "word"},
+                        default_workdir=r"C:\work", company_workdirs=None)
+        self.job = {"id": "20261014-090000-aaaa", "source": "mail", "mail_from": "me@gmail.test", "mail_msgid": "<a@gmail>",
+                    "mail_subject": "#c 주문 수집 봐 줘", "status": "done", "thread": 9, "workdir": r"C:\work\sub",
+                    "result": "원인은 order.py:120 입니다.\n\n```choices\n"
+                              '{"question": "고칠까요?", "multi": false, "options": ["주문 수집만 (추천)", "클레임도"]}\n```'}
+
+    def test_company_dirs(self):
+        self.assertTrue(mg.is_company_job(self.cfg, self.job))                          # 기본 = default_workdir 와 그 아래
+        self.assertFalse(mg.is_company_job(self.cfg, dict(self.job, workdir=r"C:\work2")))
+        self.assertFalse(mg.is_company_job(dict(self.cfg, company_workdirs=[]), self.job))   # [] 면 끔
+        os.environ["KIT_TEST_DIR"] = r"C:\elsewhere"
+        self.assertTrue(mg.is_company_job(dict(self.cfg, company_workdirs=[r"%KIT_TEST_DIR%"]),
+                                          dict(self.job, workdir=r"C:\elsewhere\a")))   # 환경 변수도 푼다
+
+    def test_reply_to_company_notice_to_phone(self):
+        import base64
+        self.job["ask"] = mg.parse_choices(self.job["result"])[1]
+        msg, _ = mg.build_reply_message(self.cfg, self.job)
+        self.assertEqual(msg["To"], "me@company.test")
+        note = mg.build_phone_notice(self.cfg, self.job, self.job["ask"])
+        self.assertEqual(note["To"], "me@gmail.test")
+        raw = note.as_string() + base64.b64decode(note["X-Dispatch-Ask"]).decode("utf-8")
+        for secret in ("order.py", "주문 수집만", "클레임도"):
+            self.assertNotIn(secret, raw)
+        self.assertEqual(json.loads(base64.b64decode(note["X-Dispatch-Ask"]).decode("utf-8"))["options"], ["1", "2"])

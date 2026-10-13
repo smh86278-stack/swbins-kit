@@ -133,6 +133,10 @@ DEFAULT_CFG = {
     # 회사 INBOX 에 사본(X-Dispatch-Mirror)을 넣는다. 'python mail-gateway.py --setup-gmail' 로 채운다.
     # 예: {"user": "me@gmail.example", "password_enc": "<앱 비밀번호, kit.protect>"} — 비면 끈다.
     "gmail": {},
+    # 회사 모드 — 이 폴더(와 그 아래)에서 돈 일의 결과·질문은 회사 메일함에만 둔다. 폰(개인 주소, keyed_senders·Gmail)으로는
+    # 내용 없는 알림('끝남 · 질문 있음 — 회사 메일함에서 보기')만 가고, 거기에 번호로 답장하면 그대로 이어진다(회사 정보 유출 방지).
+    # None 이면 default_workdir 하나 — 회사에 깔면 기본으로 켜진다. [] 면 끈다.
+    "company_workdirs": None,
     "default_workdir": r"%USERPROFILE%\Documents",
     # 제목의 '@키' 로 고르는 작업 폴더. 예(JSON): {"docs": "D:\\work\\docs"} → '#c @docs 요약해줘'
     "workdir_keys": {},
@@ -893,6 +897,52 @@ def smtp_rcpts(cfg: dict, job: dict):
     return [to, cfg["user"]] if to and to.lower() != (cfg.get("user") or "").lower() else None
 
 
+def company_dirs(cfg: dict) -> list:
+    dirs = cfg.get("company_workdirs")
+    if dirs is None:
+        dirs = [cfg.get("default_workdir")]
+    return [os.path.normcase(os.path.abspath(kit.expand(d))).rstrip("\\/") for d in dirs or [] if d]   # %USERPROFILE% 등도 푼다
+
+
+def is_company_job(cfg: dict, job: dict) -> bool:
+    """회사 모드 폴더에서 돈 일인가 — 그 결과는 폰(개인 주소)으로 내보내지 않는다."""
+    wd = job.get("workdir")
+    if not wd:
+        return False
+    w = os.path.normcase(os.path.abspath(wd)).rstrip("\\/")
+    return any(w == d or w.startswith(d + os.sep) for d in company_dirs(cfg))
+
+
+def build_phone_notice(cfg: dict, job: dict, ask=None):
+    """회사 모드 폴더의 회신을 폰으로 보낼 때 쓰는 내용 없는 알림 — 끝남·실패·질문 수만.
+    선택지 글자는 빼고 번호만 단추로 남겨 폰에서 번호로 답장하면 그대로 이어진다(mailto 에 암호 단어가 붙는다)."""
+    msg = EmailMessage()
+    msg["Subject"] = reply_subject(job)
+    msg["From"] = cfg["user"]
+    msg["To"] = phone_to(cfg, job.get("mail_from")) or cfg["user"]
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
+    msg["Message-ID"] = email.utils.make_msgid(domain=domain)
+    if job.get("mail_msgid"):
+        msg["In-Reply-To"] = job["mail_msgid"]
+        msg["References"] = job["mail_msgid"]
+    safe = None
+    if ask:
+        safe = {"question": "회사 메일함의 질문 — 번호로 답하세요", "multi": bool(ask.get("multi")),
+                "options": [str(i) for i in range(1, len(ask.get("options") or []) + 1)]}
+    lines = ["%s이 끝났습니다." % ("일" if job.get("status") == "done" else "일이 실패로"),
+             "회사 작업 폴더(%s) 일이라 결과는 회사 메일함에만 넣었습니다 — 회사 메일·PC 메신저에서 보세요." % (
+                 job.get("workdir_label") or os.path.basename(str(job.get("workdir") or "").rstrip("\\/")))]
+    if safe:
+        lines.append("질문이 있습니다(선택지 %d개). 내용을 읽고 이 메일에 번호로 답장해도 이어집니다." % len(safe["options"]))
+    text = "\n".join(lines)
+    footer = "[T%s]" % job["thread"] if job.get("thread") else ""
+    mark_bot(msg, job, safe)
+    msg.set_content(text + ("\n\n--\n" + footer if footer else ""))
+    msg.add_alternative(reply_html(cfg, job, safe, text, footer), subtype="html")
+    return msg
+
+
 def copy_to_phone(cfg: dict, password: str, job: dict, msg, smtp_box: list) -> None:
     """폰(개인 주소)에서 온 지시는 회신을 그 주소로도 보낸다 — 회사 메일함(append)만으로는 폰 메일 앱에 안 보인다.
     smtp_box 는 [연결] 한 칸짜리 목록(한 번 연결해서 여러 통 보내고 send_replies 끝에서 닫는다)."""
@@ -1424,7 +1474,9 @@ def build_reply_message(cfg: dict, job: dict):
     msg = EmailMessage()
     msg["Subject"] = reply_subject(job)
     msg["From"] = cfg["user"]
-    msg["To"] = job.get("mail_from") or cfg["user"]
+    # 회사 모드 폴더의 일을 폰(개인 주소)이 시켰으면 본 회신은 회사 주소로만 — 폰엔 build_phone_notice 가 간다
+    personal = phone_to(cfg, job.get("mail_from")) and is_company_job(cfg, job)
+    msg["To"] = cfg["user"] if personal else (job.get("mail_from") or cfg["user"])
     msg["Date"] = email.utils.formatdate(localtime=True)
     domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
     rmid = email.utils.make_msgid(domain=domain)
@@ -1620,11 +1672,17 @@ def send_replies(cfg: dict, password: str) -> int:
                 # 번호 답을 풀 수 있게 이번 질문(선택지)을 잡에 남긴다 — 다음 답장이 이 잡을 이어받는다
                 job["ask"] = parse_choices(job.get("result") or "")[1] if job.get("status") == "done" else None
                 msg, rmid = build_reply_message(cfg, job)
+                # 회사 모드 폴더의 일이면 폰엔 내용 없는 알림만(결과·선택지 글자는 회사 메일함에만)
+                company = is_company_job(cfg, job)
+                phone_msg = build_phone_notice(cfg, job, job.get("ask")) if company else msg
                 if mode == "append":
                     # INBOX 에 직접 넣는다. 발송하면 메일 규칙에 걸려 다른 폴더로 옮겨지므로
                     # 이쪽이 결과를 확실히 보여준다. 폰에서는 똑같이 새 메일로 보인다.
                     conn.append("INBOX", "", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
-                    copy_to_phone(cfg, password, job, msg, phone_smtp)
+                    copy_to_phone(cfg, password, job, phone_msg, phone_smtp)
+                elif company and phone_to(cfg, job.get("mail_from")):
+                    conn.send_message(msg, to_addrs=[cfg["user"]])     # 본 회신은 회사 주소로만
+                    copy_to_phone(cfg, password, job, phone_msg, phone_smtp)
                 else:
                     conn.send_message(msg, to_addrs=smtp_rcpts(cfg, job))
 
