@@ -166,6 +166,7 @@ def run(ctx):
 | `job_pc_watch` | PC 디스크 감시 — 드라이브 남은 공간 | `pc_watch` |
 | `job_cred_watch` | 로그인·키 만료 예고 — Claude Code 로그인·메일 로그인·Jira 토큰·적어 둔 키 만료일 | `cred_watch` |
 | `job_market_notice` | 마켓 장애 공지 감시 — 공개 공지(RSS·statuspage·HTML) 모으기 + 내 실패 로그 급증과 시간 맞추기 | `market_notice` |
+| `job_category_watch` | 카테고리·정보고시 변경 감시 — 스냅숏 비교 + 내 매핑 CSV 의 깨진 줄, 보고서 CSV | `category_watch` |
 | `job_backup` | 폴더 백업 — 폴더를 날짜별로 복사, 오래된 것 정리 | `backups` |
 | `job_weekly_report` | 주간 업무 보고 초안 — 이번 주 이슈·커밋을 모아 AI 가 초안, 메일로 (`toolsi-share-agent`) | `ai_share.weekly_report` |
 

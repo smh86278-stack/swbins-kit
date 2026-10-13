@@ -97,6 +97,19 @@
     ]
   },
 
+  "category_watch": {
+    "_설명": "마켓 카테고리·정보고시 변경 감시 — every_min 분마다(60분 이상, 기본 하루) 마켓 카테고리 목록 스냅숏을 지난번과 비교해 없어짐·하위가 생겨 등록 불가·이름 바뀜·정보고시 바뀜·새로 생김을 알리고, mappings 의 내 매핑(내 상품 → 마켓 카테고리 코드 CSV)에서 깨진 것을 뽑는다. 전체 목록은 tools/macro-hub/data.local/category_watch/report-*.csv. 처음 한 번은 스냅숏만 남긴다. 판매자용 연동 보조 도구라 밖에 팔기 전에 겸업 규정을 확인할 것.",
+    "_markets_설명": "type: file(판매자 센터에서 내려받은 CSV(UTF-8·CP949)·JSON — code·label·notice 는 열 이름) · json_url(https JSON — items·children·code·label·notice·status 키 경로, 나무 구조면 '상위 > 하위' 로 잇고 하위가 없는 것만 등록 가능으로 봄). auth 가 coupang 이면 쿠팡 OpenAPI HMAC 서명(access_key_enc·secret_key_enc 는 kit.protect 로 암호화한 값 — 쿠팡 응답 형식은 문서 기준이고 실제 키로는 아직 확인하지 않았다). 네이버 커머스API 는 서명에 bcrypt 가 필요해 아직 없다(file 로 내려받은 목록을 쓰면 된다).",
+    "every_min": 1440,
+    "markets": [
+      {"name": "예시 — 내려받은 카테고리 목록", "type": "file", "path": "%USERPROFILE%\\shop\\categories.csv", "code": "카테고리코드", "label": "카테고리명", "notice": "정보고시"}
+    ],
+    "_mappings_설명": "market 은 위 markets 의 name. code = 마켓 카테고리 코드 열, key = 내 상품을 알아볼 열(선택).",
+    "mappings": [
+      {"name": "예시 — 내 상품 매핑", "market": "예시 — 내려받은 카테고리 목록", "path": "%USERPROFILE%\\shop\\mapping.csv", "code": "마켓카테고리", "key": "상품코드"}
+    ]
+  },
+
   "tidy": [
     {
       "name": "다운로드 정리",
