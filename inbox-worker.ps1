@@ -283,13 +283,21 @@ function Invoke-Job($entry) {
 
     $sw = [Diagnostics.Stopwatch]::StartNew()
     try {
-        [System.IO.File]::WriteAllText($promptFile, [string]$job.prompt, $Utf8NoBom)
-
         # 도구 화이트리스트. 값에 괄호·별표가 있어 각각 따옴표로 감싼다.
         # 작업이 자기 도구 목록을 들고 오면 그것을 쓴다(메일 게이트웨이의 쓰기 태그 'cw').
         # 없으면 config.local.json 의 dispatch.read_tools(읽기 전용 기본값).
-        $tools = if ($job.allowed_tools) { @($job.allowed_tools) } else { $cfg.AllowedTools }
+        # 아래 --permission-mode dontAsk 라야 이 목록이 상한이 된다 — 사용자 설정이 auto·acceptEdits 모드면 목록 밖 도구도 통과한다.
+        $tools = if ($job.allowed_tools) { @($job.allowed_tools) } else { @($cfg.AllowedTools) }
+        # RTK 같은 훅이 Bash 명령을 'rtk <명령>' 으로 다시 쓰면 규칙이 안 맞으므로 Bash(…) 허용 규칙마다 rtk 접두 짝을 더한다
+        $tools = @($tools) + @($tools | ForEach-Object { if ([string]$_ -match '^Bash\((?!rtk )(.+)\)$') { "Bash(rtk $($Matches[1]))" } })
         $toolArgs = (($tools | ForEach-Object { '"' + $_ + '"' }) -join ' ')
+
+        # 읽기 지시(자기 도구 목록 없음)가 '/' 로 시작하면 슬래시 명령으로 펼쳐지지 않게 앞에 글을 붙인다 —
+        # 펼쳐진 스킬의 allowed-tools 가 허용 목록을 넘어 Write·Bash 를 연다(거부 목록 말고는 못 막는다).
+        # 쓰기·이슈 처리('#cw /issue PROJ-123')는 자기 도구 목록을 들고 오니 그대로 둔다.
+        $promptText = [string]$job.prompt
+        if ($promptText -match '^\s*/' -and -not $job.allowed_tools) { $promptText = "메일 지시: $promptText" }
+        [System.IO.File]::WriteAllText($promptFile, $promptText, $Utf8NoBom)
 
         # 메일 게이트웨이가 이전 잡에 대한 답장임을 알아채면 resume_id 를 실어 보낸다.
         # 새 세션 대신 그 세션에 그대로 이어붙여, 폰에서 답장을 주고받으며 맥락을 유지할 수 있다.
@@ -310,7 +318,7 @@ function Invoke-Job($entry) {
         # 폰이 지시와 함께 보낸 사진 폴더(게이트웨이 attach_dir) — 작업 폴더 밖이라 --add-dir 로 읽기를 열어 준다
         $addDirArg = ''
         if ($job.attach_dir -and (Test-Path -LiteralPath $job.attach_dir)) { $addDirArg = '--add-dir "' + $job.attach_dir + '" ' }
-        $argLine  = "-p ${resumeArg}${addDirArg}--output-format json --allowedTools $toolArgs$denyArgs$chatArg"
+        $argLine  = "-p ${resumeArg}${addDirArg}--output-format json --permission-mode dontAsk --allowedTools $toolArgs$denyArgs$chatArg"
 
         $p = Start-Process -FilePath 'claude' -ArgumentList $argLine `
                 -WorkingDirectory $job.workdir `
