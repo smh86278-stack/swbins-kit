@@ -211,6 +211,33 @@ def settings_status():
 # 조용히 빈 목록을 주지 않고 problems 에 담아 화면에 드러낸다. 여기서 잡을 띄우거나 지시를 넣지 않는다 — 보기 전용.
 
 AGENT_DONE_KEEP_DAYS = 7          # 완료(done) 잡을 보드에 며칠까지 남길지. 넘긴 done 은 목록에서 접는다.
+AGENT_DISMISSED = ''              # 화면에서 '치우기' 한 완료 잡(short id) 목록 파일 — 비면 kit.DATA\agents-dismissed.json
+
+
+def _dismissed_path():
+    if AGENT_DISMISSED:
+        return AGENT_DISMISSED
+    import kit
+    return os.path.join(kit.DATA, 'agents-dismissed.json')
+
+
+def agents_dismissed():
+    got = _read_json(_dismissed_path())
+    return set(got) if isinstance(got, list) else set()
+
+
+def agent_dismiss(short='', undo=False):
+    """끝난 백그라운드 잡을 보드에서 치운다(상태 파일은 그대로 — 이 화면에서만 접는다). undo 면 치운 것을 모두 되돌린다."""
+    ids = set() if undo else agents_dismissed() | {str(short)}
+    if not undo and not re.fullmatch(r'[\w\-]{1,64}', str(short)):
+        raise ValueError('잘못된 잡 id 입니다')
+    path = _dismissed_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(sorted(ids), f, ensure_ascii=False)
+    os.replace(tmp, path)
+    return {'ok': True, 'dismissed': len(ids)}
 
 
 def claude_home():
@@ -324,6 +351,7 @@ def agent_board():
     #    살아있는 워커는 done 으로 보여도 감추지 않는다 — 막 끝나 정리 전일 수 있다.
     now = int(time.time())
     hidden_done = 0
+    dismissed = agents_dismissed()
     jobs_dir = root + '\\jobs'
     try:
         job_names = sorted(os.listdir(jobs_dir))
@@ -338,7 +366,7 @@ def agent_board():
             continue
         upd = _strtotime(j.get('updatedAt')) if not _empty(j.get('updatedAt')) else None
         st = j.get('state')
-        if st == 'done' and short not in live and upd and now - upd > AGENT_DONE_KEEP_DAYS * 86400:
+        if st == 'done' and short not in live and (short in dismissed or (upd and now - upd > AGENT_DONE_KEEP_DAYS * 86400)):
             hidden_done += 1
             continue
         out = j.get('output')

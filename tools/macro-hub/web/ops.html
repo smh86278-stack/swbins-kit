@@ -281,7 +281,9 @@ async function loadAgents(verify){
   let v; try { v = await api('/api/ops/agents' + (verify ? '?verify=1' : '')); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
   box.replaceChildren();
   const head = el('div', 'row'), t = v.tally || {};
-  head.append(el('span', 'grow sub', '작업 중 ' + (t.active || 0) + ' · 대기 ' + (t.idle || 0) + ' · 막힘 ' + (t.blocked || 0) + ' · 완료 ' + (t.done || 0) + (t.hiddenDone ? ' (' + v.doneKeepDays + '일 지난 완료 ' + t.hiddenDone + '개 접음)' : '')));
+  head.append(el('span', 'grow sub', '작업 중 ' + (t.active || 0) + ' · 대기 ' + (t.idle || 0) + ' · 막힘 ' + (t.blocked || 0) + ' · 완료 ' + (t.done || 0) + (t.hiddenDone ? ' (치웠거나 ' + v.doneKeepDays + '일 지난 완료 ' + t.hiddenDone + '개 접음)' : '')));
+  if (t.hiddenDone){ const bU = el('button', '', '치운 것 되돌리기'); bU.title = '화면에서 치운 완료 작업을 다시 보입니다(' + v.doneKeepDays + '일 지난 것은 그대로 접힘)';
+    bU.onclick = async () => { try { await api('/api/ops/agents/dismiss', {undo: true}); loadAgents(false); } catch (e) { toast(e.message); } }; head.append(bU); }
   const bV = el('button', '', 'CLI 로 대조'); bV.onclick = () => loadAgents(true); head.append(bV);
   box.append(el('div', 'note', '띄워 둔 백그라운드 에이전트와 지금 열려 있는 대화형 세션입니다. 보기 전용 — 상태는 ~\\.claude 의 상태 파일에서 읽습니다.'), head);
   if (v.verify){
@@ -295,6 +297,11 @@ async function loadAgents(verify){
     for (const it of items){
       const c = el('div', 'card'), r = el('div', 'row');
       r.append(el('span', 'chip ' + (it.badge === 'up' ? 'ok' : it.badge === 'down' ? 'bad' : it.badge === 'warn' ? 'warn' : ''), it.label), el('span', 'name grow', it.name || it.shortSession || it.id), el('span', 'sub', '갱신 ' + (it.updatedAgo || '—')));
+      if (it.kind === 'background' && it.state === 'done' && !it.pid){       // 끝난 작업 — 목록에서 치우기(상태 파일은 그대로)
+        const bD = el('button', '', '치우기'); bD.title = '끝난 작업을 이 목록에서 뺍니다 — 위 「치운 것 되돌리기」로 다시 보입니다';
+        bD.onclick = async () => { try { await api('/api/ops/agents/dismiss', {id: it.id}); toast('치웠습니다'); loadAgents(false); } catch (e) { toast(e.message); } };
+        r.append(bD);
+      }
       c.append(r);
       if (it.cwd) c.append(el('div', 'sub', it.cwd));
       for (const [k, lbl] of [['intentShort', '하려는 일'], ['detailShort', '지금'], ['resultShort', '결과']]) if (it[k]) c.append(kv(lbl, it[k]));

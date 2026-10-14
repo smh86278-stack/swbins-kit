@@ -1092,6 +1092,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/hide':                       # 안 쓰는 것 숨기기 {"id", "hidden": true|false}
             err = set_hidden(str(body.get('id', '')), bool(body.get('hidden')))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'hidden': sorted(hidden_ids())})
+        if path == '/api/ops/agents/dismiss':         # 끝난 백그라운드 에이전트 치우기 {"id"} · 되돌리기 {"undo": true}
+            import ops
+            try:
+                return self._send(200, ops.agent_dismiss(body.get('id', ''), bool(body.get('undo'))))
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
         if path == '/api/schedule':                   # 예약 시각 바꾸기 {"id", "schedule": [...]} · 되돌리기 {"id", "reset": true}
             m = find_macro(body.get('id', ''))
             if not m or m['service']:

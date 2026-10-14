@@ -172,6 +172,37 @@ class HideUnused(unittest.TestCase):
         self.assertEqual(macrohub.hidden_ids(), set())
 
 
+class AgentDismiss(unittest.TestCase):
+    """/ops 에이전트 — 끝난 작업 「치우기」·「치운 것 되돌리기」(상태 파일은 건드리지 않고 목록 파일에만)."""
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+        import ops
+        self.ops = ops
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__('shutil').rmtree, tmp, True)
+        p = mock.patch.object(ops, 'AGENT_DISMISSED', os.path.join(tmp, 'sub', 'agents-dismissed.json'))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_dismiss_and_undo(self):
+        self.assertEqual(self.ops.agents_dismissed(), set())
+        self.assertEqual(self.ops.agent_dismiss('a1b2')['dismissed'], 1)
+        self.assertEqual(self.ops.agent_dismiss('c3-d4')['dismissed'], 2)
+        self.assertEqual(self.ops.agents_dismissed(), {'a1b2', 'c3-d4'})
+        with self.assertRaises(ValueError):
+            self.ops.agent_dismiss('../x')
+        self.assertEqual(self.ops.agent_dismiss(undo=True)['dismissed'], 0)
+        self.assertEqual(self.ops.agents_dismissed(), set())
+
+    def test_default_path_is_kit_data(self):
+        import kit
+        from unittest import mock
+        with mock.patch.object(self.ops, 'AGENT_DISMISSED', ''):
+            self.assertEqual(self.ops._dismissed_path(), os.path.join(kit.DATA, 'agents-dismissed.json'))
+
+
 class UiMode(unittest.TestCase):
     """화면 모드(자동·라이트·다크) — 허브가 기억한 값을 페이지 <html data-mode> 에 심는다."""
     def setUp(self):
