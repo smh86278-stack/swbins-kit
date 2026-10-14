@@ -80,5 +80,49 @@ class HubAudit(Base):
                                               {'type': 'schedule', 'every': '1h'}]), '09:30 mon-fri · 매 1h')
 
 
+class JobAudit(unittest.TestCase):
+    """지시 실행 기록 — 게이트웨이 audit_jobs 가 끝난 잡을 한 줄씩 덧붙이고(한 번만), /ops 가 읽어 CSV 로 내보낸다."""
+
+    def setUp(self):
+        import importlib.util
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        spec = importlib.util.spec_from_file_location('mail_gateway_audit', os.path.join(HUB, '..', '..', 'mail-gateway.py'))
+        self.mg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mg)
+        self.mg.JOBS = os.path.join(self.tmp, 'jobs')
+        os.makedirs(self.mg.JOBS)
+        self.mg.JOB_AUDIT_PATH = os.path.join(self.tmp, 'job-audit.jsonl')
+        self.mg.AUDITED_PATH = os.path.join(self.tmp, 'audited.json')
+        self.cfg = {'allowed_senders': ['me@company.test'], 'keyed_senders': {'me@gmail.test': 'word'}}
+
+    def job(self, jid, **kw):
+        j = dict({'id': jid, 'status': 'done', 'source': 'mail', 'mail_from': 'me@company.test', 'workdir': r'C:\w',
+                  'workdir_label': 'work', 'mode': 'write', 'prompt': '로그인 오류\n고쳐 줘', 'allowed_tools': ['Read', 'Edit'],
+                  'denials': [{'tool_name': 'Bash'}], 'cost_usd': 0.12, 'duration_ms': 45300,
+                  'created_at': '2026-10-14 09:00:00', 'finished_at': '2026-10-14 09:01:00'}, **kw)
+        self.mg.write_json(os.path.join(self.mg.JOBS, jid + '.json'), j)
+
+    def test_rows_once_and_csv(self):
+        import ops
+        self.job('20261014-090000-aaaa')
+        self.job('20261014-090100-bbbb', mail_from='me@gmail.test', status='error', error='정책', policy_denied=True)
+        self.job('20261014-090200-cccc', source='jira-mail', mail_from=None, jira_key='PROJ-1', status='running')
+        self.assertEqual(self.mg.audit_jobs(self.cfg), 2)                  # 돌고 있는 잡은 아직
+        self.assertEqual(self.mg.audit_jobs(self.cfg), 0)                  # 한 번만
+        self.job('20261014-090200-cccc', source='jira-mail', mail_from=None, jira_key='PROJ-1')
+        self.assertEqual(self.mg.audit_jobs(self.cfg), 1)
+        rows = ops.job_audit(10, path=self.mg.JOB_AUDIT_PATH)
+        self.assertEqual([r['via'] for r in rows], ['auto', 'phone', 'company'])   # 새것 먼저
+        first = rows[-1]
+        self.assertEqual((first['prompt'], first['denied'], first['duration_s']), ('로그인 오류 고쳐 줘', ['Bash'], 45.3))
+        self.assertTrue(rows[1]['policy_denied'])
+        self.assertEqual(len(ops.job_audit(10, 'proj-1', path=self.mg.JOB_AUDIT_PATH)), 1)   # 찾기
+        csv_text = ops.job_audit_csv(path=self.mg.JOB_AUDIT_PATH).decode('utf-8')
+        self.assertTrue(csv_text.startswith('\ufeff끝난 시각,'))            # 엑셀이 한글을 바로 읽게 BOM
+        self.assertIn('Read Edit', csv_text)
+        self.assertEqual(len(csv_text.strip().splitlines()), 4)              # 머리 + 3건
+
+
 if __name__ == '__main__':
     unittest.main()

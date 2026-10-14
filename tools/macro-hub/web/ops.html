@@ -82,7 +82,11 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
   <section id="agents"><h2>🧵 에이전트</h2><div id="agentBox"><div class="empty">준비 중</div></div></section>
   <section id="audit"><h2>📜 변경 이력</h2>
     <p class="note">서비스·예약 작업을 켜고 끈 것, 다시 띄우기·지금 실행, 예약 시각, 설정 변경(바뀐 갈래·키 이름만 — 값은 남기지 않음)을 누가(Windows 사용자)·어디서(화면 · 트레이 · 설정 프로그램)·언제 했는지. 덧붙이기만 하는 기록입니다.</p>
-    <div id="auditBox"><div class="empty">준비 중</div></div></section>
+    <div id="auditBox"><div class="empty">준비 중</div></div>
+    <h2 style="margin-top:22px">🧾 지시 실행 기록</h2>
+    <p class="note">메일·대화 화면·이슈 감시로 Claude 에게 맡긴 일 한 건마다 — 누가(보낸 주소 · 회사/폰)·어느 폴더·권한·허용 도구·거부된 도구·결과·비용·시간. 메일 게이트웨이가 끝난 일을 덧붙이기만 합니다(잡 파일이 지워져도 남음). 보안 심사·팀 보급 때 CSV 로 내보내세요.</p>
+    <div class="row" style="gap:8px;margin-bottom:8px"><input id="jaQ" placeholder="찾기 — 주소·폴더·이슈 키·도구·지시 글자" style="flex:1;min-width:0"><a id="jaCsv" class="chip" href="/api/ops/jobaudit.csv" download="지시실행기록.csv">⬇ CSV</a></div>
+    <div id="jobAuditBox"><div class="empty">준비 중</div></div></section>
 </main>
 <div id="toast"></div>
 <script src="/static/theme.js"></script>
@@ -285,8 +289,33 @@ async function loadAudit(){
   box.replaceChildren(c);
 }
 
+/* ---------- 지시 실행 기록 ---------- */
+const VIA = {company: '회사 메일', phone: '폰', auto: '자동', other: '기타'};
+const ST = {done: '완료', error: '오류', canceled: '취소'};
+async function loadJobAudit(){
+  const box = $('#jobAuditBox'), q = $('#jaQ').value.trim();
+  $('#jaCsv').href = '/api/ops/jobaudit.csv' + (q ? '?q=' + encodeURIComponent(q) : '');
+  let v; try { v = await api('/api/ops/jobaudit?limit=300' + (q ? '&q=' + encodeURIComponent(q) : '')); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  if (!v.items.length) { box.replaceChildren(el('div', 'empty', q ? '찾는 기록이 없습니다' : '아직 기록이 없습니다 — 메일 게이트웨이가 끝난 지시를 여기에 남깁니다')); return; }
+  const c = el('div', 'card');
+  for (const it of v.items){
+    const r = el('div', 'row'); r.style.flexWrap = 'wrap';
+    const who = (VIA[it.via] || it.via) + (it.from ? ' · ' + it.from : '');
+    const tools = it.tools && it.tools.length ? it.tools.join(' ') : '읽기 기본';
+    r.append(el('span', 'sub', it.finished || it.created), el('span', 'chip', (ST[it.status] || it.status) + (it.mode === 'write' ? ' · 수정' : '')),
+      el('span', 'name grow', (it.jira_key ? it.jira_key + ' ' : '') + (it.prompt || '')),
+      el('span', 'sub', who + ' · ' + (it.label || it.workdir) + (it.duration_s != null ? ' · ' + it.duration_s + '초' : '') + (it.cost_usd != null ? ' · $' + Number(it.cost_usd).toFixed(3) : '')));
+    const d = el('div', 'sub', '도구: ' + tools + (it.denied && it.denied.length ? ' · 거부됨: ' + it.denied.join(', ') : '') + (it.policy_denied ? ' · 폴더 정책으로 막음' : '') + (it.error ? ' · ' + it.error : ''));
+    d.style.cssText = 'flex-basis:100%;padding-left:2px';
+    r.append(d); c.append(r);
+  }
+  c.append(el('div', 'sub', '파일: ' + v.file + ' · 최근 ' + v.items.length + '건(CSV 는 전체)'));
+  box.replaceChildren(c);
+}
+$('#jaQ').oninput = () => { clearTimeout(loadJobAudit.t); loadJobAudit.t = setTimeout(loadJobAudit, 300); };
+
 /* ---------- 탭 ---------- */
-const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false), audit: loadAudit};
+const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false), audit: () => { loadAudit(); loadJobAudit(); }};
 function show(tab){
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === tab);
   for (const s of document.querySelectorAll('main section')) s.classList.toggle('on', s.id === tab);

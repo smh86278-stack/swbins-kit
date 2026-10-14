@@ -1017,6 +1017,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, ops.settings_status())
                 if what == 'agents':
                     return self._send(200, ops.agent_view(verify=q.get('verify', ['0'])[0] == '1'))
+                if what in ('jobaudit', 'jobaudit.csv'):   # 지시 실행 기록(감사) — 화면 · CSV 내려받기
+                    text = q.get('q', [''])[0]
+                    if what == 'jobaudit.csv':
+                        return self._send(200, ops.job_audit_csv(text), 'text/csv; charset=utf-8')
+                    try:
+                        limit = max(1, min(5000, int(q.get('limit', ['300'])[0])))
+                    except ValueError:
+                        limit = 300
+                    return self._send(200, {'items': ops.job_audit(limit, text), 'file': ops.JOB_AUDIT})
             except Exception as e:
                 return self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
             return self._send(404, {'error': 'no such ops view'})

@@ -455,6 +455,50 @@ def agent_state_label(it):
     return 'none', '' if st is None else str(st)
 
 
+# ---------------------------------------------------------------- 지시 실행 기록 (감사 — 메일 게이트웨이 audit_jobs 가 쓴다)
+
+JOB_AUDIT = os.path.join(ROOT, 'inbox', 'job-audit.jsonl')
+JOB_AUDIT_COLS = [('finished', '끝난 시각'), ('created', '받은 시각'), ('id', '잡'), ('source', '출처'), ('from', '보낸 사람'),
+                  ('via', '경로'), ('label', '폴더 키'), ('workdir', '작업 폴더'), ('mode', '권한'), ('status', '결과'),
+                  ('error', '오류'), ('tools', '허용 도구'), ('denied', '거부된 도구'), ('policy_denied', '정책으로 막음'),
+                  ('cost_usd', '비용($)'), ('duration_s', '걸린 시간(초)'), ('thread', '대화'), ('jira_key', '이슈'),
+                  ('retry_of', '다시 실행한 잡'), ('prompt', '지시(앞부분)')]
+
+
+def job_audit(limit=300, text='', path=None):
+    """지시 실행 기록 — 새것 먼저. text 가 있으면 어느 칸에든 그 글자가 든 줄만."""
+    rows = []
+    try:
+        with open(path or JOB_AUDIT, encoding='utf-8') as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict):
+                    rows.append(r)
+    except OSError:
+        pass
+    text = (text or '').strip().lower()
+    if text:
+        rows = [r for r in rows if text in json.dumps(r, ensure_ascii=False).lower()]
+    rows.reverse()
+    return rows[:limit] if limit else rows
+
+
+def job_audit_csv(text='', path=None) -> bytes:
+    """엑셀에서 바로 열리는 CSV(UTF-8 BOM) — 오래된 것부터."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([h for _k, h in JOB_AUDIT_COLS])
+    for r in reversed(job_audit(0, text, path)):
+        w.writerow([' '.join(map(str, v)) if isinstance(v, list) else ('' if v is None else v)
+                    for v in (r.get(k) for k, _h in JOB_AUDIT_COLS)])
+    return ('﻿' + buf.getvalue()).encode('utf-8')
+
+
 def agent_view(verify=False, board=None):
     """디스패치 보드 화면에 바로 쓰는 값.
 

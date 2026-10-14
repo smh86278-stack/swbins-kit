@@ -731,6 +731,50 @@ STOP_WORDS = {"멈춤", "그만", "stop"}
 RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
 ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
+JOB_AUDIT_PATH = os.path.join(INBOX, "job-audit.jsonl")   # 지시 실행 기록(감사) — 끝난 잡 한 건에 한 줄, 덧붙이기만
+AUDITED_PATH = os.path.join(INBOX, "audited.json")        # 기록에 넣은 잡 id(audit_jobs)
+AUDIT_FINAL = ("done", "error", "canceled")
+
+
+def audit_row(cfg: dict, job: dict) -> dict:
+    """지시 한 건의 감사 줄 — 누가(보낸 주소·회사/폰)·어느 폴더·권한·도구·거부된 것·결과·비용·시간."""
+    sender = (job.get("mail_from") or "").strip()
+    allowed = {a.lower() for a in cfg.get("allowed_senders") or []}
+    via = ("company" if sender.lower() in allowed else "phone" if keyed_word(cfg, sender) else "other") if sender else "auto"
+    ms = job.get("duration_ms")
+    return {
+        "finished": job.get("finished_at") or "", "created": job.get("created_at") or "", "id": job.get("id"),
+        "source": job.get("source") or "", "from": sender, "via": via,
+        "workdir": job.get("workdir") or "", "label": job.get("workdir_label") or "", "mode": job.get("mode") or "read",
+        "status": job.get("status"), "error": " ".join(str(job.get("error") or "").split())[:200],
+        "tools": list(job.get("allowed_tools") or []),          # 비면 워커의 읽기 전용 기본 목록
+        "denied": sorted({d.get("tool_name", "?") for d in job.get("denials") or [] if isinstance(d, dict)}),
+        "disallowed": list(job.get("disallowed_tools") or []), "policy_denied": bool(job.get("policy_denied")),
+        "cost_usd": job.get("cost_usd"), "duration_s": round(ms / 1000.0, 1) if isinstance(ms, (int, float)) else None,
+        "thread": job.get("thread"), "jira_key": job.get("jira_key") or "", "retry_of": job.get("retry_of") or "",
+        "prompt": " ".join(str(job.get("prompt") or "").split())[:120],
+    }
+
+
+def audit_jobs(cfg: dict) -> int:
+    """끝난 잡을 감사 기록(job-audit.jsonl)에 한 줄씩 덧붙인다. 워커가 오래된 잡 파일을 지우므로(keep_jobs)
+    잡 파일만으로는 기록이 남지 않는다. 처음 돌 때는 남아 있는 끝난 잡을 모두 넣는다."""
+    if not os.path.isdir(JOBS):
+        return 0
+    done = set(read_json(AUDITED_PATH) or [])
+    rows = [audit_row(cfg, j) for _p, j in iter_jobs()
+            if isinstance(j, dict) and j.get("id") and j["id"] not in done and j.get("status") in AUDIT_FINAL]
+    if not rows:
+        return 0
+    rows.sort(key=lambda r: (r["finished"], r["id"]))
+    with open(JOB_AUDIT_PATH, "a", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    done.update(r["id"] for r in rows)
+    write_json(AUDITED_PATH, sorted(done)[-5000:])        # id 가 시각으로 시작해 정렬 = 오래된 것부터
+    return len(rows)
+
+
 EARLY_STOP_PATH = os.path.join(INBOX, "early-stops.json")  # 지시보다 먼저 도착한 '멈춤' 이 가리키는 Message-ID → 받은 시각
 STOPPED_BEFORE_START = "멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다."
 
@@ -1937,6 +1981,10 @@ def main() -> int:
                 got = poll_once(cfg, pw) + poll_gmail(cfg, pw)
                 send_acks(cfg, pw)
                 sent = send_replies(cfg, pw)
+                try:
+                    audit_jobs(cfg)                    # 지시 실행 기록 — 실패해도 메일 운반은 멈추지 않는다
+                except Exception as e:
+                    log("실행 기록 실패 — %s" % e)
                 if time.time() - last_state >= 30 or got or sent:
                     set_state("idle", "감시 중 (태그 %s)" % cfg["tag"])
                     last_state = time.time()
