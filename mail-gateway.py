@@ -31,6 +31,7 @@
     python setup.py                    계정·비밀번호 설정 (저장소 맨 위 설정 마법사)
     python mail-gateway.py --setup     위와 같다(설정 마법사로 넘긴다)
     python mail-gateway.py --setup-gmail  폰 지시를 Gmail 에서 직접 읽기(Gmail 주소·앱 비밀번호 입력 창)
+    python mail-gateway.py --new-phone-word <주소>  그 폰 주소의 암호 단어를 새로 만들기(기한 keyed_word_days 를 오늘부터 다시 셈)
     python mail-gateway.py --test      연결만 확인
     python mail-gateway.py --seed      지금 있는 지시 메일을 실행하지 않고 '처리됨'으로만 기록 (처음 켤 때)
     python mail-gateway.py --once      한 번만 돌고 종료 (진단용)
@@ -113,6 +114,10 @@ DEFAULT_CFG = {
     # daily_cost_usd 는 전체, sender_daily_cost_usd 는 보낸 주소 하나당. 이미 돌고 있는 일·이어서 하기 '멈춤' 은 막지 않는다.
     "daily_cost_usd": 0,
     "sender_daily_cost_usd": 0,
+    # 폰 암호 단어 기한(일, 0 이면 없음) — keyed_set_at 의 그 주소 날짜부터 이 날수가 지나면 그 단어로 온 지시를 받지 않는다.
+    # 날짜는 'python mail-gateway.py --new-phone-word <주소>' 가 적는다(날짜를 모르는 단어는 기한 없음).
+    "keyed_word_days": 0,
+    "keyed_set_at": {},
     # 감시할 폴더. 사람이 읽는 이름으로 적으면 서버의 modified UTF-7 이름과 알아서 맞춘다.
     # 자기에게 보낸 메일을 메일 규칙이 딴 폴더로 옮기는 서버라면 그 폴더도 넣는다
     # (예: ["INBOX", "Inbox.내게쓴메일"] — 폴더 이름은 회사 메일 서버마다 다르다).
@@ -380,10 +385,32 @@ def split_subject_key(subject: str):
     return subject[:m.start()].rstrip(), m.group(1)
 
 
+def keyed_expires(cfg: dict, sender):
+    """암호 단어 기한(date) — keyed_word_days 가 0 이거나 그 주소의 만든 날(keyed_set_at)을 모르면 None(기한 없음)."""
+    try:
+        days = int(cfg.get("keyed_word_days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    made = {a.lower(): str(d) for a, d in (cfg.get("keyed_set_at") or {}).items()}.get((sender or "").lower())
+    if days <= 0 or not made:
+        return None
+    try:
+        return (datetime.strptime(made[:10], "%Y-%m-%d") + timedelta(days=days)).date()
+    except ValueError:
+        return None
+
+
+def keyed_expired(cfg: dict, sender, today=None) -> bool:
+    exp = keyed_expires(cfg, sender)
+    return bool(exp and (today or datetime.now().date()) > exp)
+
+
 def keyed_word(cfg: dict, sender):
-    """keyed_senders 에 있는 주소면 그 암호 단어, 아니면 None."""
+    """keyed_senders 에 있는 주소면 그 암호 단어, 아니면 None. 기한(keyed_word_days)이 지난 단어도 None —
+    'python mail-gateway.py --new-phone-word <주소>' 로 새로 만들 때까지 그 주소의 지시를 받지 않는다."""
     keyed = {a.lower(): str(k) for a, k in (cfg.get("keyed_senders") or {}).items() if k}
-    return keyed.get((sender or "").lower())
+    word = keyed.get((sender or "").lower())
+    return None if word and keyed_expired(cfg, sender) else word
 
 
 def key_sender_ok(cfg: dict, sender: str, key) -> bool:
@@ -1381,6 +1408,8 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         log("암호 단어로 확인한 발신자: %s%s" % (sender, " (스팸함에서 꺼냄)" if in_junk else ""))
                     else:
                         why = " (암호 단어가 없거나 틀림)" if sender in {a.lower() for a in (cfg.get("keyed_senders") or {})} else ""
+                        if why and keyed_expired(cfg, sender):
+                            why = " (암호 단어 기한 %s 지남 — python mail-gateway.py --new-phone-word %s)" % (keyed_expires(cfg, sender), sender)
                         log("허용되지 않은 발신자라 무시합니다: %s%s" % (sender, why))
                         processed.add(key)
                         continue
@@ -2086,8 +2115,41 @@ def cmd_test() -> int:
     return 0
 
 
+PHONE_WORD_CHARS = "abcdefghjkmnpqrstuvwxyz23456789"     # 폰 키보드로 옮겨 적기 쉽게 — 헷갈리는 l·o·0·1 은 뺐다
+
+
+def new_phone_word(addr: str, today=None) -> str:
+    """폰 주소의 암호 단어를 무작위 10글자로 새로 만들고 오늘 날짜(keyed_set_at)를 적는다 — 기한은 오늘부터 다시 센다.
+    keyed_senders 에 있는 주소만. 돌려주는 값: 새 단어(설정 파일 dispatch 갈래에 저장)."""
+    import secrets
+    addr = (addr or "").strip().lower()
+    full = kit._read(kit.F_CONFIG)
+    d = dict(full.get("dispatch") or {})
+    ks = {a.lower(): w for a, w in (d.get("keyed_senders") or {}).items()}
+    if addr not in ks:
+        raise ValueError("keyed_senders 에 없는 주소입니다: %s" % (addr or "(없음)"))
+    word = "".join(secrets.choice(PHONE_WORD_CHARS) for _ in range(10))
+    ks[addr] = word
+    made = {a.lower(): v for a, v in (d.get("keyed_set_at") or {}).items()}
+    made[addr] = (today or datetime.now().date()).isoformat()
+    d.update(keyed_senders=ks, keyed_set_at=made)
+    full["dispatch"] = d
+    kit.save_config(full)
+    return word
+
+
 def main() -> int:
     args = sys.argv[1:]
+    if "--new-phone-word" in args:
+        i = args.index("--new-phone-word") + 1
+        try:
+            word = new_phone_word(args[i] if i < len(args) else "")
+        except ValueError as e:
+            print(e)
+            return 1
+        print("새 암호 단어: %s" % word)
+        print("폰 페이지 「설정」의 암호 단어도 이 단어로 바꾸세요 — 옛 단어로 보낸 지시는 이제 받지 않습니다.")
+        return 0
     if "--setup-gmail" in args:
         return cmd_setup_gmail()
     if "--setup" in args or "--setup-gui" in args:

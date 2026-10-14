@@ -29,6 +29,38 @@ CFG = {
 }
 
 
+class KeyedWordExpiry(unittest.TestCase):
+    """폰 암호 단어 기한 — keyed_word_days 가 지나면 그 단어로 온 지시를 받지 않는다(날짜를 모르면 기한 없음)."""
+
+    def test_expiry(self):
+        today = mg.datetime.now().date()
+        cfg = dict(CFG, keyed_senders={"me@phone.test": "word123"}, keyed_word_days=30)
+        self.assertTrue(mg.key_sender_ok(cfg, "me@phone.test", "word123"))                  # 만든 날 모름 → 기한 없음
+        fresh = dict(cfg, keyed_set_at={"Me@phone.test": (today - mg.timedelta(days=30)).isoformat()})
+        self.assertTrue(mg.key_sender_ok(fresh, "me@phone.test", "word123"))                 # 30일째 — 오늘까지는 된다
+        old = dict(cfg, keyed_set_at={"me@phone.test": (today - mg.timedelta(days=31)).isoformat()})
+        self.assertFalse(mg.key_sender_ok(old, "me@phone.test", "word123"))
+        self.assertTrue(mg.keyed_expired(old, "me@phone.test"))
+        self.assertTrue(mg.key_sender_ok(dict(old, keyed_word_days=0), "me@phone.test", "word123"))   # 0 이면 기한 없음
+
+    def test_new_phone_word(self):
+        import shutil
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        for name, val in (("F_CONFIG", os.path.join(tmp, "config.local.json")), ("DATA", os.path.join(tmp, "data"))):
+            self.addCleanup(setattr, mg.kit, name, getattr(mg.kit, name))
+            setattr(mg.kit, name, val)
+        with open(mg.kit.F_CONFIG, "w", encoding="utf-8") as f:
+            json.dump({"dispatch": {"keyed_senders": {"Me@phone.test": "old-word"}, "keyed_word_days": 30}}, f)
+        word = mg.new_phone_word("me@phone.test", today=mg.datetime(2026, 10, 14).date())
+        self.assertRegex(word, r"^[a-km-np-z2-9]{10}$")
+        d = mg.kit._read(mg.kit.F_CONFIG)["dispatch"]
+        self.assertEqual((d["keyed_senders"], d["keyed_set_at"], d["keyed_word_days"]),
+                         ({"me@phone.test": word}, {"me@phone.test": "2026-10-14"}, 30))
+        with self.assertRaises(ValueError):
+            mg.new_phone_word("other@phone.test")
+
+
 class CostLimit(unittest.TestCase):
     """하루 비용 한도 — 오늘 받은 지시의 cost_usd 합(잡 파일 + 지시 실행 기록)이 한도에 닿으면 새 지시를 막는다."""
 

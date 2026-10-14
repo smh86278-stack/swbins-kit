@@ -447,6 +447,7 @@ config 의 &quot;market_notice&quot; 갈래.
 <p>쓰기 태그로 온 새 지시는 실행 전에 확인 메일을 보내고 &#x27;1&#x27;(확인) 답장을 기다린다. confirm_ttl_min 분 안에 답이 없으면 취소.</p>
 <p>Claude 가 선택지로 물은 뒤 이 시간(시간 단위)이 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통 — 대화 앱·폰의 &#x27;답할 것&#x27; 에서 빠진다. 늦게 답해도 대화는 그대로 이어진다(번호 답도). 처음 켤 때·일주일 넘은 질문은 알림 없이 닫는다. 0 이면 끈다.</p>
 <p>하루 비용 한도(달러, 0 이면 끔) — 오늘 받은 지시들의 비용(cost_usd) 합이 넘으면 새 지시는 실행하지 않고 이유만 회신한다. daily_cost_usd 는 전체, sender_daily_cost_usd 는 보낸 주소 하나당. &#x27;멈춤&#x27; 은 막지 않는다. 팀이 같이 쓸 때 사람마다 한도를 두려면 sender_daily_cost_usd.</p>
+<p>폰 암호 단어 기한(일, 0 이면 없음) — 만든 날(keyed_set_at, &#x27;python mail-gateway.py --new-phone-word 주소&#x27; 가 적는다)부터 이 날수가 지나면 그 단어로 온 지시를 받지 않는다. 보안 점검에서 &#x27;만료 없는 비밀값&#x27; 을 피하려면 90 정도. 날짜를 모르는 단어는 기한 없음 — 한 번 새로 만들면 시작된다.</p>
 <p>true 면 서버가 붙인 Authentication-Results 에 dkim=pass 또는 spf=pass 가 있는 메일만 받는다(From 위조 방지). 켜기 전에 게이트웨이 로그의 &#x27;[인증]&#x27; 줄로 서버가 그 헤더를 붙이는지 확인할 것.</p>
 <p>폰(개인 메일) 지시 받기 — allowed_senders 밖의 개인 주소(iCloud·Gmail 등)라도 그 주소의 암호 단어 &#x27;[k:단어]&#x27; 가 제목 끝이나 본문 한 줄로 붙어 있으면 받는다(폰 페이지가 설정의 암호 단어를 자동으로 붙인다). 예: {&quot;me@example.com&quot;: &quot;아무도모를단어&quot;}. 이 주소에서 온 지시는 회신·접수 신호(읽음 &#x27;1&#x27;)를 그 주소로도 보내고, 사진 첨부(최대 5장)는 inbox\attachments 에 저장해 Claude 가 읽게 한다. 폰 대화방의 &#x27;멈춤&#x27; 은 돌고 있는 일을 끊는다.</p>
 <p>회사 모드 — 이 폴더(와 그 아래)에서 돈 일의 결과·질문은 회사 메일함에만 둔다. 폰(keyed_senders·Gmail 개인 주소)으로는 내용 없는 알림(끝남 · 질문 N개 — 회사 메일함에서 보기)만 가고, 거기에 번호로 답장하면 그대로 이어진다. null 이면 default_workdir 하나(기본으로 켜짐), [] 면 끈다. %USERPROFILE% 같은 환경 변수를 써도 된다.</p>
@@ -487,6 +488,7 @@ config 의 &quot;market_notice&quot; 갈래.
     python setup.py                    계정·비밀번호 설정 (저장소 맨 위 설정 마법사)
     python mail-gateway.py --setup     위와 같다(설정 마법사로 넘긴다)
     python mail-gateway.py --setup-gmail  폰 지시를 Gmail 에서 직접 읽기(Gmail 주소·앱 비밀번호 입력 창)
+    python mail-gateway.py --new-phone-word &lt;주소&gt;  그 폰 주소의 암호 단어를 새로 만들기(기한 keyed_word_days 를 오늘부터 다시 셈)
     python mail-gateway.py --test      연결만 확인
     python mail-gateway.py --seed      지금 있는 지시 메일을 실행하지 않고 &#x27;처리됨&#x27;으로만 기록 (처음 켤 때)
     python mail-gateway.py --once      한 번만 돌고 종료 (진단용)
@@ -534,6 +536,8 @@ config 의 &quot;market_notice&quot; 갈래.
     &quot;ask_ttl_hours&quot;: 24,
     &quot;daily_cost_usd&quot;: 0,
     &quot;sender_daily_cost_usd&quot;: 0,
+    &quot;keyed_word_days&quot;: 90,
+    &quot;keyed_set_at&quot;: {},
     &quot;require_auth_results&quot;: false,
     &quot;keyed_senders&quot;: {},
     &quot;company_workdirs&quot;: null,
