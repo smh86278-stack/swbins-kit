@@ -29,6 +29,84 @@ CFG = {
 }
 
 
+class ExpireAsks(unittest.TestCase):
+    """질문 답 기한 — 선택지로 물은 뒤 하루가 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통."""
+
+    ASK = {"question": "어느 쪽으로 할까요?", "multi": False, "options": ["A", "B"]}
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        for name in ("JOBS", "ASK_CLOSED_PATH", "smtp_connect"):
+            self.addCleanup(setattr, mg, name, getattr(mg, name))
+        mg.JOBS = os.path.join(self.tmp, "jobs")
+        os.makedirs(mg.JOBS)
+        mg.ASK_CLOSED_PATH = os.path.join(self.tmp, "ask-closed.json")
+        self.sent = []
+        test = self
+
+        class FakeSmtp:
+            def send_message(self, msg, to_addrs=None):
+                test.sent.append((msg, to_addrs))
+
+            def quit(self):
+                pass
+        mg.smtp_connect = lambda cfg, pw: FakeSmtp()
+        self.cfg = dict(CFG, user="me@company.test", reply_mode="smtp", keyed_senders={"me@gmail.test": "word"},
+                        company_workdirs=[])
+        self.now = mg.time.time()
+
+    def job(self, jid, hours=25, thread=7, ask=ASK, **kw):
+        fin = mg.datetime.fromtimestamp(self.now - hours * 3600).strftime("%Y-%m-%d %H:%M:%S")
+        j = dict({"id": jid, "source": "mail", "mail_from": "me@company.test", "mail_msgid": "<%s@x>" % jid,
+                  "workdir": r"C:\work-dir", "mail_subject": "#c 일", "status": "done", "replied": True,
+                  "thread": thread, "ask": ask, "created_at": fin, "finished_at": fin}, **kw)
+        mg.write_json(os.path.join(mg.JOBS, jid + ".json"), j)
+
+    def started(self):
+        mg.write_json(mg.ASK_CLOSED_PATH, [])                 # 처음 켜는 것이 아닌 상태
+
+    def test_first_run_closes_silently(self):
+        self.job("20261012-090000-aaaa")
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(self.sent, [])
+        self.assertEqual(mg.read_json(mg.ASK_CLOSED_PATH), ["20261012-090000-aaaa"])
+
+    def test_closes_once_after_deadline(self):
+        self.started()
+        self.job("20261013-090000-bbbb", hours=23)
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)              # 아직 하루가 안 됐다
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now + 2 * 3600), 1)
+        msg, _to = self.sent[0]
+        self.assertEqual((msg["X-Dispatch-Kind"], msg["X-Dispatch-Ask"], msg["In-Reply-To"]), ("closed", None, "<20261013-090000-bbbb@x>"))
+        self.assertIn("[T7]", msg.get_content())
+        self.assertNotIn("어느 쪽", msg.get_content())                                  # 질문 글자는 넣지 않는다
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now + 9 * 3600), 0)   # 한 번만
+
+    def test_answered_or_no_question_is_left_alone(self):
+        self.started()
+        self.job("20261013-080000-cccc")                                               # 질문했고
+        self.job("20261013-100000-dddd", ask=None, hours=24.5)                         # 답이 와서 같은 대화에 다음 잡이 있다
+        self.job("20261013-090000-eeee", thread=8, ask=None)                           # 질문 없는 회신
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)
+        self.assertIn("20261013-080000-cccc", mg.read_json(mg.ASK_CLOSED_PATH))
+
+    def test_off_and_too_old(self):
+        self.started()
+        self.job("20261001-090000-ffff", hours=24 * 8)                                 # 일주일 넘은 것은 알림 없이
+        self.assertEqual(mg.expire_asks(dict(self.cfg, ask_ttl_hours=0), "pw", now=self.now), 0)
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(self.sent, [])
+
+    def test_company_job_from_phone(self):
+        """회사 모드 폴더 일을 폰이 시켰으면 본 알림은 회사 주소로만, 폰엔 같은 알림(내용 없음)을 따로."""
+        self.started()
+        self.job("20261013-090000-gggg", mail_from="me@gmail.test")
+        mg.expire_asks(dict(self.cfg, company_workdirs=[r"C:\work-dir"]), "pw", now=self.now)
+        self.assertEqual([to for _m, to in self.sent], [["me@company.test"], ["me@gmail.test"]])
+
+
 class StripReplyPrefix(unittest.TestCase):
     def test_nested(self):
         self.assertEqual(mg.strip_reply_prefix("Re: Re: #c 확인"), "#c 확인")

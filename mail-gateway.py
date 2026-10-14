@@ -106,6 +106,9 @@ DEFAULT_CFG = {
     # 열리는 사고를 막으려는 것이다. 이어받기(이전 잡에 대한 답장)는 이미 확인된 대화라 묻지 않는다.
     "confirm_write": True,
     "confirm_ttl_min": 60,
+    # 선택지(```choices)로 물은 뒤 이 시간(시간 단위)이 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통 — 대화 앱·폰의
+    # '답할 것' 에서 빠진다. 늦게 답해도 그 대화는 그대로 이어진다(번호 답도). 0 이면 끈다.
+    "ask_ttl_hours": 24,
     # 감시할 폴더. 사람이 읽는 이름으로 적으면 서버의 modified UTF-7 이름과 알아서 맞춘다.
     # 자기에게 보낸 메일을 메일 규칙이 딴 폴더로 옮기는 서버라면 그 폴더도 넣는다
     # (예: ["INBOX", "Inbox.내게쓴메일"] — 폴더 이름은 회사 메일 서버마다 다르다).
@@ -731,6 +734,8 @@ STOP_WORDS = {"멈춤", "그만", "stop"}
 RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
 ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
+ASK_CLOSED_PATH = os.path.join(INBOX, "ask-closed.json")  # 답 기한이 지나 닫은(또는 답이 와서 볼 일 없는) 질문의 잡 id(expire_asks)
+ASK_CLOSE_SILENT_DAYS = 7                                 # 이보다 오래된 질문은 알림 없이 닫는다(처음 켤 때 몰아 보내지 않게)
 JOB_AUDIT_PATH = os.path.join(INBOX, "job-audit.jsonl")   # 지시 실행 기록(감사) — 끝난 잡 한 건에 한 줄, 덧붙이기만
 AUDITED_PATH = os.path.join(INBOX, "audited.json")        # 기록에 넣은 잡 id(audit_jobs)
 AUDIT_FINAL = ("done", "error", "canceled")
@@ -1697,6 +1702,100 @@ def send_acks(cfg: dict, password: str) -> int:
     return n
 
 
+def build_ask_closed_message(cfg: dict, job: dict, hours: float):
+    """답 기한이 지나 질문을 닫았다는 알림 — 회신과 같은 제목·스레드. 선택지가 없는 봇 메일(kind 'closed')이라
+    대화 앱·폰 페이지의 '답할 것' 에서 빠진다. 질문 글자는 넣지 않는다(회사 모드 폴더 일도 폰에 그대로 보내도 되게)."""
+    msg = EmailMessage()
+    msg["Subject"] = reply_subject(job)
+    msg["From"] = cfg["user"]
+    personal = phone_to(cfg, job.get("mail_from")) and is_company_job(cfg, job)
+    msg["To"] = cfg["user"] if personal else (job.get("mail_from") or cfg["user"])
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
+    msg["Message-ID"] = email.utils.make_msgid(domain=domain)
+    if job.get("mail_msgid"):
+        msg["In-Reply-To"] = job["mail_msgid"]
+        msg["References"] = job["mail_msgid"]
+    text = ("답을 기다리던 질문을 %s이 지나 닫았습니다.\n"
+            "늦게 답해도 이 대화는 그대로 이어집니다(번호로 답해도 됩니다). 더 할 일이 없으면 그냥 두세요." % ttl_text(int(hours * 60)))
+    footer = "[T%s]" % job["thread"] if job.get("thread") else ""
+    mark_bot(msg, job, kind="closed")
+    msg.set_content(text + ("\n\n--\n" + footer if footer else ""))
+    return msg
+
+
+def expire_asks(cfg: dict, password: str, now: float = None) -> int:
+    """선택지로 물은 회신에 ask_ttl_hours 가 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통(실패해도 다시 안 보낸다).
+    답이 이미 와서 같은 대화에 다음 잡이 있으면 조용히 닫힌 것으로만 적는다. 기록은 ask-closed.json — 잡 파일은 워커 것."""
+    hours = float(cfg.get("ask_ttl_hours", 24) or 0)
+    if hours <= 0 or not os.path.isdir(JOBS):
+        return 0
+    now = time.time() if now is None else now
+    got = read_json(ASK_CLOSED_PATH)
+    seed = got is None                                    # 처음 켤 때 — 지금 기한이 지난 질문은 알림 없이 닫힌 것으로만
+    closed = set(got or [])
+    before, latest, due = len(closed), {}, []
+    for _path, j in iter_jobs():                          # 새것부터 — 대화마다 처음 보는 잡이 가장 최근 것
+        if not isinstance(j, dict) or not j.get("id"):
+            continue
+        th = j.get("thread")
+        newest = th is None or th not in latest
+        if th is not None and newest:
+            latest[th] = j["id"]
+        if j["id"] in closed or j.get("source") not in MAIL_SOURCES or j.get("status") != "done" \
+                or not j.get("replied") or not j.get("ask"):
+            continue
+        if not newest:                                    # 이미 답이 와서 이어졌다
+            closed.add(j["id"])
+            continue
+        try:
+            fin = datetime.strptime(j.get("finished_at") or "", "%Y-%m-%d %H:%M:%S").timestamp()
+        except ValueError:
+            continue
+        if seed or now - fin >= ASK_CLOSE_SILENT_DAYS * 86400:
+            closed.add(j["id"])                           # 너무 오래된 질문까지 몰아서 알리지 않는다
+        elif now - fin >= hours * 3600:
+            due.append(j)
+    n = 0
+    if due:
+        mode = "append" if cfg.get("reply_mode") == "append" else "smtp"
+        conn, phone_smtp = None, []
+        try:
+            for job in due:
+                closed.add(job["id"])
+                try:
+                    msg = build_ask_closed_message(cfg, job, hours)
+                    if conn is None:
+                        conn = imap_connect(cfg, password) if mode == "append" else smtp_connect(cfg, password)
+                    company = is_company_job(cfg, job)
+                    if mode == "append":
+                        conn.append("INBOX", "", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+                        copy_to_phone(cfg, password, job, msg, phone_smtp)
+                    elif company and phone_to(cfg, job.get("mail_from")):
+                        conn.send_message(msg, to_addrs=[cfg["user"]])
+                        copy_to_phone(cfg, password, job, msg, phone_smtp)
+                    else:
+                        conn.send_message(msg, to_addrs=smtp_rcpts(cfg, job))
+                    n += 1
+                    log("질문 닫음 %s (답 기한 %s 지남)" % (job["id"], ttl_text(int(hours * 60))))
+                except Exception as e:
+                    log("질문 닫기 알림 실패 %s — %s" % (job["id"], e))
+        finally:
+            if conn is not None:
+                try:
+                    conn.logout() if mode == "append" else conn.quit()
+                except Exception:
+                    pass
+            for s in phone_smtp:
+                try:
+                    s.quit()
+                except Exception:
+                    pass
+    if len(closed) != before:
+        write_json(ASK_CLOSED_PATH, sorted(closed)[-2000:])
+    return n
+
+
 def send_replies(cfg: dict, password: str) -> int:
     if not os.path.isdir(JOBS):
         return 0
@@ -1982,7 +2081,11 @@ def main() -> int:
                 send_acks(cfg, pw)
                 sent = send_replies(cfg, pw)
                 try:
-                    audit_jobs(cfg)                    # 지시 실행 기록 — 실패해도 메일 운반은 멈추지 않는다
+                    expire_asks(cfg, pw)               # 답 없는 질문 닫기 — 실패해도 메일 운반은 멈추지 않는다
+                except Exception as e:
+                    log("질문 닫기 실패 — %s" % e)
+                try:
+                    audit_jobs(cfg)                   # 지시 실행 기록 — 실패해도 메일 운반은 멈추지 않는다
                 except Exception as e:
                     log("실행 기록 실패 — %s" % e)
                 if time.time() - last_state >= 30 or got or sent:

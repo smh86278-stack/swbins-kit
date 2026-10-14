@@ -149,6 +149,8 @@
     "_confirm_설명": "쓰기 태그로 온 새 지시는 실행 전에 확인 메일을 보내고 '1'(확인) 답장을 기다린다. confirm_ttl_min 분 안에 답이 없으면 취소.",
     "confirm_write": true,
     "confirm_ttl_min": 60,
+    "_ask_ttl_설명": "Claude 가 선택지로 물은 뒤 이 시간(시간 단위)이 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통 — 대화 앱·폰의 '답할 것' 에서 빠진다. 늦게 답해도 대화는 그대로 이어진다(번호 답도). 처음 켤 때·일주일 넘은 질문은 알림 없이 닫는다. 0 이면 끈다.",
+    "ask_ttl_hours": 24,
     "_require_auth_results_설명": "true 면 서버가 붙인 Authentication-Results 에 dkim=pass 또는 spf=pass 가 있는 메일만 받는다(From 위조 방지). 켜기 전에 게이트웨이 로그의 '[인증]' 줄로 서버가 그 헤더를 붙이는지 확인할 것.",
     "require_auth_results": false,
     "_keyed_senders_설명": "폰(개인 메일) 지시 받기 — allowed_senders 밖의 개인 주소(iCloud·Gmail 등)라도 그 주소의 암호 단어 '[k:단어]' 가 제목 끝이나 본문 한 줄로 붙어 있으면 받는다(폰 페이지가 설정의 암호 단어를 자동으로 붙인다). 예: {\"me@example.com\": \"아무도모를단어\"}. 이 주소에서 온 지시는 회신·접수 신호(읽음 '1')를 그 주소로도 보내고, 사진 첨부(최대 5장)는 inbox\\attachments 에 저장해 Claude 가 읽게 한다. 폰 대화방의 '멈춤' 은 돌고 있는 일을 끊는다.",
