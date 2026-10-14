@@ -194,6 +194,10 @@ def run(ctx):
 | 🧵 에이전트 | Claude Code 디스패치 보드 보기 전용 |
 | 📜 변경 이력 | 켜고 끄기·다시 띄우기·지금 실행·예약 시각·매크로 만듦·설정 변경(바뀐 갈래·키 이름만, 값 없음)을 누가(Windows 사용자)·어디서(화면 주소·트레이·설정 프로그램)·언제 — `kit.audit()` → `data.local\audit.jsonl`(2MB 넘으면 `.1` 로 한 번), `GET /api/audit`. 보안 심사용 |
 
+**안 쓰는 것 숨기기** — 허브 첫 화면 매크로 카드·'만들기 · 녹화 · 도구' 줄, `/ops` 예약 작업·상시 서비스 카드에 「숨기기」.
+지우지도 끄지도 않고 목록에서만 접는다 — 목록 아래 「▸ 숨긴 것 N개 보기」를 펼쳐 「다시 보이기」. **켜져 있는 것은 숨길 수 없다**(먼저 끈다).
+숨긴 id 는 `state.local.json` 의 `hidden`(도구는 `tool:new`·`tool:record`·`tool:desktop`), 숨김·다시 보임은 📜 변경 이력에 남는다. `GET /api/hidden` · `POST /api/hide {id, hidden}`.
+
 API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,settings,agents}` · `POST /api/service`.
 **허브를 `127.0.0.1` 밖으로 열지 말 것** — 프로그램을 띄우는 화면이다.
 

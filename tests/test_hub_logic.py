@@ -143,6 +143,35 @@ class RunOnceTimeout(unittest.TestCase):
         self.assertIn('done', ctx.lines)
 
 
+class HideUnused(unittest.TestCase):
+    """안 쓰는 것 숨기기 — 꺼진 매크로·도구 칸만, 지우지도 끄지도 않고 state 'hidden' 에만 적는다(변경 이력에 남김)."""
+
+    def setUp(self):
+        from unittest import mock
+        self.log = []
+        macros = {'job_x': {'id': 'job_x', 'name': 'x'}, 'svc_y': {'id': 'svc_y', 'name': 'y'}}
+        for name, val in (('state', {'enabled': {'svc_y': True}}), ('save_state', lambda: None), ('broadcast', lambda *a: None),
+                          ('audit', lambda action, target='', detail='': self.log.append((action, target))),
+                          ('find_macro', macros.get)):
+            p = mock.patch.object(macrohub, name, val)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_hide_and_show(self):
+        self.assertIsNone(macrohub.set_hidden('job_x', True))
+        self.assertIsNone(macrohub.set_hidden('tool:record', True))         # 허브 화면 도구 칸도 숨길 수 있다
+        self.assertEqual(macrohub.hidden_ids(), {'job_x', 'tool:record'})
+        self.assertIsNone(macrohub.set_hidden('job_x', True))               # 같은 값은 다시 적지 않는다
+        self.assertIsNone(macrohub.set_hidden('job_x', False))
+        self.assertEqual(macrohub.state['hidden'], ['tool:record'])
+        self.assertEqual(self.log, [('숨김', 'job_x'), ('숨김', 'tool:record'), ('다시 보임', 'job_x')])
+
+    def test_enabled_or_unknown_cannot_hide(self):
+        self.assertIn('켜져 있는', macrohub.set_hidden('svc_y', True))
+        self.assertEqual(macrohub.set_hidden('nope', True), '없는 매크로입니다')
+        self.assertEqual(macrohub.hidden_ids(), set())
+
+
 class UiMode(unittest.TestCase):
     """화면 모드(자동·라이트·다크) — 허브가 기억한 값을 페이지 <html data-mode> 에 심는다."""
     def setUp(self):

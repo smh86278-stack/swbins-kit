@@ -25,6 +25,12 @@ h2{font-size:14px;margin:4px 0 6px;font-weight:800;display:flex;align-items:cent
 #schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:6px;align-items:start}
 #schedList>.card,#svcList>.card{margin-bottom:0}
 #schedList>.empty,#svcList>.empty{grid-column:1/-1}
+/* 안 쓰는 것 숨기기 — 접힌 줄은 칸 전체 폭, 펼친 숨긴 카드는 흐리게 */
+.card.dim{opacity:.55}
+.card button.ghost{border:0;background:transparent;box-shadow:none;color:var(--muted);padding:3px 4px;font-size:12px}
+.card button.ghost:hover{color:var(--accent)}
+.hidebar{grid-column:1/-1;border:1px dashed var(--line);background:transparent;box-shadow:none;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
+.hidebar:hover{color:var(--accent)}
 .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .name{font-weight:800}
 .grow{flex:1;min-width:0}
@@ -125,13 +131,35 @@ function sw(checked, onchange){
   l.append(i, el('span')); return l;
 }
 
+/* ---------- 안 쓰는 것 숨기기 — 꺼져 있는 것만, 지우지도 끄지도 않고 목록에서 접는다(허브 화면과 같은 기억) ---------- */
+let showHidden = {}; try { showHidden = JSON.parse(localStorage.getItem('hub.showHidden') || '{}') || {}; } catch (e) {}
+const isHid = m => m.hidden && !m.enabled;
+function hideBtn(m, on, reload){
+  const b = el('button', 'ghost', on ? '숨기기' : '다시 보이기');
+  b.title = on ? '안 쓰면 목록에서 숨깁니다 — 지우거나 끄지 않습니다' : '목록에 다시 보이게 합니다';
+  b.onclick = async () => { try { await api('/api/hide', {id: m.id, hidden: on}); toast(m.name + (on ? ' — 숨겼습니다 (아래 「숨긴 것」에서 다시 보이기)' : ' — 다시 보입니다')); reload(); } catch (e) { toast(e.message); } };
+  return b;
+}
+function withHidden(box, list, key, card, reload){
+  const vis = list.filter(m => !isHid(m)), hid = list.filter(isHid);
+  vis.forEach(m => box.append(card(m, false)));
+  if (!hid.length) return;
+  const bar = el('button', 'hidebar', showHidden[key] ? '▾ 숨긴 것 접기' : '▸ 숨긴 것 ' + hid.length + '개 보기');
+  bar.onclick = () => { showHidden[key] = !showHidden[key]; try { localStorage.setItem('hub.showHidden', JSON.stringify(showHidden)); } catch (e) {} reload(); };
+  box.append(bar);
+  if (showHidden[key]) hid.forEach(m => box.append(card(m, true)));
+}
+
 /* ---------- 예약 작업 ---------- */
 async function loadSched(){
   let list; try { list = await api('/api/schedule'); } catch (e) { $('#schedList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
   const box = $('#schedList'); box.replaceChildren();
   if (!list.length) box.append(el('div', 'empty', '예약 트리거가 있는 매크로가 없습니다.'));
-  for (const m of list){
-    const c = el('div', 'card'), r = el('div', 'row');
+  withHidden(box, list, 'sched', schedCard, loadSched);
+}
+function schedCard(m, dim){
+  {
+    const c = el('div', 'card' + (dim ? ' dim' : '')), r = el('div', 'row');
     r.append(sw(m.enabled, async (on, i) => { try { await api('/api/service', {id: m.id, action: on ? 'start' : 'stop'}); toast(m.name + (on ? ' — 예약을 켰습니다' : ' — 예약을 껐습니다')); loadSched(); } catch (e) { i.checked = !on; toast(e.message); } }));
     const info = el('div', 'grow');
     const t = el('div'); t.append(el('span', 'name', m.name), ' ', el('span', 'sub', m.schedule.map(schedText).join(', ')));
@@ -143,8 +171,10 @@ async function loadSched(){
     const bRun = el('button', '', '지금 실행'); bRun.onclick = async () => { try { const j = await api('/api/service', {id: m.id, action: 'run'}); toast(j.message); setTimeout(loadSched, 800); } catch (e) { toast(e.message); } };
     const bEdit = el('button', '', '시각 바꾸기');
     r.append(info, bRun, bEdit);
+    if (dim) r.append(hideBtn(m, false, loadSched));
+    else if (!m.enabled && !m.running) r.append(hideBtn(m, true, loadSched));
     c.append(r, editor(m, bEdit));
-    box.append(c);
+    return c;
   }
 }
 function editor(m, opener){
@@ -181,8 +211,11 @@ function editor(m, opener){
 async function loadSvc(){
   let list; try { list = await api('/api/macros'); } catch (e) { $('#svcList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
   const box = $('#svcList'); box.replaceChildren();
-  for (const m of list.filter(x => x.service)){
-    const c = el('div', 'card'), r = el('div', 'row');
+  withHidden(box, list.filter(x => x.service), 'svc', svcCard, loadSvc);
+}
+function svcCard(m, dim){
+  {
+    const c = el('div', 'card' + (dim ? ' dim' : '')), r = el('div', 'row');
     r.append(sw(m.enabled, async (on, i) => {
       if (!on && !confirm(m.name + ' 을(를) 멈출까요? 허브가 지키던 프로그램도 같이 꺼집니다.')) { i.checked = true; return; }
       try { const j = await api('/api/service', {id: m.id, action: on ? 'start' : 'stop'}); toast(j.message); setTimeout(loadSvc, 1500); } catch (e) { i.checked = !on; toast(e.message); } }));
@@ -194,7 +227,9 @@ async function loadSvc(){
     const bRe = el('button', '', '다시 띄우기'); bRe.onclick = async () => { try { const j = await api('/api/service', {id: m.id, action: 'restart'}); toast(j.message); setTimeout(loadSvc, 1500); } catch (e) { toast(e.message); } };
     r.append(info);
     if (m.owns && m.owns.length) r.append(bRe);
-    c.append(r); box.append(c);
+    if (dim) r.append(hideBtn(m, false, loadSvc));
+    else if (!m.enabled && !m.running) r.append(hideBtn(m, true, loadSvc));
+    c.append(r); return c;
   }
 }
 

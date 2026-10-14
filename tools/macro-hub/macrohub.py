@@ -392,6 +392,32 @@ def set_enabled(mid, on):
     return True
 
 
+HIDE_TOOLS = ('tool:new', 'tool:record', 'tool:desktop')   # 허브 화면 '만들기 · 녹화 · 도구' 칸 — 매크로처럼 숨길 수 있다
+
+
+def hidden_ids():
+    return set(state.get('hidden') or [])
+
+
+def set_hidden(mid, on):
+    """안 쓰는 매크로·도구를 허브·운영 화면 목록에서 숨기기/다시 보이기 — 지우지도 끄지도 않는다(state.local.json 'hidden').
+    켜져 있는(돌고 있는) 상시·예약 매크로는 숨기지 않는다 — 돌면서 안 보이면 헷갈린다. 돌려주는 값: 오류 문구 또는 None"""
+    m = find_macro(mid) if mid not in HIDE_TOOLS else None
+    if not m and mid not in HIDE_TOOLS:
+        return '없는 매크로입니다'
+    if on and m and state['enabled'].get(mid):
+        return '켜져 있는 것은 숨길 수 없습니다 — 먼저 끄세요'
+    ids = hidden_ids()
+    if on == (mid in ids):
+        return None
+    ids = ids | {mid} if on else ids - {mid}
+    state['hidden'] = sorted(ids)
+    save_state()
+    audit('숨김' if on else '다시 보임', mid)
+    broadcast({'t': 'macros'})
+    return None
+
+
 def service_action(mid, action):
     """운영 화면·트레이의 시작/중지/재시작/지금 실행. 돌려주는 값: (ok, 안내 문구)"""
     m = find_macro(mid)
@@ -546,7 +572,7 @@ def schedule_view():
         nexts = [n for n in (next_fire(m, t) for t in sched) if n] if enabled else []
         v = macro_view(m)
         out.append({'id': m['id'], 'name': m['name'], 'desc': m['desc'], 'enabled': enabled,
-                    'running': v['running'], 'last': v['last'], 'schedule': sched,
+                    'running': v['running'], 'last': v['last'], 'schedule': sched, 'hidden': v['hidden'],
                     'default': [t for t in meta if t.get('type') == 'schedule'],
                     'overridden': m['id'] in (state.get('schedule') or {}),
                     'next': int(min(nexts) * 1000) if nexts else None})
@@ -905,7 +931,7 @@ def macro_view(m):
     r = running_run(m['id'])
     last = next((x for x in reversed(runs) if x.macro == m['id'] and not x.tool and x.status != 'running'), None)
     d = {k: v for k, v in m.items() if k != 'path'}
-    d.update(enabled=bool(state['enabled'].get(m['id'])), running=r.id if r else None,
+    d.update(enabled=bool(state['enabled'].get(m['id'])), running=r.id if r else None, hidden=m['id'] in hidden_ids(),
              last=last.summary() if last else LAST_RUN.get(m['id']),
              motion=r.motion if r else d['motion'], motion_until=r.motion_until if r else None,
              motion_default=r.motion_default if r else None)
@@ -1029,6 +1055,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
             return self._send(404, {'error': 'no such ops view'})
+        if u.path == '/api/hidden':                   # 숨긴 매크로·도구 id 목록(도구 칸은 이걸로 그린다)
+            return self._send(200, {'hidden': sorted(hidden_ids())})
         if u.path == '/api/pet':
             return self._send(200, {'on': bool(pet_pids()), 'installed': pet_installed(), 'remembered': bool(state.get('pet'))})
         if u.path == '/api/info':
@@ -1061,6 +1089,9 @@ class Handler(BaseHTTPRequestHandler):
             if not set_enabled(body.get('id', ''), bool(body.get('enabled'))):
                 return self._send(404, {'error': 'no such macro'})
             return self._send(200, {'ok': True})
+        if path == '/api/hide':                       # 안 쓰는 것 숨기기 {"id", "hidden": true|false}
+            err = set_hidden(str(body.get('id', '')), bool(body.get('hidden')))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'hidden': sorted(hidden_ids())})
         if path == '/api/schedule':                   # 예약 시각 바꾸기 {"id", "schedule": [...]} · 되돌리기 {"id", "reset": true}
             m = find_macro(body.get('id', ''))
             if not m or m['service']:

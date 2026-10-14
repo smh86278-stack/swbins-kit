@@ -75,6 +75,13 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .switch input:checked{background:var(--ok)}.switch input:checked::after{transform:translateX(14px)}
 .tool{margin-bottom:10px}.tool:last-child{margin-bottom:0}
 .tool .lbl{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+/* 안 쓰는 것 숨기기 — 지우지도 끄지도 않고 목록에서만 접는다(다시 보이기 가능) */
+.card.dim,.tool.dim{opacity:.55}
+.hidebtn{border:0!important;background:transparent!important;box-shadow:none!important;color:var(--muted);padding:0 4px!important;font-size:11.5px;font-weight:600}
+.hidebtn:hover{color:var(--accent)}
+.tool .lbl .hidebtn{float:right}
+.hidebar{display:block;width:100%;margin-top:6px;border:1px dashed var(--line)!important;background:transparent!important;box-shadow:none!important;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
+.hidebar:hover{color:var(--accent)}
 .runs{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--solid)}
 .run{display:flex;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12.5px;transition:background .15s}
 .run:last-child{border-bottom:0}.run:hover{background:var(--soft)}.run.sel{background:var(--accentsoft)}
@@ -139,18 +146,18 @@ pre#log .ln{animation:fadein .35s ease both}
   <div class="stack">
     <section class="box">
       <h2>만들기 · 녹화 · 도구</h2>
-      <div class="tool">
+      <div class="tool" data-hide="tool:new">
         <div class="lbl">새 매크로 (템플릿)</div>
         <div class="row"><input id="newName" type="text" placeholder="이름" class="grow">
           <select id="newKind"><option value="web">웹</option><option value="desktop">데스크톱</option></select>
           <button id="newBtn">만들기</button></div>
       </div>
-      <div class="tool">
+      <div class="tool" data-hide="tool:record">
         <div class="lbl">웹 녹화 — Chrome 이 열리고, 조작한 내용이 매크로로 저장됩니다 (창을 닫으면 저장)</div>
         <div class="row"><input id="recUrl" type="text" placeholder="https://…" class="grow"><input id="recName" type="text" placeholder="저장 이름" style="width:130px">
           <button id="recBtn">녹화 시작</button></div>
       </div>
-      <div class="tool">
+      <div class="tool" data-hide="tool:desktop">
         <div class="lbl">데스크톱 — 요소 찍기: 누르고 3초 안에 찍을 컨트롤에 마우스를 올립니다</div>
         <div class="row"><button id="pickBtn">요소 찍기</button>
           <input id="inspTitle" type="text" placeholder="창 제목 일부(비우면 창 목록)" class="grow"><button id="inspBtn">구조 보기</button></div>
@@ -158,6 +165,7 @@ pre#log .ln{animation:fadein .35s ease both}
       <div class="tool">
         <div class="row"><button id="openLocal">내 매크로 폴더 열기</button><button id="openEx">예제 폴더 열기</button></div>
       </div>
+      <button class="hidebar" id="toolHidBar" hidden></button>
     </section>
     <section class="box">
       <h2>실행 기록 · 로그</h2>
@@ -194,11 +202,35 @@ function trgText(t){
 }
 
 /* ---------- 매크로 카드 ---------- */
+// 숨긴 것(안 쓰는 매크로·도구) — 켜져 있으면 숨김이어도 보인다. '숨긴 것 보기' 펼침은 이 브라우저에만 기억
+let showHidden={};try{showHidden=JSON.parse(localStorage.getItem('hub.showHidden')||'{}')||{}}catch(e){}
+function toggleHidden(k){showHidden[k]=!showHidden[k];try{localStorage.setItem('hub.showHidden',JSON.stringify(showHidden))}catch(e){}}
+const isHid=m=>m.hidden&&!m.enabled;
+async function setHidden(id,name,on){
+  try{await api('/api/hide',{id,hidden:on});toast(on?name+' — 숨겼습니다 (아래 「숨긴 것」에서 다시 보이기)':name+' — 다시 보입니다')}catch(e){toast(e.message)}
+}
+function hideBtn(id,name,on){
+  const b=el('button','hidebtn',on?'숨기기':'다시 보이기');b.title=on?'안 쓰면 목록에서 숨깁니다 — 지우거나 끄지 않습니다':'목록에 다시 보이게 합니다';
+  b.onclick=e=>{e.stopPropagation();setHidden(id,name,on).then(()=>{if(id.startsWith('tool:'))loadToolHidden()})};return b;
+}
+function hiddenBar(n,key,redraw){
+  const b=el('button','hidebar',(showHidden[key]?'▾ 숨긴 것 접기':'▸ 숨긴 것 '+n+'개 보기'));
+  b.onclick=()=>{toggleHidden(key);redraw()};return b;
+}
 function drawMacros(){
   const box=$('#macros');box.replaceChildren();
   if(!macros.length){box.append(el('div','empty','매크로가 없습니다. 오른쪽에서 새로 만들거나 녹화하세요.'));return}
-  macros.forEach((m,idx)=>{
-    const c=el('div','card'+(firstDraw?' rise':'')+(m.running?' live':''));c.style.setProperty('--i',idx);
+  const vis=macros.filter(m=>!isHid(m)),hid=macros.filter(isHid);
+  if(!vis.length)box.append(el('div','empty','보이는 매크로가 없습니다 — 아래 「숨긴 것」을 펼쳐 다시 보이게 하세요.'));
+  vis.forEach((m,idx)=>box.append(macroCard(m,idx,false)));
+  if(hid.length){
+    box.append(hiddenBar(hid.length,'macros',drawMacros));
+    if(showHidden.macros)hid.forEach((m,idx)=>box.append(macroCard(m,idx,true)));
+  }
+  firstDraw=false;
+}
+function macroCard(m,idx,dim){
+    const c=el('div','card'+(firstDraw?' rise':'')+(m.running?' live':'')+(dim?' dim':''));c.style.setProperty('--i',idx);
     const top=el('div','row'),title=el('div','grow');
     title.append(el('span','name',m.name),' ');
     if(m.target)title.append(el('span','badge',m.target==='web'?'웹':'데스크톱'),' ');
@@ -228,10 +260,27 @@ function drawMacros(){
       cb.onchange=()=>api('/api/enable',{id:m.id,enabled:cb.checked}).then(()=>toast(cb.checked?(m.service?'상시 실행을 켰습니다':'자동 실행을 켰습니다'):'껐습니다')).catch(e=>toast(e.message));
       lab.append(cb,m.service?'상시 실행':'자동 실행');act.append(lab);
     }
-    act.classList.add('act');top.append(act);box.append(c);
-  });
-  firstDraw=false;
+    if(dim)act.append(hideBtn(m.id,m.name,false));
+    else if(!m.enabled&&!m.running)act.append(hideBtn(m.id,m.name,true));
+    act.classList.add('act');top.append(act);return c;
 }
+/* 만들기 · 녹화 · 도구 칸 — 안 쓰는 줄 숨기기 */
+let toolHidden=new Set();
+async function loadToolHidden(){try{toolHidden=new Set((await api('/api/hidden')).hidden||[])}catch(e){}drawTools()}
+function drawTools(){
+  const rows=[...document.querySelectorAll('.tool[data-hide]')];let n=0;
+  for(const t of rows){
+    const id=t.dataset.hide,hid=toolHidden.has(id),lbl=t.querySelector('.lbl');
+    if(hid)n++;
+    t.hidden=hid&&!showHidden.tools;t.classList.toggle('dim',hid);
+    lbl.querySelector('.hidebtn')?.remove();
+    lbl.prepend(hideBtn(id,lbl.firstChild.textContent.split(' — ')[0].trim(),!hid));
+  }
+  const bar=$('#toolHidBar');bar.hidden=!n;
+  bar.textContent=showHidden.tools?'▾ 숨긴 도구 접기':'▸ 숨긴 도구 '+n+'개 보기';
+  bar.onclick=()=>{toggleHidden('tools');drawTools()};
+}
+loadToolHidden();
 // 성공한 예약 실행(메일 분류는 10분마다)은 한 줄로 접는다 — 펼침 여부는 이 브라우저에만 기억
 let showRoutine=false;try{showRoutine=localStorage.getItem('runs.routine')==='1'}catch(e){}
 const routine=r=>r.trigger==='schedule'&&r.status==='ok'&&r.id!==sel;
