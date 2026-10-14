@@ -42,6 +42,9 @@ class KeyedWordExpiry(unittest.TestCase):
         self.assertFalse(mg.key_sender_ok(old, "me@phone.test", "word123"))
         self.assertTrue(mg.keyed_expired(old, "me@phone.test"))
         self.assertTrue(mg.key_sender_ok(dict(old, keyed_word_days=0), "me@phone.test", "word123"))   # 0 이면 기한 없음
+        # 기한이 지나도 '폰 주소' 는 폰 주소 — 회사 모드 회신이 개인 주소로 나가지 않게(phone_to 는 그대로)
+        self.assertEqual(mg.keyed_word(old, "me@phone.test"), "word123")
+        self.assertEqual(mg.phone_to(old, "me@phone.test"), "me@phone.test")
 
     def test_new_phone_word(self):
         import shutil
@@ -142,6 +145,36 @@ class ExpireAsks(unittest.TestCase):
         self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)
         self.assertEqual(self.sent, [])
         self.assertEqual(mg.read_json(mg.ASK_CLOSED_PATH), ["20261012-090000-aaaa"])
+
+    def test_first_run_keeps_young_questions_and_records(self):
+        """처음 켤 때 아직 기한 전인 질문은 닫지 않고(기한이 되면 알림), 닫을 게 없어도 기록 파일을 써 '처음' 이 끝난다."""
+        self.job("20261014-090000-young", hours=2)
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(mg.read_json(mg.ASK_CLOSED_PATH), [])
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now + 23 * 3600), 1)   # 기한이 지나면 알린다
+
+    def test_broken_connection_does_not_lose_the_rest(self):
+        """알림 하나가 끊긴 연결로 실패하면 다음 건은 새로 연결해 보낸다."""
+        self.started()
+        self.job("20261013-090000-one", thread=1)
+        self.job("20261013-090100-two", thread=2)
+        test, made = self, []
+
+        class Flaky:
+            def __init__(self):
+                self.dead = not made
+                made.append(self)
+
+            def send_message(self, msg, to_addrs=None):
+                if self.dead:
+                    raise OSError("연결 끊김")
+                test.sent.append((msg, to_addrs))
+
+            def quit(self):
+                pass
+        mg.smtp_connect = lambda cfg, pw: Flaky()
+        self.assertEqual(mg.expire_asks(self.cfg, "pw", now=self.now), 1)
+        self.assertEqual(len(made), 2)
 
     def test_closes_once_after_deadline(self):
         self.started()

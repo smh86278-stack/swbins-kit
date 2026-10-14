@@ -406,15 +406,17 @@ def keyed_expired(cfg: dict, sender, today=None) -> bool:
 
 
 def keyed_word(cfg: dict, sender):
-    """keyed_senders 에 있는 주소면 그 암호 단어, 아니면 None. 기한(keyed_word_days)이 지난 단어도 None —
-    'python mail-gateway.py --new-phone-word <주소>' 로 새로 만들 때까지 그 주소의 지시를 받지 않는다."""
+    """keyed_senders 에 있는 주소면 그 암호 단어, 아니면 None. '이 주소가 폰인가' 를 가리는 데도 쓰이므로(phone_to ·
+    회사 모드 회신) 기한은 여기서 보지 않는다 — 기한이 지나도 폰 주소는 폰 주소다. 받을지는 key_sender_ok 가 정한다."""
     keyed = {a.lower(): str(k) for a, k in (cfg.get("keyed_senders") or {}).items() if k}
-    word = keyed.get((sender or "").lower())
-    return None if word and keyed_expired(cfg, sender) else word
+    return keyed.get((sender or "").lower())
 
 
 def key_sender_ok(cfg: dict, sender: str, key) -> bool:
-    """keyed_senders 에 있는 주소이고 암호 단어가 맞으면 True (시간차 비교를 막으려고 compare_digest)."""
+    """keyed_senders 에 있는 주소이고 암호 단어가 맞고 기한(keyed_word_days)이 안 지났으면 True (시간차 비교를 막으려고
+    compare_digest). 기한이 지나면 'python mail-gateway.py --new-phone-word <주소>' 로 새로 만들 때까지 받지 않는다."""
+    if keyed_expired(cfg, sender):
+        return False
     want = keyed_word(cfg, sender)
     return bool(want and key and hmac.compare_digest(key.encode("utf-8"), want.encode("utf-8")))
 
@@ -1843,9 +1845,11 @@ def expire_asks(cfg: dict, password: str, now: float = None) -> int:
             fin = datetime.strptime(j.get("finished_at") or "", "%Y-%m-%d %H:%M:%S").timestamp()
         except ValueError:
             continue
+        if now - fin < hours * 3600:
+            continue                                      # 아직 기한 전 — 처음 켤 때도 그대로 두어 기한이 되면 알린다
         if seed or now - fin >= ASK_CLOSE_SILENT_DAYS * 86400:
-            closed.add(j["id"])                           # 너무 오래된 질문까지 몰아서 알리지 않는다
-        elif now - fin >= hours * 3600:
+            closed.add(j["id"])                           # 처음 켤 때 이미 기한이 지난 것·너무 오래된 것은 몰아서 알리지 않는다
+        else:
             due.append(j)
     n = 0
     if due:
@@ -1871,6 +1875,12 @@ def expire_asks(cfg: dict, password: str, now: float = None) -> int:
                     log("질문 닫음 %s (답 기한 %s 지남)" % (job["id"], ttl_text(int(hours * 60))))
                 except Exception as e:
                     log("질문 닫기 알림 실패 %s — %s" % (job["id"], e))
+                    if conn is not None:                  # 끊긴 연결일 수 있다 — 다음 건은 새로 연결(남은 알림까지 잃지 않게)
+                        try:
+                            conn.logout() if mode == "append" else conn.quit()
+                        except Exception:
+                            pass
+                        conn = None
         finally:
             if conn is not None:
                 try:
@@ -1882,7 +1892,7 @@ def expire_asks(cfg: dict, password: str, now: float = None) -> int:
                     s.quit()
                 except Exception:
                     pass
-    if len(closed) != before:
+    if seed or len(closed) != before:                     # 처음엔 비어 있어도 적는다 — 그래야 다음부터 '처음' 이 아니다
         write_json(ASK_CLOSED_PATH, sorted(closed)[-2000:])
     return n
 

@@ -297,7 +297,7 @@ async function loadAgents(verify){
     for (const it of items){
       const c = el('div', 'card'), r = el('div', 'row');
       r.append(el('span', 'chip ' + (it.badge === 'up' ? 'ok' : it.badge === 'down' ? 'bad' : it.badge === 'warn' ? 'warn' : ''), it.label), el('span', 'name grow', it.name || it.shortSession || it.id), el('span', 'sub', '갱신 ' + (it.updatedAgo || '—')));
-      if (it.kind === 'background' && it.state === 'done' && !it.pid){       // 끝난 작업 — 목록에서 치우기(상태 파일은 그대로)
+      if (it.kind === 'background' && it.state === 'done' && !it.alive){     // 끝난 작업 — 목록에서 치우기(워커가 살아 있으면 서버가 안 숨기니 단추도 안 보임)
         const bD = el('button', '', '치우기'); bD.title = '끝난 작업을 이 목록에서 뺍니다 — 위 「치운 것 되돌리기」로 다시 보입니다';
         bD.onclick = async () => { try { await api('/api/ops/agents/dismiss', {id: it.id}); toast('치웠습니다'); loadAgents(false); } catch (e) { toast(e.message); } };
         r.append(bD);

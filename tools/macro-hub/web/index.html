@@ -80,6 +80,7 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .hidebtn{border:0!important;background:transparent!important;box-shadow:none!important;color:var(--muted);padding:0 4px!important;font-size:11.5px;font-weight:600}
 .hidebtn:hover{color:var(--accent)}
 .tool .lbl .hidebtn{float:right}
+.hidebar[hidden]{display:none}
 .hidebar{display:block;width:100%;margin-top:6px;border:1px dashed var(--line)!important;background:transparent!important;box-shadow:none!important;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
 .hidebar:hover{color:var(--accent)}
 .runs{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--solid)}
@@ -211,7 +212,7 @@ async function setHidden(id,name,on){
 }
 function hideBtn(id,name,on){
   const b=el('button','hidebtn',on?'숨기기':'다시 보이기');b.title=on?'안 쓰면 목록에서 숨깁니다 — 지우거나 끄지 않습니다':'목록에 다시 보이게 합니다';
-  b.onclick=e=>{e.stopPropagation();setHidden(id,name,on).then(()=>{if(id.startsWith('tool:'))loadToolHidden()})};return b;
+  b.onclick=e=>{e.stopPropagation();setHidden(id,name,on).then(()=>{if(/^(tool|nav):/.test(id))loadToolHidden()})};return b;
 }
 function hiddenBar(n,key,redraw){
   const b=el('button','hidebar',(showHidden[key]?'▾ 숨긴 것 접기':'▸ 숨긴 것 '+n+'개 보기'));

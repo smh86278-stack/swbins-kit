@@ -1180,6 +1180,12 @@ class Runner:
                 continue
             if hours * 3600 <= age < ASK_CLOSE_SILENT_DAYS * 86400:
                 out.append(j)
+        flag = os.path.join(self.root, "ask-seeded.json")
+        if not os.path.exists(flag):                      # 처음 켤 때(이 기능이 생기기 전 질문들) — 알림 없이 닫힌 것으로만
+            for j in out:
+                self.update_job(j["id"], ask_closed=True)
+            self.C.write_json(flag, {"at": now_text(), "closed": [j["id"] for j in out]})
+            return hours, []
         return hours, out
 
     def send_out(self, cfg, pw=None):

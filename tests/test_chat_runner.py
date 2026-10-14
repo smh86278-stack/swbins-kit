@@ -515,6 +515,12 @@ class RunnerTest(unittest.TestCase):
         self.r.write_job(dict(base, id="20261013-04-d", thread=3, mail_msgid="<d@x>", finished_at=ago(5)))    # 아직
         self.r.write_job(dict(base, id="20261001-05-e", thread=4, mail_msgid="<e@x>", finished_at=ago(24 * 9)))  # 너무 오래됨
         cfg, _ = chat.load_cfg()
+        # 처음 켤 때 — 이미 기한이 지난 질문은 알림 없이 닫힌 것으로만(업데이트 직후 몰아 보내지 않게)
+        self.r.send_out(cfg)
+        self.assertEqual(self.replies("closed"), [])
+        self.assertTrue(self.r.read_job("20261013-01-a").get("ask_closed"))
+        # 그 뒤로는 기한이 지나면 알린다
+        self.r.update_job("20261013-01-a", ask_closed=False)
         self.r.send_out(cfg)
         closed = self.replies("closed")
         self.assertEqual([m["In-Reply-To"] for m in closed], ["<a@x>"])
