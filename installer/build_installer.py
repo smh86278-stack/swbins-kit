@@ -42,7 +42,11 @@ SKIP_PKG = re.compile(r'^(playwright|greenlet|pyee|pyinstaller|PyInstaller|_pyin
 
 
 def log(*a):
-    print(*a, flush=True)
+    try:
+        print(*a, flush=True)
+    except UnicodeEncodeError:                    # 한글 윈도우 콘솔(cp949)에 없는 글자(⚠ 등) — 못 찍는 글자만 바꿔 찍는다
+        enc = getattr(sys.stdout, 'encoding', None) or 'utf-8'
+        print(*(str(x).encode(enc, 'replace').decode(enc) for x in a), flush=True)
 
 
 def version():
