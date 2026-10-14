@@ -65,7 +65,7 @@ BROWSER_CDP = "http://127.0.0.1:9333"   # 로그인 창(이 포트로 연다)이
 # 거부 목록은 밖으로 내보내는 명령(앞부분 일치라 python -c 같은 우회까지 막지는 못한다). rtk 훅이 'rtk <명령>' 으로 바꿔 쓰므로 둘 다.
 # 스킬이 curl 로 Jira REST 를 부르면 설정 run_jira_allow_net 으로 거부 목록을 뺀다.
 # Skill·Agent — 스킬이 다음 스킬로 이어 가거나 하위 에이전트에 조사를 맡길 수 있게
-JIRA_PROMPT_RE = re.compile(r"^/jira\s+([A-Z][A-Z0-9]+-\d+)\s*$")
+JIRA_PROMPT_RE = re.compile(r"^/jira\s+([A-Z][A-Z0-9_]*-\d+)\s*$")   # 키트 게이트웨이 ISSUE_KEY_RE·입력칸과 같은 이슈 키 모양
 SKILL_RE = re.compile(r"^[A-Za-z0-9][\w.-]{0,63}$")
 JIRA_TOOLS = ["Read", "Write", "Bash", "Glob", "Grep", "Edit", "Skill", "Agent",
               "mcp__jira__jira_get_issue", "mcp__jira__jira_search", "mcp__jira__jira_get_transitions"]
@@ -126,7 +126,7 @@ def jira_key_of(prompt, cfg):
         return mj.group(1)
     cmd = str(cfg.get("issue_command") or "").strip()
     if cmd and cmd != "/jira" and re.fullmatch(r"/[\w.-]{1,64}", cmd):
-        m = re.match(r"^%s\s+([A-Z][A-Z0-9]+-\d+)\s*$" % re.escape(cmd), prompt or "")
+        m = re.match(r"^%s\s+([A-Z][A-Z0-9_]*-\d+)\s*$" % re.escape(cmd), prompt or "")
         return m.group(1) if m else None
     return None
 

@@ -350,6 +350,28 @@ def folders_info():
             "company": d.get("company_workdirs")}
 
 
+def has_vars(path):
+    return "%" in path or path.startswith("~")
+
+
+def parse_kit_dirs(text):
+    """'키=폴더' 줄들 → {키: 폴더}. chat_runner.parse_dirs 와 같은 규칙이지만 키트 설정답게 %USERPROFILE%·~ 를 풀어서
+    있는지 보고, 저장은 적힌 그대로 한다(키트 게이트웨이가 kit.expand 로 푼다)."""
+    out = {}
+    for line in str(text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        k, sep, v = line.partition("=")
+        k, v = k.strip().lstrip("@"), v.strip()
+        if not sep or not re.fullmatch(r"\w{1,32}", k) or not v:
+            raise ValueError("작업 폴더 목록은 한 줄에 '키=폴더' 로 적어 주세요: %s" % line)
+        if not os.path.isdir(expand(v)):
+            raise ValueError("작업 폴더가 없습니다: %s" % v)
+        out[k] = v if has_vars(v) else os.path.abspath(v)
+    return out
+
+
 def save_gateway_folders(data):
     """키트 설정(config.local.json)의 dispatch.default_workdir · workdir_keys 를 고친다(다른 키는 그대로) —
     게이트웨이는 폴링마다 설정을 다시 읽어 바로 따른다.
@@ -360,13 +382,14 @@ def save_gateway_folders(data):
     wd = str(data.get("workdir") or "").strip()
     if not wd or not os.path.isdir(expand(wd)):
         raise ValueError("기본 폴더가 없습니다: %s" % (wd or "(비어 있음)"))
-    dirs = chat_runner.parse_dirs(data.get("dirs"))
+    dirs = parse_kit_dirs(data.get("dirs"))
     with open(KIT_CFG, "rb") as f:
         raw = f.read()
     full = json.loads(raw.decode("utf-8-sig"))
     before = json.loads(json.dumps(full))
     d = dict(kit_dispatch(full))
-    old, new = d.get("default_workdir") or KIT_DEFAULT_WORKDIR, os.path.abspath(expand(wd))
+    # %USERPROFILE%·~ 로 적었으면 그대로 둔다(키트 설정은 PC 를 옮겨도 통하게 — 게이트웨이가 kit.expand 로 푼다)
+    old, new = d.get("default_workdir") or KIT_DEFAULT_WORKDIR, (wd if has_vars(wd) else os.path.abspath(wd))
     same = lambda a, b: os.path.normcase(expand(a)) == os.path.normcase(expand(b))
     note = ""
     if not same(old, new) and d.get("company_workdirs") is None:

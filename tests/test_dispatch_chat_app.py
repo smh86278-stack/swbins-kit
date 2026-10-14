@@ -10,10 +10,12 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools", "dispatch-chat"))
 import chat  # noqa: E402
+import chat_runner as runner  # noqa: E402
 
 
 def ev(typ, content, ts="2026-10-12T01:00:10.000Z", **kw):
@@ -193,6 +195,17 @@ class LocalMarks(unittest.TestCase):
             chat.save_gateway_folders({"workdir": os.path.join(self.tmp, "없는폴더"), "dirs": ""})
         with self.assertRaises(ValueError):
             chat.save_gateway_folders({"workdir": main, "dirs": "잘못된 줄"})
+        # %USERPROFILE%·~ 로 적은 폴더 — 풀어서 있는지 보고, 저장은 적힌 그대로(키트 게이트웨이가 kit.expand 로 푼다)
+        with mock.patch.dict(os.environ, {"KITTEST_HOME": self.tmp}):
+            r = chat.save_gateway_folders({"workdir": "%KITTEST_HOME%\\main", "dirs": "web=%KITTEST_HOME%\\web"})
+            d = chat.read_json(chat.KIT_CFG)["dispatch"]
+            self.assertEqual((d["default_workdir"], d["workdir_keys"]), ("%KITTEST_HOME%\\main", {"web": "%KITTEST_HOME%\\web"}))
+            self.assertEqual(r["workdir"], main)                              # 화면엔 푼 경로
+
+    def test_issue_key_with_underscore(self):
+        """직접 실행도 입력칸·키트 게이트웨이와 같은 이슈 키 모양(밑줄 · 한 글자 프로젝트)을 이슈 지시로 알아본다."""
+        self.assertEqual(runner.jira_key_of("/jira AB_C-7", {}), "AB_C-7")
+        self.assertEqual(runner.jira_key_of("/issue X-7", {"issue_command": "/issue"}), "X-7")
 
     def test_clear_all(self):
         """🧹 전체 지우기 — 끝난 대화만 목록에서 빠지고, 일하는 중인 대화는 남고, 새 글이 오면 다시 보이고, 되돌릴 수 있다."""
