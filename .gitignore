@@ -10,6 +10,8 @@ config.local.json
 *.local.json
 secrets.local.json
 state.local.json
+# 대화 앱의 회사 값(견본은 tools/dispatch-chat/company.example.json)
+tools/dispatch-chat/company.json
 *.local.key
 *.pem
 *.env

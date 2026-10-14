@@ -1,0 +1,15 @@
+{
+  "_": "회사 값 — 이 파일을 company.json 으로 복사해 채우면 설정 화면이 그 값으로 시작하고, build.py 가 exe 에 같이 묶는다. 없어도 된다(설정 화면에서 넣는다).",
+  "imap_host": "mail.example.com",
+  "imap_port": 993,
+  "smtp_host": "mail.example.com",
+  "smtp_port": 587,
+  "jira_prefix": "PROJ-",
+  "jira_url": "https://jira.example.com",
+  "jira_watch_exclude_account": "",
+  "jira_watch_exclude_linked": "",
+  "support_email": "",
+  "presets": [
+    ["^example\\.com$", "mail.example.com", 993, "mail.example.com", 587, "회사 메일 — 평소 메일 비밀번호."]
+  ]
+}
