@@ -460,7 +460,7 @@ def agent_state_label(it):
 JOB_AUDIT = os.path.join(ROOT, 'inbox', 'job-audit.jsonl')
 JOB_AUDIT_COLS = [('finished', '끝난 시각'), ('created', '받은 시각'), ('id', '잡'), ('source', '출처'), ('from', '보낸 사람'),
                   ('via', '경로'), ('label', '폴더 키'), ('workdir', '작업 폴더'), ('mode', '권한'), ('status', '결과'),
-                  ('error', '오류'), ('tools', '허용 도구'), ('denied', '거부된 도구'), ('policy_denied', '정책으로 막음'),
+                  ('error', '오류'), ('tools', '허용 도구'), ('denied', '거부된 도구'), ('policy_denied', '정책·한도로 막음'),
                   ('cost_usd', '비용($)'), ('duration_s', '걸린 시간(초)'), ('thread', '대화'), ('jira_key', '이슈'),
                   ('retry_of', '다시 실행한 잡'), ('prompt', '지시(앞부분)')]
 

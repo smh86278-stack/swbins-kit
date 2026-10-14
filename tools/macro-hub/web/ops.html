@@ -305,7 +305,7 @@ async function loadJobAudit(){
     r.append(el('span', 'sub', it.finished || it.created), el('span', 'chip', (ST[it.status] || it.status) + (it.mode === 'write' ? ' · 수정' : '')),
       el('span', 'name grow', (it.jira_key ? it.jira_key + ' ' : '') + (it.prompt || '')),
       el('span', 'sub', who + ' · ' + (it.label || it.workdir) + (it.duration_s != null ? ' · ' + it.duration_s + '초' : '') + (it.cost_usd != null ? ' · $' + Number(it.cost_usd).toFixed(3) : '')));
-    const d = el('div', 'sub', '도구: ' + tools + (it.denied && it.denied.length ? ' · 거부됨: ' + it.denied.join(', ') : '') + (it.policy_denied ? ' · 폴더 정책으로 막음' : '') + (it.error ? ' · ' + it.error : ''));
+    const d = el('div', 'sub', '도구: ' + tools + (it.denied && it.denied.length ? ' · 거부됨: ' + it.denied.join(', ') : '') + (it.policy_denied ? ' · 정책·비용 한도로 막음' : '') + (it.error ? ' · ' + it.error : ''));
     d.style.cssText = 'flex-basis:100%;padding-left:2px';
     r.append(d); c.append(r);
   }

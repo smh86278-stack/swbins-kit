@@ -29,6 +29,44 @@ CFG = {
 }
 
 
+class CostLimit(unittest.TestCase):
+    """하루 비용 한도 — 오늘 받은 지시의 cost_usd 합(잡 파일 + 지시 실행 기록)이 한도에 닿으면 새 지시를 막는다."""
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        for name in ("JOBS", "JOB_AUDIT_PATH"):
+            self.addCleanup(setattr, mg, name, getattr(mg, name))
+        mg.JOBS = os.path.join(self.tmp, "jobs")
+        os.makedirs(mg.JOBS)
+        mg.JOB_AUDIT_PATH = os.path.join(self.tmp, "job-audit.jsonl")
+        self.today = mg.datetime.now().strftime("%Y-%m-%d")
+        for jid, frm, cost, day in (("j1", "a@x.test", 0.4, self.today), ("j2", "b@x.test", 0.3, self.today),
+                                    ("j3", "a@x.test", None, self.today), ("j0", "a@x.test", 5.0, "2026-01-01")):
+            mg.write_json(os.path.join(mg.JOBS, jid + ".json"),
+                          {"id": jid, "mail_from": frm, "cost_usd": cost, "created_at": day + " 09:00:00"})
+        with open(mg.JOB_AUDIT_PATH, "w", encoding="utf-8") as f:     # 워커가 지운 잡(기록에만) + 잡 파일과 겹치는 줄
+            f.write(json.dumps({"id": "gone", "from": "A@x.test", "cost_usd": 0.5, "created": self.today + " 08:00:00"}) + "\n")
+            f.write(json.dumps({"id": "j1", "from": "a@x.test", "cost_usd": 0.4, "created": self.today + " 09:00:00"}) + "\n")
+
+    def test_spent_today(self):
+        self.assertEqual(mg.spent_today(), 1.2)
+        self.assertEqual(mg.spent_today("a@x.test"), 0.9)                 # 대소문자 무시, 겹친 줄은 한 번만
+
+    def test_block_messages(self):
+        self.assertEqual(mg.cost_block(dict(CFG), "a@x.test"), "")       # 기본은 꺼짐
+        self.assertIn("하루 한도($1.00)", mg.cost_block(dict(CFG, daily_cost_usd=1), "b@x.test"))
+        self.assertEqual(mg.cost_block(dict(CFG, daily_cost_usd=2), "b@x.test"), "")
+        self.assertIn("한 사람 하루 한도", mg.cost_block(dict(CFG, sender_daily_cost_usd=0.9), "a@x.test"))
+        self.assertEqual(mg.cost_block(dict(CFG, sender_daily_cost_usd=0.9), "b@x.test"), "")
+
+    def test_blocked_job_is_not_run(self):
+        reason = mg.cost_block(dict(CFG, daily_cost_usd=1), "a@x.test")
+        job = mg.new_job("일 해 줘", r"C:\w", "w", "<m@x>", "#c 일 해 줘", "a@x.test", blocked=reason)
+        self.assertEqual((job["status"], job["error"], job["policy_denied"]), ("error", reason, True))
+
+
 class ExpireAsks(unittest.TestCase):
     """질문 답 기한 — 선택지로 물은 뒤 하루가 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통."""
 

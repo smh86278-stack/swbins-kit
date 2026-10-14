@@ -109,6 +109,10 @@ DEFAULT_CFG = {
     # 선택지(```choices)로 물은 뒤 이 시간(시간 단위)이 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통 — 대화 앱·폰의
     # '답할 것' 에서 빠진다. 늦게 답해도 그 대화는 그대로 이어진다(번호 답도). 0 이면 끈다.
     "ask_ttl_hours": 24,
+    # 하루 비용 한도(달러, 0 이면 끔) — 오늘 받은 지시들의 cost_usd 합이 넘으면 새 지시는 실행하지 않고 이유만 회신한다.
+    # daily_cost_usd 는 전체, sender_daily_cost_usd 는 보낸 주소 하나당. 이미 돌고 있는 일·이어서 하기 '멈춤' 은 막지 않는다.
+    "daily_cost_usd": 0,
+    "sender_daily_cost_usd": 0,
     # 감시할 폴더. 사람이 읽는 이름으로 적으면 서버의 modified UTF-7 이름과 알아서 맞춘다.
     # 자기에게 보낸 메일을 메일 규칙이 딴 폴더로 옮기는 서버라면 그 폴더도 넣는다
     # (예: ["INBOX", "Inbox.내게쓴메일"] — 폴더 이름은 회사 메일 서버마다 다르다).
@@ -512,7 +516,7 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
         # 이어받는 잡은 원래 잡의 거부 목록을 그대로 물려받는다(안 그러면 이어받는 순간 제한이 사라진다)
         job["disallowed_tools"] = list(disallowed_tools)
     if blocked:
-        # 폴더별 정책에 걸린 지시 — 실행하지 않고 이유만 회신한다(회사 내용이 없어 폰에도 그대로 보낸다)
+        # 폴더별 정책·하루 비용 한도에 걸린 지시 — 실행하지 않고 이유만 회신한다(회사 내용이 없어 폰에도 그대로 보낸다)
         job["status"] = "error"
         job["error"] = blocked
         job["policy_denied"] = True
@@ -1000,6 +1004,60 @@ def policy_block(cfg: dict, workdir, mode: str, kind: str) -> str:
     return ""
 
 
+def spent_today(sender=None, now=None) -> float:
+    """오늘(이 PC 날짜) 받은 지시들의 cost_usd 합 — 잡 파일 + 지시 실행 기록(워커가 지운 잡까지). sender 가 있으면 그 주소만."""
+    day = (now or datetime.now()).strftime("%Y-%m-%d")
+    who = (sender or "").strip().lower()
+    seen, total = set(), 0.0
+
+    def add(jid, created, frm, cost):
+        nonlocal total
+        if jid in seen:
+            return
+        seen.add(jid)
+        if str(created or "")[:10] == day and (not who or str(frm or "").strip().lower() == who) \
+                and isinstance(cost, (int, float)):
+            total += float(cost)
+    for _p, j in iter_jobs():
+        if isinstance(j, dict) and j.get("id"):
+            add(j["id"], j.get("created_at"), j.get("mail_from"), j.get("cost_usd"))
+    try:
+        with open(JOB_AUDIT_PATH, encoding="utf-8") as f:
+            for line in f:
+                if day not in line:                      # 오늘 줄만 푼다
+                    continue
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and r.get("id"):
+                    add(r["id"], r.get("created"), r.get("from"), r.get("cost_usd"))
+    except OSError:
+        pass
+    return round(total, 4)
+
+
+def cost_block(cfg: dict, sender) -> str:
+    """하루 비용 한도(daily_cost_usd · sender_daily_cost_usd)를 넘었으면 사람이 읽을 이유, 아니면 ''."""
+    def limit(key):
+        try:
+            return float(cfg.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    total, per = limit("daily_cost_usd"), limit("sender_daily_cost_usd")
+    if total > 0:
+        s = spent_today()
+        if s >= total:
+            return ("오늘 쓴 비용($%.2f)이 하루 한도($%.2f)에 닿아 새 지시를 실행하지 않았습니다 — 내일 다시 보내거나 "
+                    "설정(config.local.json) dispatch.daily_cost_usd 를 올리세요." % (s, total))
+    if per > 0 and sender:
+        s = spent_today(sender)
+        if s >= per:
+            return ("이 주소가 오늘 쓴 비용($%.2f)이 한 사람 하루 한도($%.2f)에 닿아 새 지시를 실행하지 않았습니다 — 내일 다시 보내거나 "
+                    "설정(config.local.json) dispatch.sender_daily_cost_usd 를 올리세요." % (s, per))
+    return ""
+
+
 def build_phone_notice(cfg: dict, job: dict, ask=None):
     """회사 모드 폴더의 회신을 폰으로 보낼 때 쓰는 내용 없는 알림 — 끝남·실패·질문 수만.
     선택지 글자는 빼고 번호만 단추로 남겨 폰에서 번호로 답장하면 그대로 이어진다(mailto 에 암호 단어가 붙는다)."""
@@ -1407,7 +1465,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         save_processed(processed)
                         m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
                         blocked = policy_block(cfg, failed.get("workdir"), failed.get("mode") or "read",
-                                               sender_kind(cfg, sender, in_junk, acct))
+                                               sender_kind(cfg, sender, in_junk, acct)) or cost_block(cfg, sender)
                         job = new_job(failed.get("prompt") or "", failed.get("workdir") or "", failed.get("workdir_label") or "",
                                       msgid, failed.get("mail_subject") or clean_subject, sender, failed.get("mode") or "read",
                                       resume_id=failed.get("resume_id"), disallowed_tools=failed.get("disallowed_tools"),
@@ -1462,6 +1520,10 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 stops = early_stops()
                 stopped = bool(msgid and msgid in stops)          # 이 지시를 가리키는 멈춤이 먼저 와 있었다
                 blocked = policy_block(cfg, workdir, mode, sender_kind(cfg, sender, in_junk, acct))
+                if not blocked and not stopped and prompt.strip() not in STOP_WORDS | {"멈춤"}:
+                    blocked = cost_block(cfg, sender)          # 하루 비용 한도 — '멈춤' 은 막지 않는다
+                    if blocked:
+                        notify("메일 인박스 · 비용 한도", blocked[:120], "Warning")
                 needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True)) and not stopped and not blocked
                 job = new_job(prompt, workdir, label, msgid, clean_subject, sender, mode, cfg,
                               resume_id=resume_id, confirm=needs_confirm, disallowed_tools=denied,
@@ -1469,7 +1531,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                               allowed_tools=(prev or {}).get("allowed_tools") if resume_id else None,
                               stopped=stopped, attach_dir=attach_dir, blocked=blocked)
                 if blocked:
-                    log("폴더별 정책으로 막음 %s — %s" % (job["id"], blocked))
+                    log("막음 %s — %s" % (job["id"], blocked))
                 if stopped:
                     stops.pop(msgid, None)
                     write_json(EARLY_STOP_PATH, stops)
