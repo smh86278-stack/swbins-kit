@@ -212,7 +212,11 @@ dialog::backdrop{background:rgba(20,15,40,.35)}
 #jwErr{color:var(--bad);font-size:12.5px;min-height:16px}
 #toast{position:fixed;right:18px;bottom:18px;background:var(--text);color:var(--bg);padding:9px 15px;border-radius:14px;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none;max-width:520px;z-index:9}
 #toast.show{opacity:.96;transform:none}
-@media (max-width:760px){body{grid-template-columns:1fr}aside{display:none}body.list aside{display:flex}body.list main{display:none}}
+/* 좁은 창(카톡처럼) — 목록과 대화를 번갈아. 처음엔 목록, ← 로 목록에 돌아간다 */
+.narrowonly{display:none!important}
+@media (max-width:760px){body{grid-template-columns:minmax(0,1fr)}aside,main{min-width:0}aside{display:none}body.list aside{display:flex}body.list main{display:none}
+  #backBtn{display:inline-grid!important}.narrowonly{display:inline-grid!important}
+  .newcard{padding:16px 14px}.welcome{padding:12px}}
 </style>
 <link rel="stylesheet" href="/pet/pets.css">
 <style>
@@ -257,7 +261,7 @@ dialog::backdrop{background:rgba(20,15,40,.35)}
   <!-- 새 대화 -->
   <div class="welcome" id="newPane">
     <div class="newcard">
-      <h2>새 일 맡기기</h2>
+      <h2><button class="iconbtn narrowonly" id="newBack" title="대화 목록">←</button> 새 일 맡기기</h2>
       <p id="newNote">보내면 메일로 PC 게이트웨이에 전달되고, 답은 이 화면에 대화로 옵니다. 폰 메일·디스패치 페이지와 같은 대화입니다.</p>
       <div class="chips" id="newChips">
         <button class="chip on" data-mode="read">읽기</button>
@@ -616,7 +620,7 @@ for (const b of document.querySelectorAll('#filters [data-f]')) b.onclick = () =
   filter = b.dataset.f; for (const x of document.querySelectorAll('#filters [data-f]')) x.classList.toggle('on', x === b); drawList();
 };
 $('#refreshBtn').onclick = () => api('/api/refresh', {}).then(() => { toast('메일함을 다시 읽습니다'); setTimeout(() => poll(true), 2500); });
-$('#backBtn').onclick = () => document.body.classList.add('list');
+$('#backBtn').onclick = $('#newBack').onclick = () => document.body.classList.add('list');
 $('#delBtn').onclick = async () => {                       // 대화 지우기 — 메일은 그대로 두고 목록에서만 뺀다
   if (!sel || !cur) return;
   if (!confirm('「' + (cur.title || '이 대화') + '」 대화를 목록에서 지울까요? (메일함의 메일은 그대로 남습니다)')) return;
@@ -981,7 +985,8 @@ for (const k of ['Dog', 'Cat']) {
   $('#p' + k).addEventListener('mouseleave', () => { petting = null; petDraw(); });
 }
 petLoad();
-showNew(); poll(true); setInterval(() => poll(false), 4000);
+showNew(); document.body.classList.add('list');            // 좁은 창이면 목록부터(넓으면 이 표시는 아무 일도 안 한다)
+poll(true); setInterval(() => poll(false), 4000);
 setInterval(pollProgress, 2000);
 </script>
 </body>
