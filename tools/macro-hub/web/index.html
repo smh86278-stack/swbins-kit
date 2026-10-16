@@ -83,6 +83,26 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .hidebar[hidden]{display:none}
 .hidebar{display:block;width:100%;margin-top:6px;border:1px dashed var(--line)!important;background:transparent!important;box-shadow:none!important;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
 .hidebar:hover{color:var(--accent)}
+/* ---------- 🛠 만들기(?view=make) — 허브는 돌리기, 만들기는 따로. 같은 화면에서 칸만 바꿔 보인다 ---------- */
+body:not(.view-make) #makeBox,body:not(.view-make) [data-view=make],body.view-make [data-view=hub]{display:none!important}
+body.view-make .hero,body.view-make #macroStack{display:none}
+body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0 auto}
+/* 나만의 자동화 — 처음 보는 사람도 겁먹지 않게 '보여 주기'·'말로 부탁하기' 두 장만 크게, 개발 도구는 🧰 고급 도구에 접어 둔다 */
+.mk-intro{margin:0 0 10px;font-size:12.5px;color:var(--muted)}
+.mk-card{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:7px;background:var(--panel)}
+.mk-head{display:flex;gap:10px;align-items:center}
+.mk-head b{display:block;font-size:14px}.mk-head small{color:var(--muted);font-size:11.5px}
+.mk-ico{font-size:22px;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--accentsoft);flex:none}
+.mk-card input,.mk-card textarea{width:100%;box-sizing:border-box}
+.mk-card textarea{resize:vertical;font:inherit;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 9px}
+.mk-card textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+.mk-card textarea:disabled,.mk-card select:disabled{opacity:.6}
+.mk-note{color:var(--muted);font-size:11px}
+.mk-off{font-size:11.5px;color:var(--muted);background:var(--soft);border-radius:10px;padding:6px 10px}
+.mk-off[hidden]{display:none}
+.mk-adv{border-top:1px dashed var(--line);padding-top:8px}
+.mk-adv>summary{cursor:pointer;font-weight:700;font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.mk-adv>summary small{font-weight:400;margin-left:4px}
 .runs{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--solid)}
 .run{display:flex;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12.5px;transition:background .15s}
 .run:last-child{border-bottom:0}.run:hover{background:var(--soft)}.run.sel{background:var(--accentsoft)}
@@ -114,6 +134,8 @@ pre#log .ln{animation:fadein .35s ease both}
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
   <h1>자동화 허브</h1><span id="dot" title="연결 상태"></span>
   <span class="sub" id="info"></span>
+  <a class="nav" href="/" data-view="make" data-app-hide title="허브 — 자동화 목록·실행">🏠 허브</a>
+  <a class="nav" href="/?view=make" data-view="hub" data-app-hide title="나만의 자동화 만들기 — 보여 주기(녹화)·말로 부탁하기 · 고급 도구">🛠 만들기</a>
   <a class="nav" href="http://127.0.0.1:8620/" target="_blank" data-app-hide title="디스패치 대화 — 메일로 맡긴 일을 메신저처럼(다른 PC 는 DispatchChat.exe)">💬 대화</a>
   <a class="nav" href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 — 내 이슈·커밋 모아 보기 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜬다)">📚 AI 위키</a>
   <a class="nav" href="/ops" data-app-hide title="예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트">⏰ 운영</a>
@@ -150,25 +172,38 @@ pre#log .ln{animation:fadein .35s ease both}
 </div>
 
 <main>
-  <div class="stack">
+  <div class="stack" id="macroStack">
     <section class="box">
       <h2>자동화</h2>
       <div id="macros"></div>
     </section>
   </div>
   <div class="stack">
-    <section class="box">
-      <h2>만들기 · 녹화 · 도구</h2>
+    <section class="box" id="makeBox">
+      <h2>나만의 자동화 만들기</h2>
+      <p class="mk-intro">매일 반복하는 일을 <b>한 번 보여 주거나</b> <b>말로 부탁하면</b> 다음부터 알아서 해 줍니다.</p>
+      <div class="mk-card">
+        <div class="mk-head"><span class="mk-ico">🎬</span><div><b>보여 주기</b><small>웹에서 평소처럼 한 번 해 보이면 그대로 따라 합니다</small></div></div>
+        <input id="recUrl" type="text" placeholder="시작할 웹 주소 (예: https://example.com/login)">
+        <div class="row"><input id="recName" type="text" placeholder="자동화 이름 (예: 일일 주문 확인)" class="grow"><button id="recBtn" class="pri">녹화 시작</button></div>
+        <small class="mk-note">Chrome 이 열리면 하던 대로 클릭·입력하고 창을 닫으면 저장돼요. 🔒 비밀번호는 녹화하지 마세요</small>
+      </div>
+      <div class="mk-card">
+        <div class="mk-head"><span class="mk-ico">💬</span><div><b>말로 부탁하기</b><small>녹화로 안 되는 일(프로그램 조작·조건·알림)은 Claude 에게</small></div></div>
+        <textarea id="askWhat" rows="2" placeholder="무엇을 해 줄까요? (예: 공지 게시판 첫 글이 바뀌면 알려 줘)"></textarea>
+        <div class="row"><select id="askWhen" class="grow">
+            <option value="">언제 — 내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select>
+          <button id="askBtn" class="pri">대화로 부탁하기</button></div>
+        <small class="mk-note" id="askOn">대화 창이 열리면 입력칸에 <b>Ctrl+V</b> 로 붙여 넣고 보내세요. 다 되면 🏠 허브 목록에 나타나요</small>
+        <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있어요. 지금은 이 PC 의 Claude Code 에 같은 말로 부탁하면 됩니다 — 위 단추로 부탁 글만 복사할 수 있어요.</div>
+      </div>
+      <details class="mk-adv">
+        <summary>🧰 고급 도구 <small>빈 자동화 파일 · 요소 찍기 · 구조 보기 · 폴더</small></summary>
       <div class="tool" data-hide="tool:new">
         <div class="lbl">새 자동화 (템플릿)</div>
         <div class="row"><input id="newName" type="text" placeholder="이름" class="grow">
           <select id="newKind"><option value="web">웹</option><option value="desktop">데스크톱</option></select>
           <button id="newBtn">만들기</button></div>
-      </div>
-      <div class="tool" data-hide="tool:record">
-        <div class="lbl">웹 녹화 — Chrome 이 열리고, 조작한 내용이 자동화로 저장됩니다 (창을 닫으면 저장)</div>
-        <div class="row"><input id="recUrl" type="text" placeholder="https://…" class="grow"><input id="recName" type="text" placeholder="저장 이름" style="width:130px">
-          <button id="recBtn">녹화 시작</button></div>
       </div>
       <div class="tool" data-hide="tool:desktop">
         <div class="lbl">데스크톱 — 요소 찍기: 누르고 3초 안에 찍을 컨트롤에 마우스를 올립니다</div>
@@ -179,6 +214,7 @@ pre#log .ln{animation:fadein .35s ease both}
         <div class="row"><button id="openLocal">내 자동화 폴더 열기</button><button id="openEx">예제 폴더 열기</button></div>
       </div>
       <button class="hidebar" id="toolHidBar" hidden></button>
+      </details>
     </section>
     <section class="box">
       <h2>실행 기록 · 로그</h2>
@@ -193,6 +229,7 @@ pre#log .ln{animation:fadein .35s ease both}
 <script src="/static/pets.js"></script>
 <script>
 const TOKEN='__TOKEN__';
+if(new URLSearchParams(location.search).get('view')==='make')document.body.classList.add('view-make');
 HubMode.mount('#modeSw',TOKEN);
 const $=s=>document.querySelector(s);
 let macros=[],runs=[],sel=null,toolRuns=new Map(),paramVals={};
@@ -379,6 +416,24 @@ function connect(){
 const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
 $('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 자동화 폴더에서 편집하세요');loadMacros()});
 $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
+// 말로 부탁하기 — 부탁 글을 만들어 클립보드에 담고 디스패치 대화를 연다(대화 화면 코드는 손대지 않고 붙여 넣기로).
+// 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
+const CHAT_URL='http://127.0.0.1:8620/';
+let chatUp=false;
+async function checkChat(){
+  try{await fetch(CHAT_URL+'api/state',{mode:'no-cors',cache:'no-store',signal:AbortSignal.timeout(2500)});chatUp=true}catch(e){chatUp=false}
+  $('#askOn').hidden=!chatUp;$('#askOff').hidden=chatUp;
+  $('#askBtn').textContent=chatUp?'대화로 부탁하기':'부탁 글 복사';
+}
+if(document.body.classList.contains('view-make')){checkChat();setInterval(checkChat,15000)}
+$('#askBtn').onclick=guard(async()=>{
+  const what=$('#askWhat').value.trim();if(!what)throw new Error('무엇을 해 줄지 적어 주세요');
+  const when=$('#askWhen').value;
+  const text='자동화 허브에 자동화 만들어줘 — '+what+(when?'\n언제: '+when+' 자동 실행':'')+'\n(비밀번호가 필요하면 secret 으로, 값은 내가 넣을게)';
+  try{await navigator.clipboard.writeText(text)}catch(e){prompt('이 글을 복사해 붙여 넣으세요',text)}
+  if(chatUp){window.open(CHAT_URL,'_blank');toast('부탁 글을 복사했어요 — 대화 입력칸에 Ctrl+V 로 붙여 넣고 보내세요')}
+  else toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
+});
 $('#pickBtn').onclick=guard(async()=>{const r=await api('/api/pick',{});select(r.run)});
 $('#inspBtn').onclick=guard(async()=>{const r=await api('/api/inspect',{title:$('#inspTitle').value});select(r.run)});
 $('#openLocal').onclick=guard(()=>api('/api/open',{which:'local'}));

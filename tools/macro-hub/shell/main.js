@@ -18,7 +18,7 @@ const STATE = path.join(__dirname, 'window.local.json');
 const ICON = path.join(__dirname, '..', 'web', 'app.ico');
 const TITLE = '자동화 허브';
 const RAIL = 64;                                                          // 왼쪽 아이콘 줄 너비 — rail.html 의 --rail 과 같게
-const TABS = { hub: HUB + '/', chat: CHAT + '/', ops: HUB + '/ops' };
+const TABS = { hub: HUB + '/', make: HUB + '/?view=make', chat: CHAT + '/', ops: HUB + '/ops' };
 const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
 
 app.setAppUserModelId('WorkKit');
@@ -32,7 +32,7 @@ const views = {};                                                         // 탭
 let active = null;
 const popped = {};                                                        // 떼어 낸 탭 → 그 창(BaseWindow). 닫으면 다시 붙는다
 let dropTab = null;                                                       // 떼어 낸 창을 끌어 아이콘 줄 위에 올려 둔 탭 — 놓으면 다시 붙는다
-const NAMES = { hub: TITLE, chat: '디스패치 대화', ops: '운영' };
+const NAMES = { hub: TITLE, make: '자동화 만들기', chat: '디스패치 대화', ops: '운영' };
 
 // 화면 모드(자동·라이트·다크) — 허브가 기억한다(/api/theme). 창 테두리(nativeTheme)와 배경색(web/theme.css 의 --bg)을 맞추고,
 // 허브 /events 를 들어 화면에서 바꾸면 바로 따라간다. 허브가 꺼져 있으면 5초마다 다시 붙는다. 아이콘 줄은 prefers-color-scheme 로 따라온다.
@@ -94,10 +94,17 @@ function saveState() {
   if (!win) return;
   try { fs.writeFileSync(STATE, JSON.stringify({ bounds: win.getNormalBounds(), max: win.isMaximized(), order })); } catch (_) {}
 }
-// 아이콘 줄의 순서 — 끌어서 바꾸면 기억한다. Ctrl+1~3 도 이 순서(안 보이는 💬 는 건너뛴다)
-const MOVABLE = ['hub', 'chat', 'ops'];
+// 아이콘 줄의 순서 — 끌어서 바꾸면 기억한다. Ctrl+1~4 도 이 순서(안 보이는 💬 는 건너뛴다)
+const MOVABLE = ['hub', 'make', 'chat', 'ops'];
 const sameSet = l => Array.isArray(l) && l.length === MOVABLE.length && MOVABLE.every(t => l.includes(t));
-let order = sameSet(readState().order) ? readState().order : MOVABLE.slice();
+// 저장된 순서를 살린다 — 나중에 생긴 탭(0.2.4 의 🛠 만들기)은 기본 자리에 끼우고, 없어진 탭·겹친 것은 뺀다
+function fixOrder(l) {
+  if (!Array.isArray(l)) return MOVABLE.slice();
+  const out = l.filter((t, i) => MOVABLE.includes(t) && l.indexOf(t) === i);
+  MOVABLE.forEach((t, i) => { if (!out.includes(t)) out.splice(Math.min(i, out.length), 0, t); });
+  return out;
+}
+let order = fixOrder(readState().order);
 const ORDER = () => order.filter(t => t !== 'chat' || chatUp || views.chat);
 const under = (url, base) => url === base || url.startsWith(base + '/');
 const internal = url => under(url, HUB) || under(url, CHAT);
@@ -105,6 +112,7 @@ function tabFor(url) {                                                    // 주
   if (under(url, CHAT)) return 'chat';
   const p = url.slice(HUB.length).split(/[?#]/)[0];
   if (p === '/ops' || p.startsWith('/ops/')) return 'ops';
+  if (p === '/' && /[?&]view=make(&|#|$)/.test(url)) return 'make';
   return 'hub';
 }
 const toUrl = page => (/^https?:/.test(page) ? page : HUB + page);
@@ -117,7 +125,7 @@ function layout() {
 }
 
 function keys(wc) {                                                       // F5 · Ctrl+R 새로고침, Ctrl+Shift+I 개발자 도구,
-  wc.on('before-input-event', (e, input) => {                             // Alt+←/→ 뒤로·앞으로, Ctrl+1~3 탭
+  wc.on('before-input-event', (e, input) => {                             // Alt+←/→ 뒤로·앞으로, Ctrl+1~4 탭
     if (input.type !== 'keyDown') return;
     const k = input.key.toLowerCase();
     const cur = win && wc === win.webContents ? views[active] && views[active].webContents : wc;   // 아이콘 줄이면 앞에 보이는 탭, 아니면 그 화면(떼어 낸 창 포함)
