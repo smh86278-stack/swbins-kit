@@ -98,6 +98,15 @@ BODY_KEY_RE = re.compile(r"^[ \t]*\[k:([^\]\s]{1,64})\][ \t\r]*$", re.M)
 CHOICES_RE = re.compile(r"```choices[ \t]*\n(.*?)\n?```\s*$", re.S)
 STOP_WORDS = {"멈춤", "그만", "stop"}
 RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시(🔁 단추가 보내는 말) — 게이트웨이와 같게
+# 돌고 있는 일에 폰·메일 앱이 '진행?' — 새 작업 없이 지금 하는 일 한 줄(progress_text)을 바로 보낸다. 끝난 일이면 평소처럼 세션에 묻는다.
+# 게이트웨이(mail-gateway.py PROGRESS_WORDS·is_progress_ask)와 같은 말
+PROGRESS_WORDS = {"진행", "진행상황", "진행 상황", "어디까지", "어디까지 했어", "지금 뭐 해", "뭐 해", "뭐해", "상태", "status", "progress"}
+PROGRESS_ASK_TTL = 600            # '진행?' 이 이 초보다 묵으면(그사이 못 보냈으면) 버린다
+
+
+def is_progress_ask(said):
+    t = re.sub(r"\s+", " ", (said or "").strip().lower()).rstrip("?？!. ")
+    return t in PROGRESS_WORDS
 CONFIRM_YES = {"1", "확인", "실행", "ok", "yes", "y", "네", "예", "go"}
 CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "멈춤", "그만"}
 STOPPED_BEFORE_START = "멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다."
@@ -732,7 +741,7 @@ class Runner:
     def own_ids(self):
         ids = set()
         for j in self.iter_jobs():
-            ids.update(j[k] for k in ("reply_msgid", "confirm_msgid", "ack_msgid", "progress_msgid") if j.get(k))
+            ids.update(j[k] for k in ("reply_msgid", "confirm_msgid", "ack_msgid", "progress_msgid", "asked_msgid") if j.get(k))
         return ids
 
     def next_seq(self):
@@ -998,6 +1007,15 @@ class Runner:
                 C.log("[실행] 멈춤 — 멈출 일이 아직 없음(지시보다 먼저 옴): %s" % (", ".join(refs) or "대상 없음"))
                 return False
 
+        # 돌고 있는(대기 중인) 일에 폰·메일 앱이 '진행?' — 작업에 물음만 적고 send_out 이 바로 진행 한 줄을 넣는다.
+        # PC 대화 앱(client=chat)은 진행 카드가 있어 평소대로(끝난 일에 대한 '진행?' 도 평소대로 세션에 묻는다)
+        if str(msg.get("X-Dispatch-Client") or "") != "chat" and is_progress_ask(said):
+            live = self.find_live_job(thread_no, refs)
+            if live:
+                self.update_job(live["id"], progress_ask=time.time())
+                C.log("[실행] 진행 물음 %s (%s)" % (live["id"], live.get("status")))
+                return False
+
         if said.strip().lower() in RETRY_WORDS:
             # 실패한 대화에 '다시 실행'(🔁 단추) — 그 지시를 같은 대화 번호·폴더·권한으로 그대로 다시 돌린다.
             # 시간 초과처럼 세션 없이 실패한 대화는 이어받을 세션이 없어, 그냥 답하면 새 지시로 갈라졌다.
@@ -1142,6 +1160,14 @@ class Runner:
             lines = []
         return progress_line(lines, start - 5, max(0, int(self._run_age(job, now) // 60)))
 
+    def asked_progress_text(self, job, now=None):
+        """'진행?' 에 답할 한 줄 — 아직 시작 전이면 앞에 몇 개가 있는지(게이트웨이 asked_progress_text 와 같은 글)."""
+        if job.get("status") == "queued":
+            ahead = sum(1 for j in self.iter_jobs() if j.get("id") != job.get("id") and
+                        (j.get("status") == "running" or (j.get("status") == "queued" and str(j.get("id")) < str(job.get("id")))))
+            return "아직 시작 전 · 앞에 %d개" % ahead if ahead else "곧 시작합니다"
+        return self.progress_text(job, now)
+
     def reply_message(self, cfg, job):
         ask, text = reply_body(job)
         footer = reply_footer(job)
@@ -1215,6 +1241,25 @@ class Runner:
             try:
                 for j in self.iter_jobs(newest=False):
                     st = j.get("status")
+                    if st in ("queued", "running") and j.get("progress_ask"):
+                        # 폰·메일 앱의 '진행?'(take 가 적어 둠) — 바로 진행 한 줄. 묵은 물음은 버린다, 실패해도 다시 안 보낸다
+                        ask_msg = None
+                        with self.lock:
+                            fresh = self.read_job(j["id"]) or {}
+                            asked = fresh.get("progress_ask")
+                            if asked and fresh.get("status") in ("queued", "running") and not fresh.get("replied"):
+                                fresh_enough = time.time() - float(asked) <= PROGRESS_ASK_TTL
+                                if fresh_enough:
+                                    ask_msg, mid = self.progress_message(cfg, fresh, self.asked_progress_text(fresh))
+                                self.update_job(j["id"], progress_ask=None, **({"asked_msgid": mid} if fresh_enough else {}))
+                        if ask_msg is not None:
+                            try:
+                                put(ask_msg, "(\\Seen)")
+                                n += 1
+                                C.log("[실행] 진행 답 %s" % j["id"])
+                            except Exception as e:
+                                C.log("[실행] 진행 답 실패 %s — %s" % (j["id"], e))
+                                conn.clear()
                     if st in ("queued", "running") and not j.get("acked") and not j.get("replied") \
                             and j.get("client") != "chat" and self._age(j) < ACK_MAX_AGE:
                         # 폰·메일 앱에서 온 지시에 '받았다' 신호(말풍선으로는 안 보인다). 실패해도 다시 보내지 않는다 — 회신이 어차피 간다

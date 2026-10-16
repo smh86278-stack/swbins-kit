@@ -568,6 +568,49 @@ class RunnerTest(unittest.TestCase):
         t = chat.build_threads(msgs)[0]
         self.assertEqual((len(t["msgs"]), t["status"], t["progress"]), (1, "running", "진행 중 · 5분째"))
 
+    def test_progress_ask_answers_right_away(self):
+        """돌고 있는 폰·메일 앱 지시에 '진행?' — 새 작업 없이 진행 한 줄을 바로(3분 기다리지 않는다). 시작 전이면 앞에 몇 개.
+        PC 대화 앱(client=chat)의 '진행?' 은 평소대로 이어 말하기, '멈춤' 은 그대로 멈춤."""
+        self.turn_on()
+        self.r.cleaned = True                                                 # (손으로 만든 running 작업을 고아로 치우지 않게)
+        self.addCleanup(setattr, chat, "CLAUDE_PROJECTS", chat.CLAUDE_PROJECTS)
+        chat.CLAUDE_PROJECTS = os.path.join(self.tmp, "projects")
+        ago = lambda m: time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - m * 60))
+        base = {"source": "mail", "workdir": self.work, "prompt": "오래 걸리는 일", "acked": True, "session_id": "s-1",
+                "mail_subject": "#c [T5] 오래 걸리는 일", "created_at": ago(1)}
+        self.r.write_job(dict(base, id="20261016-01-run", status="running", thread=5, mail_msgid="<r@x>", started_at=ago(1)))
+        self.r.write_job(dict(base, id="20261016-02-wait", status="queued", thread=6, mail_msgid="<w@x>",
+                              mail_subject="#c [T6] 다음 일"))
+        add(self.box, mail("Re: #c [T5] 오래 걸리는 일", "진행?", reply_to="<r@x>")[0])
+        add(self.box, mail("Re: #c [T6] 다음 일", "지금 뭐 해", reply_to="<w@x>")[0])
+        self.r.cycle()
+        prog = sorted(self.replies("progress"), key=lambda m: m["In-Reply-To"])
+        self.assertEqual([(m["In-Reply-To"], m.get_content().strip()) for m in prog],
+                         [("<r@x>", "진행 중 · 1분째"), ("<w@x>", "아직 시작 전 · 앞에 1개")])
+        self.assertEqual(len(self.r.iter_jobs()), 2)                         # 새 작업을 만들지 않았다
+        self.assertIsNone(self.r.read_job("20261016-01-run").get("progress_ask"))
+        self.r.cycle()
+        self.assertEqual(len(self.replies("progress")), 2)                   # 한 번 묻고 한 번 답
+        # PC 대화 앱에서 보낸 '진행?' 은 평소대로(이어 말하기 작업), '멈춤' 은 멈춤 요청 — 진행 물음과 안 섞인다
+        add(self.box, mail("Re: #c [T5] 오래 걸리는 일", "멈춤", reply_to="<r@x>")[0])
+        add(self.box, mail("Re: #c [T5] 오래 걸리는 일", "진행", reply_to="<r@x>", headers={"X-Dispatch-Client": "chat"})[0])
+        self.r.cycle()
+        self.assertEqual(len(self.replies("progress")), 2)
+        self.assertTrue(self.r.read_job("20261016-01-run").get("stop_requested"))
+        self.assertEqual(len(self.r.iter_jobs()), 3)
+        # 묵은 물음(10분 넘음)은 답하지 않고 버린다
+        self.r.update_job("20261016-01-run", progress_ask=time.time() - 900)
+        cfg, _ = chat.load_cfg()
+        self.r.send_out(cfg)
+        self.assertEqual(len(self.replies("progress")), 2)
+        self.assertIsNone(self.r.read_job("20261016-01-run").get("progress_ask"))
+
+    def test_progress_words(self):
+        for w in ("진행", "진행?", " 진행 상황 ", "지금 뭐 해?", "Status"):
+            self.assertTrue(runner.is_progress_ask(w), w)
+        for w in ("진행해", "진행해 줘", "1", "로그 진행 상황도 봐줘"):
+            self.assertFalse(runner.is_progress_ask(w), w)
+
     # ---------- 막힘 · 겹침
 
     def test_blocked_on_gateway_pc(self):
