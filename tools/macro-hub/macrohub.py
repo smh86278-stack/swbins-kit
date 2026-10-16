@@ -811,6 +811,44 @@ def new_macro(name, kind):
 rec = {'proc': None}
 
 
+CHAT_URL = 'http://127.0.0.1:%d' % int(os.environ.get('DISPATCH_CHAT_PORT') or 8620)   # 디스패치 대화(tools\dispatch-chat) — 같은 환경변수로 포트를 바꾼다
+
+
+def ask_chat(text):
+    """🛠 만들기 「말로 부탁하기」 — 부탁 글을 디스패치 대화로 바로 보낸다(쓰기 지시, 작업 폴더 hub 가 있으면 거기).
+    대화 앱 POST 는 시작할 때마다 새로 만드는 토큰을 화면(GET /)에만 심어 둔다 — 같은 PC 의 허브가 그 화면을 읽어 토큰을 얻는다.
+    다른 웹 페이지는 교차 출처라 화면을 못 읽으니 막힌 그대로다. 허브 /api/ask 도 허브 토큰이 있어야 한다."""
+    import urllib.error
+    import urllib.request
+    text = (text or '').strip()
+    if not text:
+        raise ValueError('무엇을 해 줄지 적어 주세요')
+    try:
+        with urllib.request.urlopen(CHAT_URL + '/', timeout=3) as r:
+            page = r.read().decode('utf-8', 'replace')
+        with urllib.request.urlopen(CHAT_URL + '/api/state', timeout=3) as r:
+            folders = json.loads(r.read().decode('utf-8')).get('folders') or []
+    except OSError:
+        raise RuntimeError('디스패치 대화가 꺼져 있습니다 — 설정 dispatch.enabled 를 켜고 허브를 다시 시작하세요')
+    m = re.search(r"const TOKEN = '([^']+)'", page)
+    if not m:
+        raise RuntimeError('대화 화면에서 접속 토큰을 찾지 못했습니다')
+    data = {'text': text, 'mode': 'write', 'folder': 'hub' if 'hub' in folders else ''}
+    req = urllib.request.Request(CHAT_URL + '/api/send', data=json.dumps(data, ensure_ascii=False).encode('utf-8'), method='POST',
+                                 headers={'Content-Type': 'application/json', 'X-Token': m.group(1)})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            res = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError('대화 앱이 받지 않았습니다: %s' % (e.read().decode('utf-8', 'replace')[:200] or e.code))
+    except OSError as e:
+        raise RuntimeError('대화 앱으로 보내지 못했습니다: %s' % e)
+    if not res.get('ok'):
+        raise RuntimeError(res.get('error') or '대화 앱이 보내지 못했습니다')
+    audit('말로 부탁하기 보냄', '', text.splitlines()[0][:80])
+    return {'ok': True, 'subject': res.get('subject', '')}
+
+
 def record_web(url, name):
     stem = safe_name(name)
     if not stem or not url:
@@ -1129,6 +1167,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/record/web':
             err = record_web(body.get('url', '').strip(), body.get('name', ''))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True})
+        if path == '/api/ask':                        # 🛠 만들기 「말로 부탁하기」 — 디스패치 대화(8620)로 바로 보낸다 {"text"}
+            try:
+                return self._send(200, ask_chat(body.get('text', '')))
+            except Exception as e:
+                return self._send(502, {'error': str(e)})
         if path in ('/api/pick', '/api/inspect'):
             tool = 'pick' if path == '/api/pick' else 'inspect'
             title = '요소 찍기' if tool == 'pick' else '창·컨트롤 구조 보기'

@@ -194,7 +194,7 @@ pre#log .ln{animation:fadein .35s ease both}
         <div class="row"><select id="askWhen" class="grow">
             <option value="">언제 — 내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select>
           <button id="askBtn" class="pri">대화로 부탁하기</button></div>
-        <small class="mk-note" id="askOn">대화 창이 열리면 입력칸에 <b>Ctrl+V</b> 로 붙여 넣고 보내세요. 다 되면 🏠 허브 목록에 나타나요</small>
+        <small class="mk-note" id="askOn">누르면 대화로 바로 보내지고, 대화 창에서 진행을 볼 수 있어요. 다 되면 🏠 허브 목록에 나타나요</small>
         <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있어요. 지금은 이 PC 의 Claude Code 에 같은 말로 부탁하면 됩니다 — 위 단추로 부탁 글만 복사할 수 있어요.</div>
       </div>
       <details class="mk-adv">
@@ -416,7 +416,7 @@ function connect(){
 const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
 $('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 자동화 폴더에서 편집하세요');loadMacros()});
 $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
-// 말로 부탁하기 — 부탁 글을 만들어 클립보드에 담고 디스패치 대화를 연다(대화 화면 코드는 손대지 않고 붙여 넣기로).
+// 말로 부탁하기 — 대화가 켜져 있으면 허브가 바로 보낸다(/api/ask → 8620 /api/send, 쓰기 지시). 보낸 뒤 대화를 열어 진행을 보여 준다.
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';
 let chatUp=false;
@@ -428,11 +428,18 @@ async function checkChat(){
 if(document.body.classList.contains('view-make')){checkChat();setInterval(checkChat,15000)}
 $('#askBtn').onclick=guard(async()=>{
   const what=$('#askWhat').value.trim();if(!what)throw new Error('무엇을 해 줄지 적어 주세요');
-  const when=$('#askWhen').value;
+  const when=$('#askWhen').value,btn=$('#askBtn');
   const text='자동화 허브에 자동화 만들어줘 — '+what+(when?'\n언제: '+when+' 자동 실행':'')+'\n(비밀번호가 필요하면 secret 으로, 값은 내가 넣을게)';
+  if(chatUp){
+    btn.disabled=true;btn.textContent='보내는 중…';
+    try{await api('/api/ask',{text})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
+    $('#askWhat').value='';$('#askWhen').value='';
+    toast('부탁을 보냈어요 — 대화에서 진행을 볼 수 있어요');
+    window.open(CHAT_URL,'_blank');
+    return;
+  }
   try{await navigator.clipboard.writeText(text)}catch(e){prompt('이 글을 복사해 붙여 넣으세요',text)}
-  if(chatUp){window.open(CHAT_URL,'_blank');toast('부탁 글을 복사했어요 — 대화 입력칸에 Ctrl+V 로 붙여 넣고 보내세요')}
-  else toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
+  toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
 });
 $('#pickBtn').onclick=guard(async()=>{const r=await api('/api/pick',{});select(r.run)});
 $('#inspBtn').onclick=guard(async()=>{const r=await api('/api/inspect',{title:$('#inspTitle').value});select(r.run)});
