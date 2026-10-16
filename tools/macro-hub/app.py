@@ -14,6 +14,7 @@
 알림 풍선: 자동화가 ctx.notify() 를 부르거나, 자동 실행된 자동화가 실패하거나, 상시 자동화가 죽었을 때.
 """
 import ctypes
+import ctypes.wintypes as wt
 import json
 import os
 import queue
@@ -260,15 +261,50 @@ def open_window(page='/'):
         webbrowser.open(URL.rstrip('/') + page)
 
 
-def close_window():
+def shell_pids():
     key = SHELL_DIR.lower()
-    for pid, (_ppid, name) in hub.pl.snapshot().items():
-        if name.lower() == 'electron.exe' and key in (hub.pl.command_line(pid) or '').lower():
-            subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True, creationflags=hub.NO_WINDOW)
+    return [pid for pid, (_ppid, name) in hub.pl.snapshot().items()
+            if name.lower() == 'electron.exe' and key in (hub.pl.command_line(pid) or '').lower()]
+
+
+def close_window():
+    for pid in shell_pids():
+        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True, creationflags=hub.NO_WINDOW)
+
+
+WM_SHELL_SHOW = 0xA0DC                                              # shell\main.js hookWindowMessage 와 같게
+SHELL_TITLE = '자동화 허브'                                          # shell\main.js TITLE — 떼어 낸 탭 창은 제목이 다르다
+
+
+def show_window():
+    """닫아서 숨겨 둔 허브 창(shell\\main.js — 닫기는 숨기기)을 바로 꺼낸다. electron.exe 를 또 띄워 넘겨받는 0.2~0.4초가 없고
+    보던 탭도 그대로다. 창이 없으면 False(그때는 open_window 로 띄운다).
+    여기서 ShowWindow 로 직접 꺼내면 Electron 이 다시 그리지 않아 옛 그림만 남는다 — 신호만 보내 창이 스스로 뜨게."""
+    u = hub.user32
+    u.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+    pids = set(shell_pids())
+    found = []
+
+    def each(hwnd, _):
+        pid = wt.DWORD()
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids:
+            buf = ctypes.create_unicode_buffer(len(SHELL_TITLE) + 2)
+            u.GetWindowTextW(hwnd, buf, len(SHELL_TITLE) + 2)
+            if buf.value == SHELL_TITLE:
+                found.append((hwnd, pid.value))
+        return True
+    if pids:
+        u.EnumWindows(hub.WNDENUMPROC(each), 0)
+    for hwnd, pid in found:
+        u.AllowSetForegroundWindow(pid)                             # 트레이를 누른 지금은 이쪽이 앞 창 권한을 가졌다 — 넘겨준다
+        u.PostMessageW(hwnd, WM_SHELL_SHOW, 0, 0)
+    return bool(found)
 
 
 def open_ui(icon=None, item=None):
-    open_window('/')
+    if not show_window():
+        open_window('/')
 
 
 # ---------------------------------------------------------------- 서버·도구 (services.json — 선택)

@@ -1,6 +1,9 @@
 /* 화면 모드(자동 · 라이트 · 다크) 단추 — 허브 첫 화면과 운영 화면이 함께 쓴다.
    모드는 허브가 기억하고(state['theme']) 페이지를 줄 때 <html data-mode> 에 심는다. 색은 theme.css 의 light-dark().
    바꾸면 허브가 /events 로 알려 열린 화면·전용 창이 같이 바뀐다(페이지는 HubMode.apply 를 부른다). */
+// 허브 창(Electron) 안이면 왼쪽 아이콘 줄이 있으니 겹치는 맨 위 메뉴 링크(data-app-hide)를 숨긴다 — theme.css .in-app
+if (/\bElectron\//.test(navigator.userAgent)) document.documentElement.classList.add('in-app');
+
 const HubMode = (() => {
   const MODES = [['light', '☀️', '라이트'], ['dark', '🌙', '다크'], ['auto', '자동', '자동 — Windows 설정을 따름']];
   let box = null;

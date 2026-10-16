@@ -22,7 +22,7 @@ h2{font-size:14px;margin:4px 0 6px;font-weight:800;display:flex;align-items:cent
   transition:border-color .2s,box-shadow .2s}
 .card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));box-shadow:var(--shadow2)}
 /* 예약 작업 · 상시 서비스는 넓은 창에서 두 줄로 — 한 화면에 더 많이 */
-#schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:6px;align-items:start}
+#schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(520px,100%),1fr));gap:6px;align-items:start}
 #schedList>.card,#svcList>.card{margin-bottom:0}
 #schedList>.empty,#svcList>.empty{grid-column:1/-1}
 /* 안 쓰는 것 숨기기 — 접힌 줄은 칸 전체 폭, 펼친 숨긴 카드는 흐리게 */
@@ -55,8 +55,8 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
 <header class="top">
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
   <h1>운영</h1>
-  <a href="/">← 자동화 허브</a>
-  <a href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화">💬 대화</a>
+  <a href="/" data-app-hide>← 자동화 허브</a>
+  <a href="http://127.0.0.1:8620/" target="_blank" data-app-hide title="디스패치 대화">💬 대화</a>
   <a href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 · 주간 보고 초안">📚 AI 위키</a>
   <nav class="tabs" id="tabs">
     <button data-tab="sched">⏰ 예약 작업</button>

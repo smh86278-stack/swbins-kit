@@ -41,6 +41,8 @@ body{margin:0;color:var(--text);font:13px/1.5 "Segoe UI","Malgun Gothic",sans-se
 .top h1{font-size:15px;margin:0;font-weight:800;letter-spacing:.2px}
 .top a.nav{color:var(--muted);text-decoration:none;font-weight:700;padding:4px 10px;border-radius:99px;transition:background .2s,color .2s}
 .top a.nav:hover{color:var(--accent);background:var(--accentsoft)}
+.in-app .top [data-app-hide]{display:none!important}               /* 허브 창 안 — 왼쪽 아이콘 줄과 겹치는 메뉴(theme.js) */
+@media (max-width:600px){.top{padding:6px 10px;gap:6px}.top select{max-width:120px}}
 .logo{width:28px;height:28px;border-radius:10px;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent)}
 .logo svg{width:16px;height:16px}

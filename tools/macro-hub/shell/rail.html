@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>자동화 허브</title>
+<style>
+/* 자동화 허브 창 왼쪽 아이콘 줄 — 카카오톡 PC 처럼 세로 아이콘으로 화면을 오간다. 색은 web/theme.css 파스텔과 같다(허브가 꺼져 있어도 그려야 해서 옮겨 옴). */
+:root{color-scheme:light dark;--rail:64px;
+  --bg:light-dark(#efe9f9,#14121f);--text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#9a94b3,#8781a0);
+  --accent:light-dark(#8a72ee,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--hover:light-dark(#e3dbf6,#221f33);
+  --line:light-dark(#e2d9f3,#2b2740);--bad:light-dark(#e05a76,#f58aa0)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;user-select:none}
+body{width:var(--rail);background:var(--bg);border-right:1px solid var(--line);color:var(--muted);
+  font:11px/1.2 "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column;align-items:center;padding:12px 0 10px;gap:6px}
+.me{width:40px;height:40px;border-radius:15px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;margin-bottom:10px}
+.me img{width:26px;height:26px;object-fit:contain}
+button{all:unset;cursor:pointer;width:52px;padding:7px 0 5px;border-radius:14px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;color:var(--muted)}
+button:hover{background:var(--hover);color:var(--text)}
+button.on{color:var(--accent)}
+button.on svg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+button[hidden]{display:none}
+svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.badge{position:absolute;top:2px;right:6px;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;
+  font-size:10.5px;font-weight:700;line-height:17px;text-align:center}
+.badge[hidden]{display:none}
+#tabs{display:flex;flex-direction:column;gap:6px}
+button.drag{opacity:.4}
+button.popped::after{content:'↗';position:absolute;top:2px;left:7px;font-size:11px;font-weight:700;color:var(--accent)}
+button.popped{opacity:.75}
+body.drop{background:color-mix(in srgb,var(--accent) 18%,var(--bg));box-shadow:inset 0 0 0 2px var(--accent)}  /* 떼어 낸 창을 끌어 올림 — 놓으면 붙는다 */
+</style>
+</head>
+<body>
+<div class="me" title="자동화 허브"><img src="../web/app.ico" alt=""></div>
+<div id="tabs" title="끌어서 순서를 바꿀 수 있어요">
+<button data-tab="hub" draggable="true" data-tip="허브 — 자동화·서비스">
+  <svg viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.8l8.5 6.7V20a1 1 0 0 1-1 1h-4.8v-6h-5.4v6H4.5a1 1 0 0 1-1-1z"/></svg>허브</button>
+<button data-tab="chat" draggable="true" data-tip="디스패치 대화 — 메일로 맡긴 일" hidden>
+  <svg viewBox="0 0 24 24"><path d="M12 4c4.8 0 8.5 3 8.5 6.9S16.8 17.8 12 17.8c-.9 0-1.8-.1-2.6-.3L5 20l.9-3.8C4.4 14.9 3.5 13 3.5 10.9 3.5 7 7.2 4 12 4z"/></svg>대화
+  <span class="badge" id="chatBadge" hidden></span></button>
+<button data-tab="ops" draggable="true" data-tip="운영 — 예약 작업·상시 서비스·기능 상태·설정">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12.5" r="8"/><path d="M12 8.2v4.5l3 1.8M4.5 4.8 7 3M19.5 4.8 17 3"/></svg>운영</button>
+</div>
+<script>
+const btns = [...document.querySelectorAll('button[data-tab]')];
+const tabs = document.getElementById('tabs');
+btns.forEach(b => b.onclick = () => window.rail.select(b.dataset.tab));
+window.rail.onRail(({ active, badge, order = [], popped = [], drop = false }) => {
+  document.body.classList.toggle('drop', drop);
+  btns.forEach(b => { b.hidden = !order.includes(b.dataset.tab); });   // 💬 는 대화가 떠 있을 때만 — 안 보이는 탭은 main 이 순서에서 뺀다
+  if (!drag) {                                            // 기억한 순서대로 줄 세우기 + Ctrl+숫자 안내
+    for (const t of order) { const b = btns.find(x => x.dataset.tab === t); if (b) tabs.append(b); }
+    order.forEach((t, i) => { const b = btns.find(x => x.dataset.tab === t); if (b) b.title = b.dataset.tip + ' (Ctrl+' + (i + 1) + ') · 끌어서 순서 바꾸기, 창 밖에 놓으면 따로 창으로 · 우클릭: 새 창으로 (떼어 낸 창은 이 줄 위로 끌어 놓으면 다시 붙어요)'; });
+  }
+  btns.forEach(b => b.classList.toggle('on', b.dataset.tab === active));
+  btns.forEach(b => b.classList.toggle('popped', popped.includes(b.dataset.tab)));
+  const el = document.getElementById('chatBadge');
+  el.hidden = !badge;
+  el.textContent = badge > 99 ? '99+' : String(badge);
+  el.title = badge ? '답할 대화 ' + badge + '개' : '';
+});
+// 끌어서 순서 바꾸기. 놓으면 창이 기억한다(window.local.json order)
+let drag = null;
+tabs.addEventListener('dragstart', e => { drag = e.target.closest('button'); if (!drag) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', drag.dataset.tab); drag.classList.add('drag'); });
+tabs.addEventListener('dragover', e => {
+  if (!drag) return;
+  e.preventDefault();
+  const over = e.target.closest('button');
+  if (!over || over === drag || over.parentNode !== tabs) return;
+  const r = over.getBoundingClientRect();
+  over[e.clientY > r.top + r.height / 2 ? 'after' : 'before'](drag);
+});
+tabs.addEventListener('drop', e => e.preventDefault());
+tabs.addEventListener('dragend', e => {
+  if (!drag) return;
+  const t = drag.dataset.tab;
+  drag.classList.remove('drag'); drag = null;
+  // 창 밖에 놓으면 그 탭을 따로 창으로 떼어 낸다(카톡 대화방처럼). 줄 순서는 main 이 기억한 대로 다시 세운다
+  const out = e.screenX < window.screenX || e.screenX > window.screenX + window.outerWidth
+           || e.screenY < window.screenY || e.screenY > window.screenY + window.outerHeight;
+  if (out && (e.screenX || e.screenY)) window.rail.detach(t, e.screenX, e.screenY);
+  else window.rail.order([...tabs.children].map(b => b.dataset.tab));
+});
+// 우클릭 — 새 창으로 떼어 내기 / 원래 창으로 다시 붙이기
+btns.forEach(b => b.addEventListener('contextmenu', e => { e.preventDefault(); window.rail.menu(b.dataset.tab); }));
+</script>
+</body>
+</html>

@@ -94,6 +94,18 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:13px;padding:
 pre#log .ln{animation:fadein .35s ease both}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}}
 #logTitle{font-size:11.5px;color:var(--muted);margin-top:8px}
+
+/* ---------- 좁은 창(허브 창 기본 571px — 카톡처럼 세로로 길게) ---------- */
+@media (max-width:600px){
+  .top .autonote{display:none}
+  .hero{margin:8px 8px 0}.stage{grid-template-columns:1fr 1fr;padding:8px 10px 6px;gap:8px}
+  .pet .art{width:56px}.pet .art::before{width:70px;height:42px}.pet .bubble{display:none}
+  .center{gap:5px}.stat{padding:4px 2px}.stat b{font-size:16px}.stat span{font-size:10px}
+  main{grid-template-columns:minmax(0,1fr);padding:8px 8px 20px;gap:8px}section.box{padding:10px;min-width:0}
+  .params input{width:110px}pre#log{height:240px}
+  .card>.row>.grow{flex:1 1 100%}                                 /* 이름이 한 줄을 다 쓰고, 상태·단추는 다음 줄로 */
+  .run .grow+.t{display:none}.run .grow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 실행 기록: 시각·이름·상태만 */
+}
 </style>
 <link rel="stylesheet" href="/static/pets.css">
 </head>
@@ -102,13 +114,13 @@ pre#log .ln{animation:fadein .35s ease both}
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
   <h1>자동화 허브</h1><span id="dot" title="연결 상태"></span>
   <span class="sub" id="info"></span>
-  <a class="nav" href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화 — 메일로 맡긴 일을 메신저처럼(다른 PC 는 DispatchChat.exe)">💬 대화</a>
+  <a class="nav" href="http://127.0.0.1:8620/" target="_blank" data-app-hide title="디스패치 대화 — 메일로 맡긴 일을 메신저처럼(다른 PC 는 DispatchChat.exe)">💬 대화</a>
   <a class="nav" href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 — 내 이슈·커밋 모아 보기 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜬다)">📚 AI 위키</a>
-  <a class="nav" href="/ops" title="예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트">⏰ 운영</a>
+  <a class="nav" href="/ops" data-app-hide title="예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트">⏰ 운영</a>
   <select id="skinSel" title="강아지·고양이 모습 — 펫과 같이 바뀝니다"></select>
   <button id="petBtn" title="화면 구석에 강아지·고양이 펫을 띄웁니다">화면 펫</button>
   <span id="modeSw"></span>
-  <span class="sub" style="margin-left:auto">자동 실행은 자동화마다 켜야 동작합니다 (기본 꺼짐)</span>
+  <span class="sub autonote" style="margin-left:auto">자동 실행은 자동화마다 켜야 동작합니다 (기본 꺼짐)</span>
 </header>
 
 <div class="hero">
