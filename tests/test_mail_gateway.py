@@ -5,11 +5,13 @@
 
 각 테스트 이름 옆에 적은 것은 실제로 겪은 사고다. 주석에만 남아 있던 것을 고정해 둔다.
 """
+import datetime
 import email
 import email.policy
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 
@@ -1082,6 +1084,220 @@ class GrantFlow(unittest.TestCase):
                          (None, []))                          # 어떤 목록으로 돌았는지 모르면(옛 워커) 묻지 않는다
         self.assertEqual(mg.grant_ask({"status": "done", "source": "jira", "session_id": "s", "tools_used": ["Read"],
                                        "denials": self.WRITE_DENIED}), (None, []))
+
+
+def _iso(t):
+    """epoch 초 → 세션 기록 시각(UTC, ...Z)."""
+    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _sev(typ, content, t, **kw):
+    return json.dumps(dict({"type": typ, "isSidechain": False, "timestamp": _iso(t), "message": {"content": content}}, **kw),
+                      ensure_ascii=False)
+
+
+class ProgressAsk(unittest.TestCase):
+    """돌고 있는 일에 폰에서 '진행?' — 새 잡 없이 지금 하는 일 한 줄을 바로 폰으로(진행 메일이 꺼져 있어도)."""
+
+    def setUp(self):
+        SendProgress.setUp(self)                              # 키트 기본값: 자동 진행 메일은 꺼짐(progress_after_min 없음)
+
+    def tearDown(self):
+        SendProgress.tearDown(self)
+
+    def job(self, *a, **kw):
+        return SendProgress.job(self, *a, **kw)
+
+    def ask(self, jid, who="me@gmail.test", age=0):
+        mg.write_json(mg.PROGRESS_ASK_PATH, {jid: [who, self.now - age]})
+
+    def test_words(self):
+        for w in ("진행", "진행?", " 진행 상황 ", "지금 뭐 해?", "Status"):
+            self.assertTrue(mg.is_progress_ask(w), w)
+        for w in ("진행해", "진행해 줘", "1", "로그 진행 상황도 봐줘"):
+            self.assertFalse(mg.is_progress_ask(w), w)
+
+    def test_answers_running_job_right_away(self):
+        self.job("20261016-090000-aaaa", minutes=1)
+        self.ask("20261016-090000-aaaa")
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 1)
+        msg, to = self.sent[0]
+        self.assertEqual(to, ["me@gmail.test"])
+        self.assertEqual(msg["X-Dispatch-Kind"], "progress")
+        self.assertEqual(msg.get_content().strip(), "진행 중 · 1분째")
+        self.assertEqual(mg.read_json(mg.PROGRESS_ASK_PATH), {})          # 한 번 답하면 지운다
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 0)
+
+    def test_queued_says_how_many_ahead(self):
+        self.job("20261016-090000-a001", sender="x@company.test")         # 돌고 있는 다른 일
+        self.job("20261016-090000-a002", status="queued", started_at=None)
+        self.ask("20261016-090000-a002")
+        mg.send_progress(self.cfg, "pw", now=self.now)
+        self.assertEqual(self.sent[0][0].get_content().strip(), "아직 시작 전 · 앞에 1개")
+
+    def test_company_folder_has_no_detail(self):
+        self.cfg["company_workdirs"] = [r"C:\work-dir"]
+        self.job("20261016-090000-bbbb", minutes=4)
+        self.ask("20261016-090000-bbbb")
+        mg.send_progress(self.cfg, "pw", now=self.now)
+        self.assertIn("회사 작업 폴더", self.sent[0][0].get_content())
+
+    def test_drops_finished_stale_and_company_sender(self):
+        self.job("20261016-090000-c001", status="done")
+        self.job("20261016-090000-c002")
+        self.job("20261016-090000-c003")
+        mg.write_json(mg.PROGRESS_ASK_PATH, {"20261016-090000-c001": ["me@gmail.test", self.now],
+                                             "20261016-090000-c002": ["me@gmail.test", self.now - 900],   # 15분 묵음
+                                             "20261016-090000-c003": ["me@company.test", self.now],      # 회사 주소 — 메일로 안 답함
+                                             "20261016-090000-gone": ["me@gmail.test", self.now]})
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(self.sent, [])
+        self.assertEqual(mg.read_json(mg.PROGRESS_ASK_PATH), {})
+
+    def test_poll_records_phone_ask_without_new_job(self):
+        PollOnceConfirmFlow.setUp(self)
+        try:
+            self.cfg["keyed_senders"] = {"me@gmail.test": "word"}
+            mg.write_json(os.path.join(self.jobs, "20261016-090000-dddd.json"),
+                          {"id": "20261016-090000-dddd", "source": "mail", "status": "running", "thread": 3,
+                           "mail_msgid": "<d@gmail>", "mail_from": "me@gmail.test", "workdir": self.workdir})
+            for uid, frm, mid in (("1", "me@gmail.test", "<p1@x>"), ("2", "me@example.com", "<p2@x>")):
+                m = email.message.EmailMessage()
+                m["Subject"], m["From"], m["To"], m["Message-ID"] = "Re: #c [T3] 일 [k:word]", frm, "me@example.com", mid
+                m.set_content("진행?")
+                self.mails[uid] = m.as_bytes().replace(b"\n", b"\r\n")
+            mg.poll_once(self.cfg, "pw")
+            asks = mg.read_json(mg.PROGRESS_ASK_PATH)
+            self.assertEqual(list(asks), ["20261016-090000-dddd"])
+            self.assertEqual(asks["20261016-090000-dddd"][0], "me@gmail.test")
+            # 폰 물음은 잡을 만들지 않고, 회사 주소에서 온 '진행?' 은 예전처럼 이어 말하기(대기 잡)가 된다
+            jobs = [mg.read_json(os.path.join(self.jobs, f)) for f in os.listdir(self.jobs) if f.endswith(".json")]
+            self.assertEqual(len(jobs), 2)
+        finally:
+            PollOnceConfirmFlow.tearDown(self)
+
+
+class SendProgress(unittest.TestCase):
+    """진행 메일 — 몇 분 넘게 도는 폰 지시에 중간 한 줄을 잡당 1통(키트 기본은 꺼짐 — 시험은 3분으로 켠다)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.proj = tempfile.mkdtemp()
+        self._old = (mg.JOBS, mg.PROGRESSED_PATH, mg.smtp_connect, mg.CLAUDE_PROJECTS, mg.PROGRESS_ASK_PATH)
+        mg.PROGRESS_ASK_PATH = os.path.join(tempfile.mkdtemp(), "progress-asks.json")
+        mg.JOBS, mg.PROGRESSED_PATH = self.tmp, os.path.join(tempfile.mkdtemp(), "progressed.json")
+        mg.CLAUDE_PROJECTS = self.proj
+        self.sent = []
+        test = self
+
+        class FakeSmtp:
+            def send_message(self, msg, to_addrs=None):
+                test.sent.append((msg, to_addrs))
+
+            def quit(self):
+                pass
+        mg.smtp_connect = lambda cfg, pw: FakeSmtp()
+        self.cfg = dict(CFG, user="me@company.test", keyed_senders={"me@gmail.test": "word"})
+        self.now = mg.time.time()
+
+    def tearDown(self):
+        mg.JOBS, mg.PROGRESSED_PATH, mg.smtp_connect, mg.CLAUDE_PROJECTS, mg.PROGRESS_ASK_PATH = self._old
+
+    def job(self, jid, sender="me@gmail.test", minutes=5, **kw):
+        started = mg.datetime.fromtimestamp(self.now - minutes * 60).strftime("%Y-%m-%d %H:%M:%S")
+        j = dict({"id": jid, "source": "mail", "mail_from": sender, "mail_msgid": "<%s@gmail>" % jid, "workdir": r"C:\work-dir",
+                  "prompt": "로그인 오류 고쳐 줘", "mail_subject": "#c 로그인 오류 고쳐 줘", "status": "running",
+                  "created_at": started, "started_at": started}, **kw)
+        mg.write_json(os.path.join(self.tmp, jid + ".json"), j)
+        return j
+
+    def test_off_by_default(self):
+        self.job("20261012-090000-0000", minutes=30)
+        self.assertEqual(mg.DEFAULT_CFG["progress_after_min"], 0)
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 0)          # 키가 없으면(기본) 보내지 않는다
+        self.assertEqual(self.sent, [])
+
+    def test_not_before_threshold(self):
+        self.cfg["progress_after_min"] = 3
+        self.job("20261012-090000-aaaa", minutes=2)
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(self.sent, [])
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now + 120), 1)     # 3분을 넘기면 보낸다
+
+    def test_one_mail_only_with_headers(self):
+        self.cfg["progress_after_min"] = 3
+        self.job("20261012-090000-bbbb", minutes=5)
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 1)
+        msg, to = self.sent[0]
+        self.assertEqual(to, ["me@gmail.test"])                                        # 접수 신호처럼 폰으로만
+        self.assertEqual(msg["X-Dispatch-Kind"], "progress")
+        self.assertEqual(msg["X-Dispatch"], "bot")
+        self.assertEqual(msg["Subject"], "Re: #c 로그인 오류 고쳐 줘")                     # 회신과 같은 스레드 제목
+        self.assertEqual(msg["In-Reply-To"], "<20261012-090000-bbbb@gmail>")
+        self.assertEqual(msg.get_content().strip(), "진행 중 · 5분째")                    # 세션 기록이 없으면 이것만
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now + 600), 0)      # 잡당 딱 1통
+        self.assertEqual(len(self.sent), 1)
+
+    def test_company_folder_progress_has_no_detail(self):
+        self.cfg.update(progress_after_min=3, company_workdirs=[r"C:\work-dir"])
+        self.job("20261012-090000-c0c0", minutes=5)
+        mg.send_progress(self.cfg, "pw", now=self.now)
+        self.assertTrue(self.sent[0][0].get_content().startswith("진행 중 · 5분째 — 회사 작업 폴더"))
+
+    def test_skips_finished_replied_company_and_auto_jobs(self):
+        self.cfg["progress_after_min"] = 3
+        self.job("20261012-090000-d001", status="done")                                # 회신 전에 끝난 잡
+        self.job("20261012-090000-d002", replied=True)
+        self.job("20261012-090000-d003", sender="me@company.test")                      # 회사 메일 지시 — PC 엔 진행 카드
+        self.job("20261012-090000-d004", source="jira", sender=None)                    # 자동 잡(받을 폰 주소 없음)
+        self.job("20261012-090000-d006", source="hub")                                  # 회신 대상이 아닌 잡
+        self.assertEqual(mg.send_progress(self.cfg, "pw", now=self.now), 0)
+        self.assertEqual(self.sent, [])
+
+    def test_job_file_untouched(self):
+        # 워커가 돌면서 같은 잡 파일을 고쳐 쓴다 — 보낸 기록은 progressed.json 에
+        self.cfg["progress_after_min"] = 3
+        self.job("20261012-090000-ffff")
+        path = os.path.join(self.tmp, "20261012-090000-ffff.json")
+        before = open(path, encoding="utf-8").read()
+        mg.send_progress(self.cfg, "pw", now=self.now)
+        self.assertEqual(open(path, encoding="utf-8").read(), before)
+        self.assertEqual(mg.read_json(mg.PROGRESSED_PATH), ["20261012-090000-ffff"])
+
+    def test_summary_from_session_log(self):
+        self.cfg["progress_after_min"] = 3
+        self.job("20261012-090000-gggg", minutes=6)
+        start = self.now - 360
+        d = os.path.join(self.proj, "C--work-dir")
+        os.makedirs(d)
+        with open(os.path.join(d, "other.jsonl"), "w", encoding="utf-8") as f:       # 같은 폴더의 다른 세션
+            f.write(_sev("user", "딴 일", start + 10) + "\n")
+        lines = [
+            _sev("user", "로그인 오류 고쳐 줘", start + 1),
+            _sev("assistant", [{"type": "text", "text": "**살펴보겠습니다**"}], start + 2),
+            _sev("assistant", [{"type": "tool_use", "id": "t1", "name": "TodoWrite", "input": {"todos": [
+                {"content": "a", "status": "completed"}, {"content": "b", "activeForm": "b 하는 중", "status": "in_progress"},
+                {"content": "c", "status": "pending"}]}}], start + 3),
+            _sev("assistant", [{"type": "tool_use", "id": "t2", "name": "Read", "input": {}}], start + 4, isSidechain=True),
+            _sev("assistant", [{"type": "tool_use", "id": "t3", "name": "Bash",
+                                "input": {"command": "python -m unittest", "description": "테스트 돌리기"}}], start + 5),
+            '{"type":"assis',
+        ]
+        with open(os.path.join(d, "mine.jsonl"), "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        mg.send_progress(self.cfg, "pw", now=self.now)
+        self.assertEqual(self.sent[0][0].get_content().strip(), "진행 중 · 6분째 — 테스트 돌리기 · 할 일 1/3")
+        # 대화 앱 '이 PC 에서 직접 실행'(chat_runner.progress_line)과 같은 글이어야 한다
+        chat_dir = os.path.join(ROOT, "tools", "dispatch-chat")
+        if chat_dir not in sys.path:                      # chat_runner 가 옆의 jira_watch 를 import 한다
+            sys.path.insert(0, chat_dir)
+        spec = importlib.util.spec_from_file_location("chat_runner_t", os.path.join(chat_dir, "chat_runner.py"))
+        cr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cr)
+        for upto in (2, 3, 5, 6):
+            self.assertEqual(cr.progress_line(lines[:upto], start - 5, 6), mg.progress_line(lines[:upto], start - 5, 6))
+        self.assertEqual(mg.progress_line(lines[:2], start - 5, 6), "진행 중 · 6분째 — 살펴보겠습니다")
+        self.assertEqual(mg.progress_line(lines[:3], start - 5, 6), "진행 중 · 6분째 — b 하는 중 · 할 일 1/3")
 
 
 class SendAcks(unittest.TestCase):

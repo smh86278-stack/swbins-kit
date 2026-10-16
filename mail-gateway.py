@@ -110,6 +110,9 @@ DEFAULT_CFG = {
     # 선택지(```choices)로 물은 뒤 이 시간(시간 단위)이 지나도록 답이 없으면 질문을 닫고 그 대화에 알림 1통 — 대화 앱·폰의
     # '답할 것' 에서 빠진다. 늦게 답해도 그 대화는 그대로 이어진다(번호 답도). 0 이면 끈다.
     "ask_ttl_hours": 24,
+    # 폰 지시가 이 분(分)보다 오래 돌면 진행 메일 1통(지금 하는 일 한 줄). 0 이면 끈다(기본 꺼짐).
+    # 꺼져 있어도 폰 대화방에서 '진행?' 이라고 물으면 그 자리에서 한 줄로 답한다.
+    "progress_after_min": 0,
     # 하루 비용 한도(달러, 0 이면 끔) — 오늘 받은 지시들의 cost_usd 합이 넘으면 새 지시는 실행하지 않고 이유만 회신한다.
     # daily_cost_usd 는 전체, sender_daily_cost_usd 는 보낸 주소 하나당. 이미 돌고 있는 일·이어서 하기 '멈춤' 은 막지 않는다.
     "daily_cost_usd": 0,
@@ -765,6 +768,13 @@ THREAD_RE = re.compile(r"\[T(\d{1,6})\]")
 CHOICES_RE = re.compile(r"```choices[ \t]*\n(.*?)\n?```\s*$", re.S)
 STOP_WORDS = {"멈춤", "그만", "stop"}
 RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시
+# 돌고 있는 일에 '진행?' — 새 잡을 만들지 않고 지금 하는 일 한 줄(progress_text)을 바로 회신한다. 끝난 일이면 평소처럼 세션에 묻는다
+PROGRESS_WORDS = {"진행", "진행상황", "진행 상황", "어디까지", "어디까지 했어", "지금 뭐 해", "뭐 해", "뭐해", "상태", "status", "progress"}
+
+
+def is_progress_ask(said: str) -> bool:
+    t = re.sub(r"\s+", " ", (said or "").strip().lower()).rstrip("?？!. ")
+    return t in PROGRESS_WORDS
 
 # 권한 요청 — 워커는 --permission-mode dontAsk 라 허용 목록 밖 도구를 묻지 않고 거부한다(결과의 permission_denials).
 # 그 거부를 선택지 질문으로 바꿔 폰·디스패치 대화에서 '허용하고 이어서 하기'를 고르면 그 권한만 더해 같은 세션을 이어 간다.
@@ -828,6 +838,9 @@ def grant_answer(said: str):
     return "allow" if m.group(1) == "1" else "deny"
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
 ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
+PROGRESSED_PATH = os.path.join(INBOX, "progressed.json")  # 진행 메일을 보낸 잡 id(send_progress) — 잡 파일엔 안 쓴다
+PROGRESS_ASK_PATH = os.path.join(INBOX, "progress-asks.json")   # '진행?' 물음 {잡 id: [묻은 주소, 시각]} — send_progress 가 바로 답한다
+CLAUDE_PROJECTS = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "projects")
 ASK_CLOSED_PATH = os.path.join(INBOX, "ask-closed.json")  # 답 기한이 지나 닫은(또는 답이 와서 볼 일 없는) 질문의 잡 id(expire_asks)
 ASK_CLOSE_SILENT_DAYS = 7                                 # 이보다 오래된 질문은 알림 없이 닫는다(처음 켤 때 몰아 보내지 않게)
 JOB_AUDIT_PATH = os.path.join(INBOX, "job-audit.jsonl")   # 지시 실행 기록(감사) — 끝난 잡 한 건에 한 줄, 덧붙이기만
@@ -1547,6 +1560,19 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         log("멈춤 요청 — 멈출 일이 아직 없음(지시보다 먼저 옴). 그 지시가 오면 실행하지 않습니다: %s" % (", ".join(refs) or "대상 없음"))
                         continue
 
+                # 돌고 있는(대기 중인) 일에 '진행?' — 잡 파일은 워커 것이라 물음만 따로 적고, 이번 바퀴의 send_progress 가 바로 답한다
+                if phone_to(cfg, sender) and is_progress_ask(reply_text(plain_body(msg))):   # 회사 주소는 대화 앱 진행 카드가 있어 평소대로
+                    live = find_live_job(head, thread_no)
+                    if live:
+                        processed.add(key)
+                        save_processed(processed)
+                        m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                        asks = read_json(PROGRESS_ASK_PATH) or {}
+                        asks[live["id"]] = [sender, time.time()]
+                        write_json(PROGRESS_ASK_PATH, asks)
+                        log("진행 물음 %s (%s) ← %s" % (live["id"], live.get("status"), sender))
+                        continue
+
                 # 실패한 대화에 '다시 실행' — 그 지시를 같은 대화 번호·폴더·권한으로 그대로 다시 돌린다.
                 # 시간 초과처럼 세션 없이 실패한 대화는 이어받을 세션이 없어, 그냥 답하면 새 번호의 엉뚱한 지시가 됐다.
                 # 처음 실행 때 쓰기 확인을 이미 거쳤으므로 다시 묻지 않는다.
@@ -1873,6 +1899,243 @@ def send_acks(cfg: dict, password: str) -> int:
                 pass
         if len(acked) != before:
             write_json(ACKED_PATH, sorted(acked)[-500:])
+    return n
+
+
+# ---- 진행 메일 — 오래 걸리는 폰 지시에 중간 한 줄. 요약 규칙은 tools/dispatch-chat/chat_runner.py 의 progress_line 과 같다
+
+def _iso_epoch(s) -> float:
+    """세션 기록의 시각(UTC, ...Z) → epoch 초."""
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _session_lines(path: str) -> list:
+    with open(path, "rb") as f:
+        return f.read().decode("utf-8", "replace").splitlines()
+
+
+def find_session_log(job: dict, since: float) -> str:
+    """워커가 돌리는 잡의 Claude 세션 기록(~/.claude/projects/<작업 폴더>/*.jsonl). 대화 앱 chat.find_transcript 와 같은 규칙 —
+    시작 뒤에 바뀐 기록 중 since 이후 첫 사람 말이 그 지시문으로 시작하는 것. 못 찾으면 ""."""
+    want = re.sub(r"\s+", " ", str(job.get("prompt") or "")).strip()[:60]
+    d = os.path.join(CLAUDE_PROJECTS, re.sub(r"[^A-Za-z0-9]", "-", str(job.get("workdir") or "")))
+    try:
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")]
+    except OSError:
+        return ""
+    if not want:
+        return ""
+    files = sorted((f for f in files if os.path.getmtime(f) >= since), key=os.path.getmtime, reverse=True)[:12]
+    for f in files:
+        try:
+            lines = _session_lines(f)
+        except OSError:
+            continue
+        for ln in lines:
+            if '"user"' not in ln:
+                continue
+            try:
+                ev = json.loads(ln)
+            except ValueError:
+                continue
+            if not isinstance(ev, dict) or ev.get("type") != "user" or ev.get("isSidechain") or _iso_epoch(ev.get("timestamp")) < since:
+                continue
+            c = (ev.get("message") or {}).get("content")
+            if isinstance(c, list):
+                c = "".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+            if isinstance(c, str) and c.strip():
+                if re.sub(r"\s+", " ", c).strip().startswith(want):
+                    return f
+                break                                     # 첫 사람 말이 다르면 다른 세션
+    return ""
+
+
+def _progress_tool(name, inp: dict) -> str:
+    for k in ("description", "command", "file_path", "notebook_path", "pattern", "url", "query", "skill", "prompt", "path"):
+        v = inp.get(k)
+        if isinstance(v, str) and v.strip():
+            return v if k == "description" else "%s %s" % (name, v)
+    return str(name or "")
+
+
+def progress_line(lines, since: float, minutes: int) -> str:
+    """세션 기록 줄들 → '진행 중 · N분째 — <지금 하는 일> · 할 일 a/b'. 지금 하는 일은 본 흐름의 마지막 도구·중간 말
+    (할 일 목록을 고친 거면 진행 중인 항목). 기록이 없거나 못 읽으면 '진행 중 · N분째' 만.
+    대화 앱 직접 실행(tools/dispatch-chat/chat_runner.py progress_line)과 같은 규칙 — 한쪽을 고치면 같이 고친다."""
+    now, todos = "", None
+    for ln in lines or []:
+        try:
+            ev = json.loads(ln)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict) or ev.get("type") != "assistant" or ev.get("isSidechain") or ev.get("parent_tool_use_id"):
+            continue
+        if since and _iso_epoch(ev.get("timestamp")) < since:
+            continue
+        content = (ev.get("message") or {}).get("content")
+        for c in content if isinstance(content, list) else []:
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == "text" and (c.get("text") or "").strip():
+                now = next(l for l in c["text"].splitlines() if l.strip())
+            elif c.get("type") == "tool_use":
+                inp = c.get("input") if isinstance(c.get("input"), dict) else {}
+                if c.get("name") == "TodoWrite":
+                    todos = [t for t in inp.get("todos") or [] if isinstance(t, dict)]
+                    cur = next((t for t in todos if t.get("status") == "in_progress"), None)
+                    if cur:
+                        now = str(cur.get("activeForm") or cur.get("content") or "")
+                else:
+                    now = _progress_tool(c.get("name"), inp)
+    now = re.sub(r"\s+", " ", re.sub(r"\*\*|`", "", now)).strip().lstrip("#-*• ").strip()
+    if len(now) > 80:
+        now = now[:79] + "…"
+    line = "진행 중 · %d분째" % minutes
+    if now:
+        line += " — " + now
+    if todos:
+        line += " · 할 일 %d/%d" % (sum(1 for t in todos if t.get("status") == "completed"), len(todos))
+    return line
+
+
+def progress_text(job: dict, now: float = None) -> str:
+    """돌고 있는 잡의 진행 한 줄(세션 기록을 못 찾으면 '진행 중 · N분째')."""
+    now = time.time() if now is None else now
+    try:
+        start = datetime.strptime(job.get("started_at") or "", "%Y-%m-%d %H:%M:%S").timestamp()
+    except ValueError:
+        start = now
+    minutes = max(0, int((now - start) // 60))
+    lines = []
+    try:
+        path = find_session_log(job, start - 5)
+        if path:
+            lines = _session_lines(path)
+    except Exception:
+        lines = []
+    return progress_line(lines, start - 5, minutes)
+
+
+def build_progress_message(cfg: dict, job: dict, text: str):
+    """진행 메일 — 회신과 같은 제목·스레드(In-Reply-To 원본 지시). 폰 페이지·대화 앱은 말풍선이 아니라 작은 상태 줄로 보이고
+    답(완료·번호·안 읽음)으로 세지 않는다."""
+    msg = EmailMessage()
+    msg["Subject"] = reply_subject(job)
+    msg["From"] = cfg["user"]
+    msg["To"] = phone_to(cfg, job.get("mail_from")) or job.get("mail_from") or cfg["user"]
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
+    msg["Message-ID"] = email.utils.make_msgid(domain=domain)
+    if job.get("mail_msgid"):
+        msg["In-Reply-To"] = job["mail_msgid"]
+        msg["References"] = job["mail_msgid"]
+    msg.set_content(text)
+    mark_bot(msg, job, kind="progress")
+    return msg
+
+
+def asked_progress_text(cfg: dict, job: dict, now: float) -> str:
+    """'진행?' 에 답할 한 줄(받는 곳은 폰). 아직 시작 전이면 앞에 몇 개가 있는지, 회사 모드 폴더 일은 자세한 내용을 뺀다(send_progress 와 같은 규칙)."""
+    if job.get("status") == "queued":
+        ahead = sum(1 for _p, j in iter_jobs() if isinstance(j, dict) and j.get("id") != job.get("id")
+                    and (j.get("status") == "running" or (j.get("status") == "queued" and str(j.get("id")) < str(job.get("id")))))
+        return "아직 시작 전 · 앞에 %d개" % ahead if ahead else "곧 시작합니다"
+    if is_company_job(cfg, job):
+        try:
+            start = datetime.strptime(job.get("started_at") or "", "%Y-%m-%d %H:%M:%S").timestamp()
+        except ValueError:
+            start = now
+        return "진행 중 · %d분째 — 회사 작업 폴더 일이라 자세한 진행은 PC 대화 앱에서." % max(0, int((now - start) / 60))
+    return progress_text(job, now)
+
+
+def answer_progress_asks(cfg: dict, password: str, now: float) -> int:
+    """poll_once 가 적어 둔 '진행?' 물음(progress-asks.json)에 진행 한 줄로 답한다 — 폰(암호 단어 주소)으로만.
+    그사이 끝난 일이거나 10분 넘게 묵은 물음은 버린다(끝난 일은 회신이 곧 간다). 실패해도 다시 보내지 않는다."""
+    asks = read_json(PROGRESS_ASK_PATH) or {}
+    if not asks:
+        return 0
+    jobs = {j.get("id"): j for _p, j in iter_jobs() if isinstance(j, dict) and j.get("id") in asks}
+    n, smtp_box = 0, []
+    try:
+        for jid, val in list(asks.items()):
+            asks.pop(jid)
+            job = jobs.get(jid)
+            who, ts = (val + [0])[:2] if isinstance(val, list) else ("", 0)
+            if not job or job.get("status") not in ("queued", "running") or now - float(ts or 0) > 600:
+                continue
+            # 폰 주소로만 — 회사 메일함에 보내면 같은 제목이라 다음 폴링이 지시로 읽는다(PC 대화 앱은 진행 카드가 있다)
+            to = phone_to(cfg, who)
+            if not to:
+                log("진행 물음 %s — 회사 주소에서 와서 메일로 답하지 않음(PC 대화 앱 진행 카드)" % jid)
+                continue
+            try:
+                msg = build_progress_message(cfg, job, asked_progress_text(cfg, job, now))
+                msg.replace_header("To", to)
+                if not smtp_box:
+                    smtp_box.append(smtp_connect(cfg, password))
+                smtp_box[0].send_message(msg, to_addrs=[to])
+                n += 1
+                log("진행 답 %s → %s" % (jid, to))
+            except Exception as e:
+                log("진행 답 실패 %s — %s" % (jid, e))
+    finally:
+        for s in smtp_box:
+            try:
+                s.quit()
+            except Exception:
+                pass
+        write_json(PROGRESS_ASK_PATH, asks)
+    return n
+
+
+def send_progress(cfg: dict, password: str, now: float = None) -> int:
+    """'진행?' 물음에 답하고(answer_progress_asks — 늘), progress_after_min 분 넘게 돌고 있는 폰 지시에 진행 메일을 잡당 딱 1통
+    (기본 꺼짐 0, 실패해도 다시 안 보낸다). 받는 곳은 접수 신호와 같다 — 폰(keyed_senders) 주소로만, 회사 메일함엔 넣지 않는다
+    (PC 는 진행 카드가 있다). 그래서 jira 감시 같은 자동 잡(mail_from 없음)은 저절로 빠진다. 보낸 기록은 progressed.json — 잡 파일은 워커 것."""
+    now = time.time() if now is None else now
+    n = answer_progress_asks(cfg, password, now)
+    after = float(cfg.get("progress_after_min", 0) or 0)
+    if after <= 0 or not os.path.isdir(JOBS):
+        return n
+    done = set(read_json(PROGRESSED_PATH) or [])
+    smtp_box, before = [], len(done)
+    try:
+        for _path, job in iter_jobs():
+            if not isinstance(job, dict) or job.get("id") in done or job.get("source") not in MAIL_SOURCES \
+                    or job.get("status") != "running" or job.get("replied") or not phone_to(cfg, job.get("mail_from")):
+                continue
+            try:
+                start = datetime.strptime(job.get("started_at") or "", "%Y-%m-%d %H:%M:%S").timestamp()
+            except ValueError:
+                continue
+            if now - start < after * 60:
+                continue
+            done.add(job["id"])
+            try:
+                # 회사 모드 폴더의 일은 지금 하는 일(도구·파일 이름)을 폰으로 내보내지 않는다
+                text = ("진행 중 · %d분째 — 회사 작업 폴더 일이라 자세한 진행은 PC 대화 앱에서." % int((now - start) / 60)
+                        if is_company_job(cfg, job) else progress_text(job, now))
+                msg = build_progress_message(cfg, job, text)
+                if not smtp_box:
+                    smtp_box.append(smtp_connect(cfg, password))
+                to = phone_to(cfg, job["mail_from"])
+                smtp_box[0].send_message(msg, to_addrs=[to])
+                n += 1
+                log("진행 메일 %s → %s" % (job["id"], to))
+            except Exception as e:
+                log("진행 메일 실패 %s — %s" % (job["id"], e))
+    finally:
+        for s in smtp_box:
+            try:
+                s.quit()
+            except Exception:
+                pass
+        if len(done) != before:
+            write_json(PROGRESSED_PATH, sorted(done)[-500:])
     return n
 
 
@@ -2301,6 +2564,7 @@ def main() -> int:
                 got = poll_once(cfg, pw) + poll_gmail(cfg, pw)
                 send_acks(cfg, pw)
                 sent = send_replies(cfg, pw)
+                send_progress(cfg, pw)                 # 회신 뒤에 — 방금 끝난 잡엔 안 간다('진행?' 답도 여기서)
                 try:
                     expire_asks(cfg, pw)               # 답 없는 질문 닫기 — 실패해도 메일 운반은 멈추지 않는다
                 except Exception as e:
