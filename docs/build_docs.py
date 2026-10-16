@@ -59,6 +59,7 @@ HUB_API = [
     ('POST', '/api/enable', '{"id", "enabled"} 켜고 끄기'),
     ('POST', '/api/schedule', '{"id", "schedule": [...]} 예약 시각 바꾸기 · {"id", "reset": true} 되돌리기'),
     ('POST', '/api/service', '{"id", "action": "start|stop|restart|run"}'),
+    ('POST', '/api/ask', '{"text"} 「말로 부탁하기」 — 디스패치 대화(8620)에 쓰기 지시로 바로 보낸다(대화가 켜져 있을 때)'),
 ]
 
 
@@ -217,6 +218,10 @@ def build():
                 '<p>보낸 기록(성공·실패·HTTP 코드)은 운영 화면 「📊 기능 상태」 → 알림 출구 · 보낸 기록. 주소는 기록에 남지 않는다.</p>'
                 % (', '.join('<code>%s</code>' % t for t in types), e(sample), e(VERIFY_PY), e(VERIFY_JS)))
     body.append('<h2 id="macro">자동화 만들기</h2>'
+                '<p>허브 창 왼쪽 아이콘 줄의 <b>🛠 만들기</b>(<code>/?view=make</code>, 「나만의 자동화 만들기」)에서 시작한다 — '
+                '<b>🎬 보여 주기</b>(웹 주소·이름을 넣고 녹화 시작, Chrome 에서 평소처럼 한 번 해 보이면 그대로 따라 한다) · '
+                '<b>💬 말로 부탁하기</b>(할 일·언제를 적으면 디스패치 대화가 켜져 있을 때 Claude 에게 바로 보낸다. 꺼져 있으면 부탁 글만 복사 — Claude Code 에 붙여 넣는다). '
+                '빈 자동화 파일(템플릿)·요소 찍기·구조 보기·폴더 열기는 <b>🧰 고급 도구</b>에 접혀 있다.</p>'
                 '<p><code>tools/macro-hub/macros.local/</code> 에 파이썬 파일 하나를 두면 허브 목록에 뜬다(이 폴더는 git 에 들어가지 않는다). '
                 '<code>META</code> 로 이름·트리거를, <code>run(ctx)</code> 로 할 일을 적는다. 결과를 운영 화면에 남기려면 <code>kit.write_status(이름, items)</code>.</p>'
                 '<pre>%s</pre>'
