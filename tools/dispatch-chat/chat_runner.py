@@ -109,7 +109,72 @@ def is_progress_ask(said):
     return t in PROGRESS_WORDS
 CONFIRM_YES = {"1", "확인", "실행", "ok", "yes", "y", "네", "예", "go"}
 CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "멈춤", "그만"}
-STOPPED_BEFORE_START = "멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다."
+# 권한 요청 — claude -p 는 dontAsk 라 허용 목록 밖 도구를 묻지 않고 거부한다(결과의 permission_denials).
+# 그 거부를 선택지 질문으로 바꿔 '허용하고 이어서 하기'를 고르면 그 권한만 더해 같은 세션을 이어 간다(게이트웨이 mail-gateway.py 와 같은 흐름).
+# 상한은 이 실행기가 쓰는 쓰기 도구 + 전용 브라우저 — 여기 없는 도구는 묻지도 않는다.
+# (게이트웨이 GRANT_CEILING 은 인박스 워커 상한 7개라 더 좁다 — 이 실행기는 쓰기 지시에 Skill·WebFetch·WebSearch·브라우저까지 쓴다)
+GRANT_CEILING = tuple(WRITE_TOOLS) + (BROWSER_TOOL,)
+GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash", "Skill", "WebFetch", "WebSearch", BROWSER_TOOL}   # 고르면 대화가 수정 모드가 된다
+GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
+_SAFE_RULE = re.compile(r"^[^\"'`\r\n()]{1,200}$")       # TOOL_RE 가 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
+
+
+def grant_base(rule):
+    return rule.split("(", 1)[0]
+
+
+def grant_rules(denials):
+    """거부된 도구들 → 허용 규칙 [(규칙, 사람이 읽을 설명)]. 상한 밖 도구는 뺀다.
+    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 Bash 전체 — 설명에 그렇게 적는다)."""
+    out, seen = [], set()
+    for d in denials or []:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("tool_name") or "")
+        inp = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
+        if name.startswith(BROWSER_TOOL + "__"):
+            rule, desc = BROWSER_TOOL, "전용 브라우저 조작"
+        elif name == "Bash":
+            cmd = " ".join(str(inp.get("command") or "").split())
+            if cmd and _SAFE_RULE.match(cmd):
+                rule, desc = "Bash(%s)" % cmd, "명령 실행: %s" % cmd
+            else:
+                rule, desc = "Bash", "명령 실행 전체(Bash)" + (" — 예: %s" % cmd[:80] if cmd else "")
+        elif name in ("Write", "Edit", "NotebookEdit"):
+            path = str(inp.get("file_path") or inp.get("notebook_path") or "")
+            rule, desc = name, {"Write": "파일 만들기·덮어쓰기", "Edit": "파일 고치기", "NotebookEdit": "노트북 고치기"}[name] + (
+                " (예: %s)" % path if path else "")
+        else:
+            rule, desc = name, name
+        if grant_base(rule) not in GRANT_CEILING or rule in seen:
+            continue
+        seen.add(rule)
+        out.append((rule, desc))
+    return out
+
+
+def grant_ask(job):
+    """끝난 일이 권한 때문에 막혔으면 (선택지, 허용할 규칙 목록). 아니면 (None, [])."""
+    base = job.get("allowed_tools") or READ_TOOLS
+    if job.get("status") != "done" or not job.get("session_id"):
+        return None, []
+    rules = [r for r in grant_rules(job.get("denials")) if r[0] not in base]
+    if not rules:
+        return None, []
+    q = "이 일을 마치려면 권한이 더 필요합니다 — " + " · ".join(d for _r, d in rules) + ". 이 대화에서 허용할까요?"
+    return {"question": q, "multi": False, "options": list(GRANT_OPTIONS)}, [r for r, _d in rules]
+
+
+def grant_answer(said):
+    """권한 질문에 대한 답 → 'allow' / 'deny' / None(번호 답이 아님 — 평소 말로 이어 간다)."""
+    first = next((l.strip() for l in (said or "").splitlines() if l.strip()), "")
+    m = re.match(r"^([12])\s*(?:번)?(?:[.:)]|\s|$)", first)
+    if not m:
+        return None
+    return "allow" if m.group(1) == "1" else "deny"
+
+
+STOPPED_BEFORE_START ="멈췄습니다 — 시작하기 전에 멈춤 요청을 받아 실행하지 않았습니다."
 STOPPED_MIDWAY = "멈췄습니다 — 멈춤을 받아 하던 일을 중간에 끊었습니다. 이어서 하려면 다시 말해 주세요."
 NO_CLAUDE = ("Claude Code(claude)를 찾지 못했습니다 — 이 PC 에 Claude Code 를 설치하고 한 번 로그인한 뒤"
              "(터미널에서 claude 실행) 메신저를 다시 여세요.")
@@ -289,8 +354,12 @@ def reply_body(job):
         lines = ["실행에 실패했습니다.", "", job.get("error") or ""] + (["", job["result"]] if job.get("result") else [])
     else:
         lines = [body]
+    if not ask and job.get("grant"):
+        ask = job.get("ask")                               # 권한 질문(회신 때 grant_ask 로 붙였다)
     denied = sorted({d.get("tool_name", "?") for d in (job.get("denials") or []) if isinstance(d, dict)})
-    if denied:
+    if denied and job.get("grant"):
+        lines += ["", "--", "권한이 없어 막힌 도구: %s — 위에서 허용하면 그 권한만 더해 이어서 합니다" % ", ".join(denied)]
+    elif denied:
         lines += ["", "--", "차단된 도구: %s (허용 범위 밖이라 실행되지 않았습니다)" % ", ".join(denied)]
     return ask, "\n".join(lines)
 
@@ -1056,6 +1125,17 @@ class Runner:
             if said.strip().lower() in STOP_WORDS:
                 said = "멈춤"
             prompt = (parse_answer(said, prev.get("ask")) or said or prompt)[:MAX_PROMPT]
+            # 권한 질문(grant_ask)에 대한 답 — 허용이면 그 규칙을 더한 도구 목록으로, 수정 도구가 끼면 수정 모드로
+            decision = grant_answer(said) if prev.get("grant") else None
+            if decision == "allow":
+                tools = list(tools or READ_TOOLS)
+                tools += [r for r in prev["grant"] if r not in tools]
+                if any(grant_base(r) in GRANT_WRITE for r in prev["grant"]):
+                    mode = "write"
+                prompt = "사용자가 디스패치 대화에서 권한을 허용했다: %s. 아까 권한이 없어 못 한 일을 이어서 끝내라." % ", ".join(prev["grant"])
+                C.log("[실행] 권한 허용 ← %s: %s" % (prev.get("id"), ", ".join(prev["grant"])))
+            elif decision == "deny":
+                prompt = "사용자가 권한을 허용하지 않았다. 그 일은 하지 말고, 권한 없이 할 수 있는 데까지만 정리해 답하라."
         elif mode == "write":                         # 새 쓰기 지시 — 설정에서 켠 것만 더한다(이어서 하기는 처음 도구 그대로)
             jkey = jira_key_of(prompt, cfg)
             if jkey and cfg.get("run_jira"):
@@ -1298,9 +1378,15 @@ class Runner:
                         elif st in ("done", "error") and not j.get("replied"):
                             numbered(j)
                             j["ask"] = parse_choices(j.get("result") or "")[1] if st == "done" else None
+                            # Claude 가 따로 묻지 않았는데 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask)
+                            j["grant"] = []
+                            if not j["ask"]:
+                                ask, grant = grant_ask(j)
+                                if grant:
+                                    j["ask"], j["grant"] = ask, grant
                             msg, mid = self.reply_message(cfg, j)
                             put(msg)
-                            self.update_job(j["id"], ask=j["ask"], replied=True, reply_msgid=mid)
+                            self.update_job(j["id"], ask=j["ask"], grant=j["grant"], replied=True, reply_msgid=mid)
                             n += 1
                             C.log("[실행] 회신 %s (%s)" % (j["id"], st))
                     except Exception as e:

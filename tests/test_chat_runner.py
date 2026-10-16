@@ -48,8 +48,11 @@ FAKE_CLAUDE = textwrap.dedent(r'''
     result = "끝냈습니다"
     if "ASK" in prompt:
         result += '\n\n```choices\n{"question": "다음은?", "multi": false, "options": ["더 보기", "여기서 멈춤"]}\n```'
+    denials = []
+    if "DENYWRITE" in prompt:                      # 허용 목록 밖이라 막힌 파일 쓰기(dontAsk)
+        denials = [{"tool_name": "Write", "tool_use_id": "t1", "tool_input": {"file_path": "a.txt", "content": "x"}}]
     print(json.dumps({"type": "result", "is_error": False, "result": result, "session_id": "%s",
-                      "total_cost_usd": 0.01, "duration_ms": 1200, "permission_denials": []}))
+                      "total_cost_usd": 0.01, "duration_ms": 1200, "permission_denials": denials}))
 ''' % SESSION)
 
 
@@ -268,6 +271,66 @@ class RunnerTest(unittest.TestCase):
         rep2 = self.replies("reply")[1]
         self.assertEqual(rep2["X-Dispatch-Thread"], "1")
         self.assertIn("이어서 실행", rep2.get_body(("plain",)).get_content())
+
+    # ---------- 권한 요청(허용하고 이어서 하기)
+
+    def _denied_reply(self, subject="#c 메모 만들어 DENYWRITE"):
+        self.turn_on()
+        add(self.box, mail(subject)[0])
+        self.step()
+        return self.replies("reply")[0]
+
+    def _answer(self, rep, said):
+        add(self.box, mail("Re: #c [T1] 메모 만들어 DENYWRITE", said, reply_to=rep["Message-ID"])[0])
+        self.step()
+        return self.calls_made()
+
+    def test_denied_tool_becomes_question(self):
+        rep = self._denied_reply()
+        cfg, _ = chat.load_cfg()
+        pm = chat.parse_message(rep.as_bytes(), cfg)
+        self.assertEqual(pm["ask"]["options"], runner.GRANT_OPTIONS)
+        self.assertIn("파일 만들기·덮어쓰기", pm["ask"]["question"])
+        self.assertIn("위에서 허용하면", rep.get_body(("plain",)).get_content())
+
+    def test_allow_resumes_with_that_tool(self):
+        calls = self._answer(self._denied_reply(), "1")
+        self.assertEqual(len(calls), 2)
+        args = calls[1]["args"]
+        self.assertEqual(args[args.index("--resume") + 1], SESSION)
+        tools = args[args.index("--allowedTools") + 1:]
+        self.assertIn("Write", tools)
+        self.assertNotIn("Edit", tools)                                  # 막힌 그 도구만 더한다
+        self.assertIn("허용했다: Write", calls[1]["prompt"])
+        rep2 = self.replies("reply")[1]
+        self.assertIn("수정 허용 모드", rep2.get_body(("plain",)).get_content())   # 수정 도구라 대화가 수정 모드로
+
+    def test_deny_keeps_read_tools(self):
+        calls = self._answer(self._denied_reply(), "2")
+        self.assertEqual(len(calls), 2)
+        args = calls[1]["args"]
+        self.assertNotIn("Write", args[args.index("--allowedTools") + 1:])
+        self.assertIn("허용하지 않았다", calls[1]["prompt"])
+
+    def test_free_text_is_not_a_grant(self):
+        calls = self._answer(self._denied_reply(), "내용만 알려줘")
+        self.assertEqual(calls[1]["prompt"], "내용만 알려줘")
+        self.assertNotIn("Write", calls[1]["args"][calls[1]["args"].index("--allowedTools") + 1:])
+
+    def test_claude_question_wins_over_grant(self):
+        rep = self._denied_reply("#c 메모 만들어 DENYWRITE ASK")
+        cfg, _ = chat.load_cfg()
+        self.assertEqual(chat.parse_message(rep.as_bytes(), cfg)["ask"]["options"], ["더 보기", "여기서 멈춤"])
+
+    def test_grant_rules(self):
+        rules = dict(runner.grant_rules([
+            {"tool_name": "Bash", "tool_input": {"command": "npm  test"}},
+            {"tool_name": "Bash", "tool_input": {"command": 'git commit -m "x"'}},
+            {"tool_name": "mcp__browser__browser_click", "tool_input": {}},
+            {"tool_name": "mcp__other__danger", "tool_input": {}},           # 상한 밖 — 묻지도 않는다
+        ]))
+        self.assertEqual(list(rules), ["Bash(npm test)", "Bash", "mcp__browser"])
+        self.assertIn("전체", rules["Bash"])
 
     def test_retry_failed_instruction(self):
         self.turn_on()
