@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""매크로 허브의 예약·감시 규칙 — 2026-10-06 에 작업 스케줄러를 대신하면서 생긴 로직의 회귀 테스트.
+"""자동화 허브의 예약·감시 규칙 — 2026-10-06 에 작업 스케줄러를 대신하면서 생긴 로직의 회귀 테스트.
 
     python -m unittest discover -s tests
 
@@ -144,7 +144,7 @@ class RunOnceTimeout(unittest.TestCase):
 
 
 class HideUnused(unittest.TestCase):
-    """안 쓰는 것 숨기기 — 꺼진 매크로·도구 칸만, 지우지도 끄지도 않고 state 'hidden' 에만 적는다(변경 이력에 남김)."""
+    """안 쓰는 것 숨기기 — 꺼진 자동화·도구 칸만, 지우지도 끄지도 않고 state 'hidden' 에만 적는다(변경 이력에 남김)."""
 
     def setUp(self):
         from unittest import mock
@@ -168,7 +168,7 @@ class HideUnused(unittest.TestCase):
 
     def test_enabled_or_unknown_cannot_hide(self):
         self.assertIn('켜져 있는', macrohub.set_hidden('svc_y', True))
-        self.assertEqual(macrohub.set_hidden('nope', True), '없는 매크로입니다')
+        self.assertEqual(macrohub.set_hidden('nope', True), '없는 자동화입니다')
         self.assertEqual(macrohub.hidden_ids(), set())
 
 
@@ -251,7 +251,7 @@ class AlertMail(unittest.TestCase):
         ok = alertmail.should_alert
         self.assertFalse(ok(self.FAIL, {'job_x': 1000}, 1000 + 59 * 60, self.ON))
         self.assertTrue(ok(self.FAIL, {'job_x': 1000}, 1000 + 60 * 60, self.ON))
-        self.assertTrue(ok(self.FAIL, {'job_y': 1000}, 1001, self.ON))     # 다른 매크로는 따로 센다
+        self.assertTrue(ok(self.FAIL, {'job_y': 1000}, 1001, self.ON))     # 다른 자동화는 따로 센다
 
     def test_compose(self):
         subject, body = alertmail.compose(self.FAIL, self.ON)

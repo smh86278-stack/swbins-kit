@@ -135,7 +135,7 @@ def ago_text(ts, now=None):
 
 # ---------------------------------------------------------------- 기능 상태 · 설정
 
-# '📊 기능 상태' 탭에 보이는 기능 — 각 매크로(macros\job_*.py)가 kit.write_status(기능, items) 로 남긴 상태 파일을 읽는다.
+# '📊 기능 상태' 탭에 보이는 기능 — 각 자동화(macros\job_*.py)가 kit.write_status(기능, items) 로 남긴 상태 파일을 읽는다.
 FEATURES = (
     ('scheduled_mail', '정기 메일'),
     ('tidy', '폴더 정리'),

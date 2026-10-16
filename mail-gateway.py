@@ -2177,7 +2177,7 @@ def main() -> int:
     os.makedirs(INBOX, exist_ok=True)
     cfg = load_cfg()
     if not cfg.get("enabled"):
-        # 꺼져 있으면 메일함에 접속하지도 않는다. 허브 서비스 매크로도 켜질 때까지 이 프로그램을 띄우지 않는다.
+        # 꺼져 있으면 메일함에 접속하지도 않는다. 허브 서비스 자동화도 켜질 때까지 이 프로그램을 띄우지 않는다.
         log("메일로 일 맡기기(dispatch.enabled)가 꺼져 있어 아무것도 하지 않고 끝냅니다.")
         set_state("disabled", "꺼짐 (config.local.json 의 dispatch.enabled)")
         return 0

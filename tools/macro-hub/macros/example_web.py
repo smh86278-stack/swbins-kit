@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 META = {
     "name": "예제 · 웹 열기",
-    "desc": "Chrome 으로 example.com 을 열어 제목을 읽는다. 웹 매크로의 뼈대.",
+    "desc": "Chrome 으로 example.com 을 열어 제목을 읽는다. 웹 자동화의 뼈대.",
     "kind": "ctx",
     "target": "web",
     "params": {"url": "https://example.com"},

@@ -2,12 +2,12 @@
 
 회사 PC 한 대에서 **반복 업무를 대신 돌려 주는 도구 모음**이다. 어느 회사에서나 쓰도록 회사마다 다른 값
 (메일 계정·받는 사람·감시할 주소·백업 폴더)은 전부 `config.local.json` **한 파일**에 둔다.
-가운데에는 **매크로 허브**(트레이 상주 앱, 이 PC 에서만 열리는 웹 화면 <http://127.0.0.1:8630/>)가 있고,
+가운데에는 **자동화 허브**(트레이 상주 앱, 이 PC 에서만 열리는 웹 화면 <http://127.0.0.1:8630/>)가 있고,
 기능은 허브가 정해진 시각에 돌리는 예약 작업이다. 작업 스케줄러를 쓰지 않는다.
 
 Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 
-**도움말·개발자 안내**: <https://smh86278-stack.github.io/swbins-kit/docs/> (저장소의 [`docs/index.html`](docs/index.html) — 코드에서 만든다, `python docs/build_docs.py`) — 기능별 설정 견본, 알림 웹훅 받는 쪽(JSON·서명 검증), 매크로 만들기(META·ctx), 허브 API.
+**도움말·개발자 안내**: <https://smh86278-stack.github.io/swbins-kit/docs/> (저장소의 [`docs/index.html`](docs/index.html) — 코드에서 만든다, `python docs/build_docs.py`) — 기능별 설정 견본, 알림 웹훅 받는 쪽(JSON·서명 검증), 자동화 만들기(META·ctx), 허브 API.
 코드에서 만든다(`python docs/build_docs.py`, 시험 `tests/test_docs.py` 가 어긋나면 알려 줌).
 
 ## 기능
@@ -27,7 +27,7 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | 📣 알림 출구 | 모든 알림을 메일과 함께 슬랙·Teams·디스코드·구글 챗·웹훅으로도 — `python setup.py --webhook` 으로 추가(주소는 암호화 저장), 보낸 기록이 남는다 | `notify` |
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
 | 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
-| 🤖 매크로 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 매크로로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
+| 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
 
 운영 화면 <http://127.0.0.1:8630/ops> 에서 기능마다 켜고 끄고, 시각을 바꾸고, 「📊 기능 상태」 탭에서 마지막 결과를 본다.
 기능은 **처음엔 모두 꺼져 있다** — 설정에 대상을 적은 뒤 켠다.
@@ -154,7 +154,7 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
 - 제거는 '설정 → 앱 → 설치된 앱' 또는 시작 메뉴의 「제거」. 설정을 남기면 다음 설치 때 되살아난다.
 - IT 담당자 일괄 배포: `WorkKitSetup-<버전>.exe /S` (무인 설치, 폴더 지정은 `/D=D:\WorkKit`).
 - 서명되지 않은 exe 라 처음 실행 때 Windows SmartScreen 이 경고할 수 있다 — 「추가 정보 → 실행」.
-- 웹 매크로(playwright)는 용량이 커서 기본으로 넣지 않는다. 필요하면 설치 폴더에서 `runtime\python.exe -m pip install playwright`.
+- 웹 자동화(playwright)는 용량이 커서 기본으로 넣지 않는다. 필요하면 설치 폴더에서 `runtime\python.exe -m pip install playwright`.
 
 설치 파일 만들기(개발 PC): `installer\build_installer.py` 맨 위 설명 참고 → `installer\dist\WorkKitSetup-<버전>.exe`.
 
@@ -168,7 +168,7 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
    ```
    회사 이름 · 메일 주소 · 메일 서버(Gmail / Microsoft 365 / 네이버 등 미리 채움, 또는 직접 입력) · 비밀번호 · 알림 받을 곳을 묻는다.
    끝에 알림 시험 메일을 한 통 보내 볼 수 있다(`python setup.py --test` 로 언제든 다시). 지금 설정 보기는 `python setup.py --show`.
-3. **허브 실행 환경** — `tools\macro-hub\setup.bat` (처음 한 번. 매크로용 패키지를 `.venv` 에 설치).
+3. **허브 실행 환경** — `tools\macro-hub\setup.bat` (처음 한 번. 자동화용 패키지를 `.venv` 에 설치).
 4. **허브 시작** — `tools\macro-hub\start_app.bat` → 트레이에 강아지 아이콘이 뜨고 허브 화면이 열린다.
    로그온할 때 자동으로 뜨게 하려면 트레이 메뉴 ⚙ 설정 → 로그온 시 자동 시작.
 5. **기능 켜기** — `config.local.json` 에 대상(받는 사람·주소·폴더)을 적고, 운영 화면 「⏰ 예약 작업」에서 스위치를 켠다.
@@ -179,13 +179,13 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
 
 ## 보안
 
-- **허브는 `127.0.0.1` 에만 열린다.** 허브는 프로그램을 띄우고 매크로를 돌리는 화면이라, 같은 망에 열면 원격 실행 구멍이 된다 —
+- **허브는 `127.0.0.1` 에만 열린다.** 허브는 프로그램을 띄우고 자동화를 돌리는 화면이라, 같은 망에 열면 원격 실행 구멍이 된다 —
   `0.0.0.0`·LAN 으로 바인딩하거나 포트를 터 주지 말 것. 실행 요청에는 허브가 시작할 때마다 새로 만드는 토큰이 필요하다.
 - **비밀번호는 Windows DPAPI 로 암호화**해 `password_enc` 로만 저장한다. 이 PC·이 Windows 사용자만 풀 수 있다
   (PC 를 옮기면 `python setup.py` 로 다시 넣는다).
 - **`config.local.json` 은 절대 커밋하지 않는다** — `.gitignore` 에 들어 있다. 견본은 `config.example.json`.
-  매크로가 쓰는 계정은 `tools\macro-hub\secrets.local.json`(역시 커밋 안 함), 실행 기록·상태는 `tools\macro-hub\data.local\`.
-- 매크로는 임의의 파이썬 코드다 — 남이 준 매크로는 열어 보고 돌린다.
+  자동화가 쓰는 계정은 `tools\macro-hub\secrets.local.json`(역시 커밋 안 함), 실행 기록·상태는 `tools\macro-hub\data.local\`.
+- 자동화는 임의의 파이썬 코드다 — 남이 준 자동화는 열어 보고 돌린다.
 
 ## 구조
 
@@ -197,10 +197,10 @@ config.local.json        이 PC 의 실제 설정 (git 제외, setup.py 가 만�
 mail-gateway.py · inbox-worker.ps1   디스패치 — 메일 지시를 받아 Claude Code 로 실행하고 회신 (기본 꺼짐)
 jira-watch.py            Jira 새 이슈 감시 — 새 이슈를 디스패치 대화로 물어본다 (기본 꺼짐, setup.py --jira)
 tools\ai-share-agent\    AI 공유 위키 — 주간 업무 보고 초안 · 이슈별 작업 기록 · 발표 준비 (기본 꺼짐, ai_share)
-tools\macro-hub\         매크로 허브 — 트레이 앱 · 웹 화면 · 예약 작업 · 상시 서비스 (자세히: tools\macro-hub\README.md)
+tools\macro-hub\         자동화 허브 — 트레이 앱 · 웹 화면 · 예약 작업 · 상시 서비스 (자세히: tools\macro-hub\README.md)
     kit.py               공통 바탕 — 설정 · 메일 · DPAPI · 예약 시각 판정 · 기능 상태 파일
     macros\job_*.py      기능 (정기 메일 · 폴더 정리 · 감시 · PC 점검 · 백업)
-    macros.local\        내가 만든 매크로 (git 제외)
+    macros.local\        내가 만든 자동화 (git 제외)
 tools\proc-live\         허브의 내부 모듈(프로세스 스냅샷)
 tests\                   python -m unittest discover -s tests · 커밋 전 tests\verify.ps1
 ```

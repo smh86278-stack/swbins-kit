@@ -5,7 +5,7 @@
 
 - 보내는 것: 상태가 fail · timeout 이고, 내가 직접 누른 실행(manual)·도구 실행이 아닌 것.
   직접 누른 건 허브 화면에서 바로 보이니 메일까지 보내지 않는다.
-- 같은 매크로는 cooldown_min(기본 60분) 안에 한 번만 — 죽고 다시 뜨기를 되풀이하는 서비스가 메일을 쏟지 않게.
+- 같은 자동화는 cooldown_min(기본 60분) 안에 한 번만 — 죽고 다시 뜨기를 되풀이하는 서비스가 메일을 쏟지 않게.
   마지막으로 보낸 시각은 data.local\alertmail.json 에 남겨 허브를 다시 켜도 이어진다.
 - 보내는 길은 kit.alert() 하나 — config.local.json 의 mail.alert_via 가 'smtp' 면 alert_to(없으면 내 주소)로 발송,
   'append' 면 내 INBOX 에 직접 넣는다(자기에게 보낸 메일을 딴 폴더로 치우는 서버용). 계정은 `python setup.py` 로 채운다.
@@ -45,7 +45,7 @@ def settings_of(raw):
 
 
 def should_alert(rec, sent, now, settings):
-    """이 실행 결과로 알림을 보낼지. sent 는 {매크로 id: 마지막으로 보낸 시각(초)}."""
+    """이 실행 결과로 알림을 보낼지. sent 는 {자동화 id: 마지막으로 보낸 시각(초)}."""
     if not settings['on'] or rec.get('tool'):
         return False
     if rec.get('status') not in ALERT_STATUS or rec.get('trigger', 'manual') == 'manual':
@@ -63,11 +63,11 @@ def compose(rec, settings):
     kind = {'service': '상시 서비스', 'schedule': '예약 작업'}.get(rec.get('trigger'), '자동 실행')
     timeout = rec.get('status') == 'timeout'
     name = rec.get('name') or rec.get('macro')
-    subject = '[매크로 허브] %s %s — %s' % (kind, '제한 시간 초과' if timeout else '실패', name)
+    subject = '[자동화 허브] %s %s — %s' % (kind, '제한 시간 초과' if timeout else '실패', name)
     lines = [
         '%s「%s」가 %s했습니다.' % (kind, name, '제한 시간을 넘겨 중지' if timeout else '실패'),
         '',
-        '매크로   %s' % rec.get('macro'),
+        '자동화   %s' % rec.get('macro'),
         '계기     %s%s' % (rec.get('trigger'), (' · ' + rec['detail']) if rec.get('detail') else ''),
         '시작     %s' % _clock(rec.get('started')),
         '끝       %s' % _clock(rec.get('ended')),
@@ -77,7 +77,7 @@ def compose(rec, settings):
     if tail:
         lines += ['', '── 마지막 로그 %d줄 ──' % len(tail)] + tail
     lines += ['', '자세한 로그·다시 실행: http://127.0.0.1:8630/  (이 PC 에서만)',
-              '같은 매크로는 %d분 안에 다시 알리지 않습니다. 끄기: 허브 트레이 ⚙ 설정 → 실패 알림 메일' % settings['cooldown_min']]
+              '같은 자동화는 %d분 안에 다시 알리지 않습니다. 끄기: 허브 트레이 ⚙ 설정 → 실패 알림 메일' % settings['cooldown_min']]
     return subject, '\n'.join(lines)
 
 
@@ -140,7 +140,7 @@ def on_run_end(rec, raw_settings, send=deliver, ready=_mail_ready):
             _unready_logged = True
             _log('메일 설정이 없어 알림을 건너뜀(%s) — %s' % (rec.get('macro'), why))
         return False
-    with _lock:                                   # 같은 매크로가 거의 동시에 두 번 끝나도 한 번만
+    with _lock:                                   # 같은 자동화가 거의 동시에 두 번 끝나도 한 번만
         sent = _read_sent()
         if not should_alert(rec, sent, now, settings):
             return False

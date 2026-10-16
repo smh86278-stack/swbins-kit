@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-"""매크로 한 개를 실행하는 자식 프로세스 — macrohub.py 가 띄운다.
+"""자동화 한 개를 실행하는 자식 프로세스 — macrohub.py 가 띄운다.
 
-    .venv\\Scripts\\python.exe runner.py <매크로.py>
+    .venv\\Scripts\\python.exe runner.py <자동화.py>
 
 환경변수 MACROHUB_CTX(JSON): {"params": {...}, "trigger": {...}, "macro": "id"}
 표준출력은 그대로 허브 화면의 실시간 로그가 된다. 종료 코드 0 = 성공.
 
-매크로 종류(META["kind"])
+자동화 종류(META["kind"])
   ctx      (기본) 모듈에 run(ctx) 가 있다. ctx 로 브라우저·창·비밀값·로그를 쓴다.
   script   녹화기(playwright codegen)가 만든 단독 스크립트. 그냥 실행한다.
 
 일의 종류(META["motion"]) — 펫 고양이가 일하는 동안 보일 모습. 없으면 target(web·desktop)을 따른다.
   web 웹 페이지 · desktop 창 조작 · write 입력 · mail 메일 · search 찾기
-  실행 중에 ctx.motion("mail") 로 바꿀 수 있다. 상시 매크로는 평소엔 지켜보기만 하다가
+  실행 중에 ctx.motion("mail") 로 바꿀 수 있다. 상시 자동화는 평소엔 지켜보기만 하다가
   ctx.motion("write", hold=3) 처럼 잠깐 일하는 모습을 보일 수 있다.
 """
 import ast
@@ -33,7 +33,7 @@ def say(msg):
 
 
 class Ctx:
-    """매크로에 넘기는 도구 모음."""
+    """자동화에 넘기는 도구 모음."""
 
     def __init__(self, raw, meta):
         self.macro = raw.get('macro', '')
@@ -56,12 +56,12 @@ class Ctx:
 
     def motion(self, kind=None, hold=None):
         """펫 고양이가 보일 일의 모습을 바꾼다 — web | desktop | write | mail | search, None 이면 META 기본으로.
-        hold(초)를 주면 그 시간만 보이고 저절로 돌아간다(상시 매크로가 잠깐 일할 때)."""
+        hold(초)를 주면 그 시간만 보이고 저절로 돌아간다(상시 자동화가 잠깐 일할 때)."""
         say('@@motion ' + json.dumps({'motion': kind, 'hold': hold}))
 
     @property
     def data_dir(self):
-        """이 매크로 전용 데이터 폴더(data.local\\<매크로 id>) — 자격증명·설정·상태. git 에 들어가지 않는다."""
+        """이 자동화 전용 데이터 폴더(data.local\\<자동화 id>) — 자격증명·설정·상태. git 에 들어가지 않는다."""
         safe = re.sub(r'[^\w\-]+', '_', self.macro or 'default')
         path = os.path.join(HERE, 'data.local', safe)
         os.makedirs(path, exist_ok=True)
@@ -78,7 +78,7 @@ class Ctx:
         return {pid for pid, (_, name) in Ctx._pl.snapshot().items() if name.lower() == want}
 
     def secret(self, key):
-        """secrets.local.json 의 값. 계정·비밀번호는 매크로 파일에 쓰지 말고 여기에 둔다."""
+        """secrets.local.json 의 값. 계정·비밀번호는 자동화 파일에 쓰지 말고 여기에 둔다."""
         try:
             with open(SECRETS, encoding='utf-8-sig') as f:
                 return json.load(f)[key]
@@ -90,7 +90,7 @@ class Ctx:
     # --- 웹 (Playwright)
     @property
     def page(self):
-        """Chrome 한 창. 로그인 상태는 매크로별 프로필(profiles\\<id>)에 남는다."""
+        """Chrome 한 창. 로그인 상태는 자동화별 프로필(profiles\\<id>)에 남는다."""
         if self._browser_ctx is None:
             from playwright.sync_api import sync_playwright
             self._pw = sync_playwright().start()
@@ -144,7 +144,7 @@ class Ctx:
         """버튼 누르기 — 마우스를 쓰지 않는 UIA invoke 를 먼저 시도하고, 안 되는 컨트롤만 실제 클릭으로 대신한다.
 
         실제 클릭으로 넘어가면 그 순간 마우스가 움직이므로 로그에 남긴다.
-        META 에 "no_mouse": True 를 주면 대신하지 않고 오류로 멈춘다(내 작업을 방해하면 안 되는 매크로용).
+        META 에 "no_mouse": True 를 주면 대신하지 않고 오류로 멈춘다(내 작업을 방해하면 안 되는 자동화용).
         """
         w = ctrl.wrapper_object() if hasattr(ctrl, 'wrapper_object') else ctrl
         try:
@@ -200,7 +200,7 @@ def main():
         ns = runpy.run_path(path, run_name='macro')
         if meta.get('kind', 'ctx') == 'ctx':
             if 'run' not in ns:
-                raise RuntimeError('매크로에 run(ctx) 함수가 없습니다')
+                raise RuntimeError('자동화에 run(ctx) 함수가 없습니다')
             ns['run'](ctx)
         say('■ 끝 (%.1f초)' % (time.time() - started))
     except SystemExit as e:

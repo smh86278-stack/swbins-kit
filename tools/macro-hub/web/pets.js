@@ -105,13 +105,13 @@ window.PetMood = {
   compute(macros, flash, now, force){
     force = force || {};
     const svc = macros.filter(m => m.service), on = svc.filter(m => m.enabled), down = on.filter(m => !m.running);
-    // 일하는 중 = 일반 매크로가 도는 중, 또는 상시 매크로가 ctx.motion() 으로 잠깐 일하는 모습을 보이는 중
-    // ctx.motion(hold=) 이 끝났으면 META 기본 모습으로(상시 매크로는 기본이 없으니 지켜보기로) 돌아간다
+    // 일하는 중 = 일반 자동화가 도는 중, 또는 상시 자동화가 ctx.motion() 으로 잠깐 일하는 모습을 보이는 중
+    // ctx.motion(hold=) 이 끝났으면 META 기본 모습으로(상시 자동화는 기본이 없으니 지켜보기로) 돌아간다
     const motionOf = m => (!m.motion_until || m.motion_until > now) ? m.motion : m.motion_default;
     const active = m => !!motionOf(m);
     const working = macros.filter(m => m.running && (!m.service || active(m)));
     let dog, dogText;
-    if (!on.length) { dog = 'sleep'; dogText = '쿨쿨… 상시 매크로를 켜면 깨울게요'; }
+    if (!on.length) { dog = 'sleep'; dogText = '쿨쿨… 상시 자동화를 켜면 깨울게요'; }
     else if (down.length) { dog = 'worried'; dogText = '앗, ' + down[0].name + ' 다시 살리는 중이에요…'; }
     else { dog = 'alert'; dogText = on.map(m => m.name).join(', ') + ' 지키는 중!'; }
     const barking = flash.dogBark > now;

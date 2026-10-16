@@ -8,16 +8,16 @@
   읽기는 `tools\macro-hub\kit.py` 로만 — `kit.load_config()` · `kit.section('monitors', 기본값)` · `kit.mail_config()` ·
   `kit.mail_ready()` · `kit.company_name()`. 새 갈래를 추가하면 `config.example.json` 에 견본과 `_설명` 을 함께 넣는다.
 - 메일은 `kit.send_mail` · `kit.append_inbox` · `kit.alert` 만 쓴다. 비밀번호는 `kit.protect`(DPAPI) 로 암호화한 `password_enc` 만 저장한다.
-- 기능 매크로(`macros\job_*.py`)는 결과를 `kit.write_status(기능, items)` 로 남긴다 — 운영 화면 「📊 기능 상태」가 읽는다.
+- 기능 자동화(`macros\job_*.py`)는 결과를 `kit.write_status(기능, items)` 로 남긴다 — 운영 화면 「📊 기능 상태」가 읽는다.
   기능 목록은 `ops.FEATURES`.
-- `kit.py` 의 기존 함수 이름·인자는 바꾸지 않는다(허브·매크로·게이트웨이가 함께 쓴다). 표준 라이브러리만.
+- `kit.py` 의 기존 함수 이름·인자는 바꾸지 않는다(허브·자동화·게이트웨이가 함께 쓴다). 표준 라이브러리만.
 
 ## 하지 말 것
 
 - **회사 이름·도메인·사내 주소·개인 경로·계정을 코드·문서·테스트에 박지 않는다.** 예시는 `example.com`, 경로는 `%USERPROFILE%`
   또는 저장소 기준 상대 경로(`kit.ROOT`). 견본 값도 `config.example.json` 에만.
 - `config.local.json` · `*.local.json` · `data.local\` · `macros.local\` 커밋 금지(`.gitignore`). `git add -A` 대신 손댄 파일만 지정한다.
-- **허브(8630)를 `127.0.0.1` 밖으로 열지 않는다** — 프로그램을 띄우고 매크로를 돌리는 화면이라 LAN·`0.0.0.0` 바인딩은 원격 실행 구멍이다.
+- **허브(8630)를 `127.0.0.1` 밖으로 열지 않는다** — 프로그램을 띄우고 자동화를 돌리는 화면이라 LAN·`0.0.0.0` 바인딩은 원격 실행 구멍이다.
   실행 요청 토큰은 허브가 시작할 때마다 새로 만들어 화면에만 심는다 — 파일로 남기지 않는다.
 - 디스패치(메일 → Claude Code)는 기본 꺼짐을 유지한다. 켜는 기본값으로 바꾸지 않는다.
 - 작업 스케줄러 작업을 만들지 않는다 — 예약은 허브의 `job_*` 가 맡는다.

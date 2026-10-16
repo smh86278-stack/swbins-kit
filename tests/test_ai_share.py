@@ -489,7 +489,7 @@ class Weekly(Base):
         self.assertEqual(ag.weekly_recipients(), ['me@example.com'])
 
 
-# ---------------------------------------------------------------- 토큰 · 허브 매크로
+# ---------------------------------------------------------------- 토큰 · 허브 자동화
 
 class TokenAndHub(Base):
     def test_set_token(self):

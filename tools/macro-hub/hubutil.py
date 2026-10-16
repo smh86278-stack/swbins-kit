@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""매크로가 함께 쓰는 공용 도구 — DPAPI 암호화와 TOTP. 외부 패키지 없이 표준 라이브러리 + ctypes.
+"""자동화가 함께 쓰는 공용 도구 — DPAPI 암호화와 TOTP. 외부 패키지 없이 표준 라이브러리 + ctypes.
 
     import hubutil
     hubutil.protect_text('비밀번호')      → 16진수 문자열 (현재 Windows 사용자만 풀 수 있다)

@@ -1,4 +1,4 @@
-/* 매크로 허브 공통 테마 — 허브 첫 화면(index.html)과 운영 화면(ops.html)이 함께 쓴다.
+/* 자동화 허브 공통 테마 — 허브 첫 화면(index.html)과 운영 화면(ops.html)이 함께 쓴다.
    파스텔(라일락·핑크·민트) + 둥근 모서리 + 촘촘한 목록. 색을 바꾸려면 여기 :root 만 고친다.
    색은 light-dark(라이트, 다크) 한 쌍 — 어느 쪽을 쓸지는 <html data-mode> 가 정한다:
    auto = Windows 설정을 따름 · light · dark. 모드는 허브가 기억하고(state['theme'], 단추는 theme.js) 페이지에 심어 준다.

@@ -1,7 +1,7 @@
 'use strict';
-/* 매크로 허브 창 — 허브 화면(http://127.0.0.1:8630/)을 브라우저 탭이 아니라 '매크로 허브' 전용 창으로 연다.
+/* 자동화 허브 창 — 허브 화면(http://127.0.0.1:8630/)을 브라우저 탭이 아니라 '자동화 허브' 전용 창으로 연다.
  *
- *   electron.exe shell [--page=/ops]     (보통은 WorkKit.exe · 트레이 '매크로 허브 열기' 가 띄운다)
+ *   electron.exe shell [--page=/ops]     (보통은 WorkKit.exe · 트레이 '자동화 허브 열기' 가 띄운다)
  *
  * 화면 펫(pet\)과 같은 Electron 을 쓴다. 창은 한 번에 하나 — 다시 열면 떠 있는 창이 앞으로 나오고 그 화면으로 간다.
  * 창을 닫아도 허브·트레이·서비스는 그대로 돈다(이 프로세스는 창만 맡는다). 허브 밖 주소는 기본 브라우저로 연다. */
@@ -15,7 +15,7 @@ const ICON = path.join(__dirname, '..', 'web', 'app.ico');
 const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
 
 app.setAppUserModelId('WorkKit');
-app.setName('매크로 허브');
+app.setName('자동화 허브');
 app.setPath('userData', path.join(__dirname, '..', 'data.local', 'shell-profile'));   // 펫과 프로필을 나눈다
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 
@@ -65,7 +65,7 @@ function create(page) {
   const st = readState();
   win = new BrowserWindow({
     width: 1280, height: 860, ...(st.bounds || {}), minWidth: 720, minHeight: 480,
-    title: '매크로 허브', icon: ICON, autoHideMenuBar: true, backgroundColor: bg(), show: false,
+    title: '자동화 허브', icon: ICON, autoHideMenuBar: true, backgroundColor: bg(), show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   if (st.max) win.maximize();
@@ -83,7 +83,7 @@ function create(page) {
     if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) { wc.reload(); e.preventDefault(); }
     if (input.control && input.shift && input.key.toLowerCase() === 'i') { wc.toggleDevTools(); e.preventDefault(); }
   });
-  win.on('page-title-updated', e => e.preventDefault());               // 창 제목은 '매크로 허브' 로 둔다
+  win.on('page-title-updated', e => e.preventDefault());               // 창 제목은 '자동화 허브' 로 둔다
   win.on('close', saveState);
   win.on('closed', () => { win = null; });
   load(page);

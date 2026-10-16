@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""공개 도움말(docs/index.html)이 코드와 맞는지 — 설정 견본·매크로 설명·ctx 도구가 바뀌면 다시 만들어야 한다."""
+"""공개 도움말(docs/index.html)이 코드와 맞는지 — 설정 견본·자동화 설명·ctx 도구가 바뀌면 다시 만들어야 한다."""
 import importlib.util
 import os
 import re

@@ -7,7 +7,7 @@
 PC 끼리 직접 연결할 필요가 없다 — 메일 서버만 닿으면 어느 PC 에서든 같은 대화를 본다.
 
     python chat.py              서버를 띄우고 앱 창(Edge, 맥은 Edge·크롬)으로 연다(이미 떠 있으면 창만 연다)
-    python chat.py --serve      창 없이 서버만(이 PC 에서는 매크로 허브의 svc_dispatch_chat 이 이렇게 띄운다)
+    python chat.py --serve      창 없이 서버만(이 PC 에서는 자동화 허브의 svc_dispatch_chat 이 이렇게 띄운다)
     DispatchChat.exe / .app     build.py 로 만든다 — 처음 열면 메일 계정을 묻는다. 맥은 DispatchChat.command 더블클릭도 된다
 
 표준 라이브러리만 쓴다(PyInstaller 로 exe 한 파일 — 그래서 kit.py 를 import 하지 않는다. DPAPI 는 kit.py 와 같은 방식이라

@@ -3,7 +3,7 @@ META = {"name": "요소 찍기", "kind": "ctx", "hidden": True}
 
 
 def run(ctx):
-    """3초 뒤 마우스 아래에 있는 컨트롤을 읽어, 매크로에 붙여 넣을 코드를 만든다."""
+    """3초 뒤 마우스 아래에 있는 컨트롤을 읽어, 자동화에 붙여 넣을 코드를 만든다."""
     import ctypes
     from ctypes import wintypes
     from pywinauto import Desktop
@@ -24,7 +24,7 @@ def run(ctx):
     ctx.log('auto_id: %s' % info.automation_id)
     ctx.log('클래스 : %s' % info.class_name)
     ctx.log('')
-    ctx.log('# 매크로에 붙여 넣기')
+    ctx.log('# 자동화에 붙여 넣기')
     import re
     ctx.log("win = ctx.window(r'%s')" % re.escape(top.window_text()).replace("'", "\\'"))
     crit = []

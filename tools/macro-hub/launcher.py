@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""매크로 허브 입구 — WorkKit.exe 로 묶인다(build_exe.bat). 표준 라이브러리만 쓴다.
+"""자동화 허브 입구 — WorkKit.exe 로 묶인다(build_exe.bat). 표준 라이브러리만 쓴다.
 
     WorkKit.exe                허브가 안 떠 있으면 띄우고(감시자가 된다) 허브 창을 연다
     WorkKit.exe --background   창 없이 허브만 띄운다(로그온 자동 시작용)
@@ -56,7 +56,7 @@ def log(msg):
         pass
 
 
-def message_box(text, title='매크로 허브'):
+def message_box(text, title='자동화 허브'):
     ctypes.windll.user32.MessageBoxW(None, text, title, 0x30)
 
 
@@ -105,7 +105,7 @@ def watch(quiet):
         log('트레이 앱이 비정상 종료(코드 %s, %d초 동안 돌았음) — 다시 띄웁니다 (%d/%d)'
             % (code, now - started, len(crashes), CRASH_LIMIT))
         if len(crashes) >= CRASH_LIMIT:
-            message_box('매크로 허브가 %d분 안에 %d번 죽어서 다시 띄우기를 멈췄습니다.\n'
+            message_box('자동화 허브가 %d분 안에 %d번 죽어서 다시 띄우기를 멈췄습니다.\n'
                         '기록: %s\n\n허브가 띄운 서버·워처는 계속 돌고 있습니다.' % (CRASH_WINDOW // 60, CRASH_LIMIT, LOG))
             return
         time.sleep(min(30, 2 ** len(crashes)))
@@ -120,7 +120,7 @@ $w = New-Object -ComObject WScript.Shell
 foreach ($dir in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
   $s = $w.CreateShortcut((Join-Path $dir '업무 자동화 키트.lnk'))
   $s.TargetPath = '%s'; $s.Arguments = '%s'; $s.WorkingDirectory = '%s'; $s.IconLocation = '%s,0'
-  $s.Description = '매크로 허브 — 매크로·상시 서비스·예약 작업'; $s.Save(); Write-Output $s.FullName
+  $s.Description = '자동화 허브 — 자동화·상시 서비스·예약 작업'; $s.Save(); Write-Output $s.FullName
 }
 ''' % (target, args, HERE, ICON)
     out = subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True,

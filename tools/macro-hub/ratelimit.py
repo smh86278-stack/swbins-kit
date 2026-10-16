@@ -9,11 +9,11 @@
     lim.observe(resp.headers, resp.status)                               # 응답 머리글로 남은 횟수·쉬는 시간 배우기
 
 한도는 config "rate_limits" 갈래에 둘 수 있다 — {"cafe24": {"limit": 3000, "window_sec": 600}} → ratelimit.from_config('cafe24').
-- 같은 이름의 Limiter 는 data.local/rate_limits/<이름>.json 을 같이 쓴다(파일 잠금) — 매크로·도구·게이트웨이가 따로 돌아도
+- 같은 이름의 Limiter 는 data.local/rate_limits/<이름>.json 을 같이 쓴다(파일 잠금) — 자동화·도구·게이트웨이가 따로 돌아도
   한도를 함께 센다. 창은 미끄러지는 창(window_sec 안의 호출 시각 목록).
 - 응답 머리글: Retry-After(초·날짜), X-RateLimit-Remaining/-Limit/-Reset 류(대소문자·접두어 상관없이 'remaining'·'reset' 을
   찾는다), 429·503 이면 Retry-After(없으면 지수 대기)만큼 이 이름 전체가 쉰다.
-- 미터기: usage() → 창 안 사용량·한도·비율·쉬는 중인지·최근 429. 매크로 job_rate_meter 가 운영 화면 「📊 기능 상태」와 알림에 쓴다.
+- 미터기: usage() → 창 안 사용량·한도·비율·쉬는 중인지·최근 429. 자동화 job_rate_meter 가 운영 화면 「📊 기능 상태」와 알림에 쓴다.
 """
 import email.utils
 import json

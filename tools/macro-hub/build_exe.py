@@ -4,7 +4,7 @@
     build_exe.bat          (= .venv\\Scripts\\python.exe build_exe.py)
     WorkKit.exe --install 바로가기·로그온 자동 시작 등록
 
-exe 는 입구·감시자만 맡는 작은 실행 파일이다(표준 라이브러리만). 트레이 앱·매크로는 여전히 .venv 의 Python 으로 돈다 —
+exe 는 입구·감시자만 맡는 작은 실행 파일이다(표준 라이브러리만). 트레이 앱·자동화는 여전히 .venv 의 Python 으로 돈다 —
 그래서 exe 는 이 폴더(tools\\macro-hub) 안에 있어야 한다. 빌드 결과(WorkKit.exe)와 중간 파일은 git 에 넣지 않는다.
 PyInstaller 는 .venv 에 따로 설치한다: .venv\\Scripts\\python.exe -m pip install pyinstaller
 """

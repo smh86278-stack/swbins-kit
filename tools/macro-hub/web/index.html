@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>매크로 허브</title>
+<title>자동화 허브</title>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
 /* 색·단추·칩·입력·토스트는 /static/theme.css(운영 화면과 공유). 여기는 첫 화면에만 있는 것. */
@@ -100,7 +100,7 @@ pre#log .ln{animation:fadein .35s ease both}
 <body>
 <header class="top">
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
-  <h1>매크로 허브</h1><span id="dot" title="연결 상태"></span>
+  <h1>자동화 허브</h1><span id="dot" title="연결 상태"></span>
   <span class="sub" id="info"></span>
   <a class="nav" href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화 — 메일로 맡긴 일을 메신저처럼(다른 PC 는 DispatchChat.exe)">💬 대화</a>
   <a class="nav" href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 — 내 이슈·커밋 모아 보기 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜬다)">📚 AI 위키</a>
@@ -108,30 +108,30 @@ pre#log .ln{animation:fadein .35s ease both}
   <select id="skinSel" title="강아지·고양이 모습 — 펫과 같이 바뀝니다"></select>
   <button id="petBtn" title="화면 구석에 강아지·고양이 펫을 띄웁니다">화면 펫</button>
   <span id="modeSw"></span>
-  <span class="sub" style="margin-left:auto">자동 실행은 매크로마다 켜야 동작합니다 (기본 꺼짐)</span>
+  <span class="sub" style="margin-left:auto">자동 실행은 자동화마다 켜야 동작합니다 (기본 꺼짐)</span>
 </header>
 
 <div class="hero">
   <div class="stage">
-    <!-- ================= 강아지 (감시견 · 상시 매크로) ================= -->
+    <!-- ================= 강아지 (감시견 · 상시 자동화) ================= -->
     <div class="pet dog" id="dog" data-mood="sleep" data-bark="off">
       <div class="bubble" id="dogBubble">…</div>
       <div class="art" id="dogArt"></div>
-      <div class="tag">감시견 · 상시 매크로</div>
+      <div class="tag">감시견 · 상시 자동화</div>
     </div>
 
     <div class="center">
-      <div class="stat"><b id="sSvc">0</b><span>상시 매크로 동작</span></div>
+      <div class="stat"><b id="sSvc">0</b><span>상시 자동화 동작</span></div>
       <div class="stat run"><b id="sRun">0</b><span>지금 실행 중</span></div>
       <div class="stat ok"><b id="sOk">0</b><span>오늘 성공</span></div>
       <div class="stat bad"><b id="sFail">0</b><span>오늘 실패</span></div>
     </div>
 
-    <!-- ================= 고양이 (일꾼 · 실행 중 매크로) ================= -->
+    <!-- ================= 고양이 (일꾼 · 실행 중 자동화) ================= -->
     <div class="pet cat" id="cat" data-mood="idle">
       <div class="bubble" id="catBubble">…</div>
       <div class="art" id="catArt"></div>
-      <div class="tag">일꾼 고양이 · 실행 중 매크로</div>
+      <div class="tag">일꾼 고양이 · 실행 중 자동화</div>
     </div>
   </div>
   <div class="ground"></div>
@@ -140,7 +140,7 @@ pre#log .ln{animation:fadein .35s ease both}
 <main>
   <div class="stack">
     <section class="box">
-      <h2>매크로</h2>
+      <h2>자동화</h2>
       <div id="macros"></div>
     </section>
   </div>
@@ -148,13 +148,13 @@ pre#log .ln{animation:fadein .35s ease both}
     <section class="box">
       <h2>만들기 · 녹화 · 도구</h2>
       <div class="tool" data-hide="tool:new">
-        <div class="lbl">새 매크로 (템플릿)</div>
+        <div class="lbl">새 자동화 (템플릿)</div>
         <div class="row"><input id="newName" type="text" placeholder="이름" class="grow">
           <select id="newKind"><option value="web">웹</option><option value="desktop">데스크톱</option></select>
           <button id="newBtn">만들기</button></div>
       </div>
       <div class="tool" data-hide="tool:record">
-        <div class="lbl">웹 녹화 — Chrome 이 열리고, 조작한 내용이 매크로로 저장됩니다 (창을 닫으면 저장)</div>
+        <div class="lbl">웹 녹화 — Chrome 이 열리고, 조작한 내용이 자동화로 저장됩니다 (창을 닫으면 저장)</div>
         <div class="row"><input id="recUrl" type="text" placeholder="https://…" class="grow"><input id="recName" type="text" placeholder="저장 이름" style="width:130px">
           <button id="recBtn">녹화 시작</button></div>
       </div>
@@ -164,7 +164,7 @@ pre#log .ln{animation:fadein .35s ease both}
           <input id="inspTitle" type="text" placeholder="창 제목 일부(비우면 창 목록)" class="grow"><button id="inspBtn">구조 보기</button></div>
       </div>
       <div class="tool">
-        <div class="row"><button id="openLocal">내 매크로 폴더 열기</button><button id="openEx">예제 폴더 열기</button></div>
+        <div class="row"><button id="openLocal">내 자동화 폴더 열기</button><button id="openEx">예제 폴더 열기</button></div>
       </div>
       <button class="hidebar" id="toolHidBar" hidden></button>
     </section>
@@ -202,8 +202,8 @@ function trgText(t){
   return JSON.stringify(t);
 }
 
-/* ---------- 매크로 카드 ---------- */
-// 숨긴 것(안 쓰는 매크로·도구) — 켜져 있으면 숨김이어도 보인다. '숨긴 것 보기' 펼침은 이 브라우저에만 기억
+/* ---------- 자동화 카드 ---------- */
+// 숨긴 것(안 쓰는 자동화·도구) — 켜져 있으면 숨김이어도 보인다. '숨긴 것 보기' 펼침은 이 브라우저에만 기억
 let showHidden={};try{showHidden=JSON.parse(localStorage.getItem('hub.showHidden')||'{}')||{}}catch(e){}
 function toggleHidden(k){showHidden[k]=!showHidden[k];try{localStorage.setItem('hub.showHidden',JSON.stringify(showHidden))}catch(e){}}
 const isHid=m=>m.hidden&&!m.enabled;
@@ -220,9 +220,9 @@ function hiddenBar(n,key,redraw){
 }
 function drawMacros(){
   const box=$('#macros');box.replaceChildren();
-  if(!macros.length){box.append(el('div','empty','매크로가 없습니다. 오른쪽에서 새로 만들거나 녹화하세요.'));return}
+  if(!macros.length){box.append(el('div','empty','자동화가 없습니다. 오른쪽에서 새로 만들거나 녹화하세요.'));return}
   const vis=macros.filter(m=>!isHid(m)),hid=macros.filter(isHid);
-  if(!vis.length)box.append(el('div','empty','보이는 매크로가 없습니다 — 아래 「숨긴 것」을 펼쳐 다시 보이게 하세요.'));
+  if(!vis.length)box.append(el('div','empty','보이는 자동화가 없습니다 — 아래 「숨긴 것」을 펼쳐 다시 보이게 하세요.'));
   vis.forEach((m,idx)=>box.append(macroCard(m,idx,false)));
   if(hid.length){
     box.append(hiddenBar(hid.length,'macros',drawMacros));
@@ -365,7 +365,7 @@ function connect(){
   };
 }
 const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
-$('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 매크로 폴더에서 편집하세요');loadMacros()});
+$('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 자동화 폴더에서 편집하세요');loadMacros()});
 $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
 $('#pickBtn').onclick=guard(async()=>{const r=await api('/api/pick',{});select(r.run)});
 $('#inspBtn').onclick=guard(async()=>{const r=await api('/api/inspect',{title:$('#inspTitle').value});select(r.run)});

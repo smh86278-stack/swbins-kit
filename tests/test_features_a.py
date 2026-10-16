@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""정기 예약 메일(job_scheduled_mail) · 폴더 정리(job_tidy) 매크로의 회귀 테스트.
+"""정기 예약 메일(job_scheduled_mail) · 폴더 정리(job_tidy) 자동화의 회귀 테스트.
 
     python -X utf8 -m unittest tests.test_features_a -v
 
-허브를 띄우지 않고 매크로 모듈의 함수만 부른다. 메일은 kit.send_mail 을 바꿔치기해 실제로 보내지 않고,
+허브를 띄우지 않고 자동화 모듈의 함수만 부른다. 메일은 kit.send_mail 을 바꿔치기해 실제로 보내지 않고,
 파일은 임시 폴더에서만 옮긴다. 표준 라이브러리만으로 돈다.
 """
 import datetime

@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""매크로 허브 — 회사 업무 화면 처리를 매크로로 돌리는 실시간 프로그램 (본인 전용, Windows).
+"""자동화 허브 — 회사 업무 화면 처리를 자동화로 돌리는 실시간 프로그램 (본인 전용, Windows).
 
     python macrohub.py                http://127.0.0.1:8630/
     python macrohub.py --port 8700 --open
 
 하는 일
-  - macros\\ (예제, git 에 들어감) · macros.local\\ (실제 업무 매크로, git 제외) 의 *.py 를 목록으로 보여 준다.
-  - 매크로를 웹 화면 버튼으로 실행하고, 로그를 실시간으로 본다. 중지 버튼으로 프로세스 트리째 끈다.
-  - 자동 실행 트리거: 프로세스가 뜰 때 · 창이 나타날 때 · 시간 예약. 매크로별로 켜야만 동작한다(기본 꺼짐).
+  - macros\\ (예제, git 에 들어감) · macros.local\\ (실제 업무 자동화, git 제외) 의 *.py 를 목록으로 보여 준다.
+  - 자동화를 웹 화면 버튼으로 실행하고, 로그를 실시간으로 본다. 중지 버튼으로 프로세스 트리째 끈다.
+  - 자동 실행 트리거: 프로세스가 뜰 때 · 창이 나타날 때 · 시간 예약. 자동화별로 켜야만 동작한다(기본 꺼짐).
   - 녹화: 웹은 playwright codegen, 데스크톱은 '요소 찍기'(마우스 아래 컨트롤 → 코드 조각).
 
-매크로는 .venv 의 파이썬(runner.py)에서 별도 프로세스로 돈다 — 허브는 표준 라이브러리만 쓴다.
-계정·비밀번호는 secrets.local.json 에 두고 매크로에서는 ctx.secret('키') 로 읽는다.
+자동화는 .venv 의 파이썬(runner.py)에서 별도 프로세스로 돈다 — 허브는 표준 라이브러리만 쓴다.
+계정·비밀번호는 secrets.local.json 에 두고 자동화에서는 ctx.secret('키') 로 읽는다.
 허브 화면은 이 PC(127.0.0.1)에서만 열리고, 실행 요청에는 토큰을 요구한다.
 """
 import argparse
@@ -122,7 +122,7 @@ def save_state():
         pass
 
 
-# ---------------------------------------------------------------- 매크로 목록
+# ---------------------------------------------------------------- 자동화 목록
 
 _cache = {'sig': None, 'items': []}
 
@@ -146,7 +146,7 @@ def default_motion(meta):
 
 
 def discover():
-    """매크로 목록. 예약 시각을 허브 화면에서 바꿨으면(state['schedule']) 그 값을 덧씌운다 —
+    """자동화 목록. 예약 시각을 허브 화면에서 바꿨으면(state['schedule']) 그 값을 덧씌운다 —
     META 의 schedule 트리거는 기본값으로 남고(meta_triggers), 창·프로세스 트리거는 그대로다."""
     items = _discover_files()
     ov = state.get('schedule') or {}
@@ -206,7 +206,7 @@ class Run:
         self.lines = deque(maxlen=1500)
         self.proc = None
         self.stopping = False
-        self.motion_default = None       # 일반 매크로는 META 의 일 종류, 상시 매크로는 None(평소엔 지켜보기만)
+        self.motion_default = None       # 일반 자동화는 META 의 일 종류, 상시 자동화는 None(평소엔 지켜보기만)
         self.motion = None
         self.motion_until = None         # ctx.motion(hold=) 로 잠깐만 보일 때 끝나는 시각(ms)
 
@@ -374,7 +374,7 @@ def sched_text(triggers):
 
 
 def set_enabled(mid, on):
-    """상시 매크로·예약 매크로 켜기/끄기. 상시 매크로를 끄면 지키던 바깥 프로그램까지 멈춘다."""
+    """상시 자동화·예약 자동화 켜기/끄기. 상시 자동화를 끄면 지키던 바깥 프로그램까지 멈춘다."""
     m = find_macro(mid)
     if not m:
         return False
@@ -392,7 +392,7 @@ def set_enabled(mid, on):
     return True
 
 
-HIDE_TOOLS = ('tool:new', 'tool:record', 'tool:desktop')   # 허브 화면 '만들기 · 녹화 · 도구' 칸 — 매크로처럼 숨길 수 있다
+HIDE_TOOLS = ('tool:new', 'tool:record', 'tool:desktop')   # 허브 화면 '만들기 · 녹화 · 도구' 칸 — 자동화처럼 숨길 수 있다
 
 
 def hidden_ids():
@@ -400,11 +400,11 @@ def hidden_ids():
 
 
 def set_hidden(mid, on):
-    """안 쓰는 매크로·도구를 허브·운영 화면 목록에서 숨기기/다시 보이기 — 지우지도 끄지도 않는다(state.local.json 'hidden').
-    켜져 있는(돌고 있는) 상시·예약 매크로는 숨기지 않는다 — 돌면서 안 보이면 헷갈린다. 돌려주는 값: 오류 문구 또는 None"""
+    """안 쓰는 자동화·도구를 허브·운영 화면 목록에서 숨기기/다시 보이기 — 지우지도 끄지도 않는다(state.local.json 'hidden').
+    켜져 있는(돌고 있는) 상시·예약 자동화는 숨기지 않는다 — 돌면서 안 보이면 헷갈린다. 돌려주는 값: 오류 문구 또는 None"""
     m = find_macro(mid) if mid not in HIDE_TOOLS else None
     if not m and mid not in HIDE_TOOLS:
-        return '없는 매크로입니다'
+        return '없는 자동화입니다'
     if on and m and state['enabled'].get(mid):
         return '켜져 있는 것은 숨길 수 없습니다 — 먼저 끄세요'
     ids = hidden_ids()
@@ -422,7 +422,7 @@ def service_action(mid, action):
     """운영 화면·트레이의 시작/중지/재시작/지금 실행. 돌려주는 값: (ok, 안내 문구)"""
     m = find_macro(mid)
     if not m:
-        return False, '허브에 없는 매크로: %s' % mid
+        return False, '허브에 없는 자동화: %s' % mid
     if action == 'start':
         set_enabled(mid, True)
         return True, '%s — 상시 실행을 켰습니다(몇 초 안에 뜹니다)' % m['name'] if m['service'] else '%s — 예약 실행을 켰습니다' % m['name']
@@ -449,7 +449,7 @@ def service_action(mid, action):
 def run_macro(macro_id, params=None, trigger=None):
     m = find_macro(macro_id)
     if not m:
-        return None, '매크로를 찾을 수 없습니다'
+        return None, '자동화를 찾을 수 없습니다'
     merged = {k: v for k, v in m['params'].items()}
     merged.update({k: v for k, v in (params or {}).items() if k in m['params'] or not m['params']})
     return start_run(m['id'], merged, trigger, m['path'], m['name'], timeout=m['timeout'],
@@ -490,7 +490,7 @@ def parse_every(text):
 
 
 HUB_BOOT = time.time()
-SCHED_LAST = {}                      # (매크로 id, 'every' 값) → 마지막으로 쏜 시각. 간격을 바꾸면 새로 센다
+SCHED_LAST = {}                      # (자동화 id, 'every' 값) → 마지막으로 쏜 시각. 간격을 바꾸면 새로 센다
 
 
 def every_base(mid, every):
@@ -561,7 +561,7 @@ def next_fire(m, trg, now=None):
 
 
 def schedule_view():
-    """예약 화면용 — 예약 트리거가 있는 매크로(상시 매크로 제외)."""
+    """예약 화면용 — 예약 트리거가 있는 자동화(상시 자동화 제외)."""
     out = []
     for m in discover():
         meta = m.get('meta_triggers', m['triggers'])
@@ -597,7 +597,7 @@ def at_due(trg, sched_from, now):
 
 
 def ran_since(mid, ts):
-    """이 매크로가 ts(epoch 초) 이후에 시작된 적이 있나 — 지금 허브의 실행 + 허브가 뜨기 전 기록(runs.jsonl)."""
+    """이 자동화가 ts(epoch 초) 이후에 시작된 적이 있나 — 지금 허브의 실행 + 허브가 뜨기 전 기록(runs.jsonl)."""
     with lock:
         if any(r.macro == mid and not r.tool and r.started >= ts for r in runs):
             return True
@@ -723,10 +723,10 @@ def trigger_loop():
             time.sleep(0.5)
 
 
-# ---------------------------------------------------------------- 상시 매크로 (service)
+# ---------------------------------------------------------------- 상시 자동화 (service)
 
 def service_loop():
-    """켜 둔 상시 매크로(META["service"]=True)가 죽어 있으면 다시 살린다. 연달아 바로 죽으면 간격을 늘린다(최대 60초)."""
+    """켜 둔 상시 자동화(META["service"]=True)가 죽어 있으면 다시 살린다. 연달아 바로 죽으면 간격을 늘린다(최대 60초)."""
     retry_at = {}
     delay = {}
     while True:
@@ -750,7 +750,7 @@ def service_loop():
             print('service_loop 오류:', e, file=sys.stderr)
 
 
-# ---------------------------------------------------------------- 녹화 · 새 매크로
+# ---------------------------------------------------------------- 녹화 · 새 자동화
 
 TEMPLATE_WEB = '''# -*- coding: utf-8 -*-
 META = {
@@ -902,12 +902,12 @@ def set_pet(on):
 
 # ---------------------------------------------------------------- HTTP
 
-LAST_RUN = {}                        # 매크로 id → 허브가 시작하기 전 마지막 실행(runs.jsonl 에서). 다시 켜도 '마지막 실행'이 보이게
+LAST_RUN = {}                        # 자동화 id → 허브가 시작하기 전 마지막 실행(runs.jsonl 에서). 다시 켜도 '마지막 실행'이 보이게
 
 
 def load_last_runs(keep=2000, limit=2 * 1024 * 1024):
-    """runs.jsonl 에서 매크로별 마지막 실행을 읽는다. 파일이 limit 를 넘으면 최근 keep 건만 남긴다
-    (예약 매크로가 10분마다 한 줄씩 쌓으니 정리하지 않으면 계속 커진다)."""
+    """runs.jsonl 에서 자동화별 마지막 실행을 읽는다. 파일이 limit 를 넘으면 최근 keep 건만 남긴다
+    (예약 자동화가 10분마다 한 줄씩 쌓으니 정리하지 않으면 계속 커진다)."""
     try:
         with open(F_RUNS, encoding='utf-8', errors='replace') as f:
             lines = f.read().splitlines()
@@ -1055,7 +1055,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
             return self._send(404, {'error': 'no such ops view'})
-        if u.path == '/api/hidden':                   # 숨긴 매크로·도구 id 목록(도구 칸은 이걸로 그린다)
+        if u.path == '/api/hidden':                   # 숨긴 자동화·도구 id 목록(도구 칸은 이걸로 그린다)
             return self._send(200, {'hidden': sorted(hidden_ids())})
         if u.path == '/api/pet':
             return self._send(200, {'on': bool(pet_pids()), 'installed': pet_installed(), 'remembered': bool(state.get('pet'))})
@@ -1101,7 +1101,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/schedule':                   # 예약 시각 바꾸기 {"id", "schedule": [...]} · 되돌리기 {"id", "reset": true}
             m = find_macro(body.get('id', ''))
             if not m or m['service']:
-                return self._send(404, {'error': '예약 매크로가 아닙니다'})
+                return self._send(404, {'error': '예약 자동화가 아닙니다'})
             ov = state.setdefault('schedule', {})
             before = sched_text(m['triggers'])
             if body.get('reset'):
@@ -1123,7 +1123,7 @@ class Handler(BaseHTTPRequestHandler):
             mid, err = new_macro(body.get('name', ''), body.get('kind', 'web'))
             if err:
                 return self._send(400, {'error': err})
-            audit('매크로 만듦', mid)
+            audit('자동화 만듦', mid)
             broadcast({'t': 'macros'})
             return self._send(200, {'id': mid})
         if path == '/api/record/web':
@@ -1201,7 +1201,7 @@ def shutdown_children():
 
 
 def start_services(host='127.0.0.1', port=8630):
-    """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 매크로)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
+    """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 자동화)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
     load_state()
     load_last_runs()
     os.makedirs(DIR_LOCAL, exist_ok=True)
@@ -1228,7 +1228,7 @@ def start_services(host='127.0.0.1', port=8630):
 
 
 def main():
-    ap = argparse.ArgumentParser(description='매크로 허브 (콘솔 모드 — 트레이 앱은 app.py)')
+    ap = argparse.ArgumentParser(description='자동화 허브 (콘솔 모드 — 트레이 앱은 app.py)')
     ap.add_argument('--port', type=int, default=8630)
     ap.add_argument('--host', default='127.0.0.1', help='기본은 이 PC 에서만. 바꾸지 않는 것을 권한다')
     ap.add_argument('--open', action='store_true')
@@ -1236,7 +1236,7 @@ def main():
 
     srv = start_services(args.host, args.port)
     url = 'http://127.0.0.1:%d/' % args.port
-    print('매크로 허브 —', url, '(Ctrl+C 로 종료)')
+    print('자동화 허브 —', url, '(Ctrl+C 로 종료)')
     if PYTHON != VENV_PY:
         print('⚠ .venv 가 없어 시스템 파이썬으로 실행합니다 — setup.bat 을 먼저 실행하세요', file=sys.stderr)
     if sys.stdout:

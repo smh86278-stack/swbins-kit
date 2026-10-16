@@ -317,7 +317,7 @@ def webhook_wizard():
     print('\n저장했습니다: %s' % kit.F_CONFIG)
     if yes('지금 시험 알림을 이 출구로 한 번 보낼까요?'):
         try:
-            code = kit.post_channel(ch, '알림 시험 — 업무 자동화 키트', '이 글이 보이면 매크로 허브의 실패 알림·감시 알림이 이 방에도 옵니다.')
+            code = kit.post_channel(ch, '알림 시험 — 업무 자동화 키트', '이 글이 보이면 자동화 허브의 실패 알림·감시 알림이 이 방에도 옵니다.')
             print('보냈습니다 (HTTP %s). 방을 확인하세요.' % code)
         except Exception as e:
             print('실패: %s — 주소가 맞는지, 그 웹훅이 켜져 있는지 확인하세요.' % e)
@@ -349,7 +349,7 @@ def send_test():
     print('알림 시험 메일을 보냅니다 → %s ...' % target)
     try:
         kit.alert('알림 시험 — 업무 자동화 키트',
-                  '이 메일이 보이면 매크로 허브의 실패 알림·감시 알림이 이 주소로 옵니다.\n\n'
+                  '이 메일이 보이면 자동화 허브의 실패 알림·감시 알림이 이 주소로 옵니다.\n\n'
                   '설정 파일: %s\n다시 설정: python setup.py' % kit.F_CONFIG)
     except Exception as e:
         print('실패: %s: %s' % (type(e).__name__, e))
@@ -395,7 +395,7 @@ def wizard():
         send_test()
     print('\n다음 단계')
     print('  1) tools\\macro-hub\\setup.bat        — 허브 실행 환경 만들기(처음 한 번)')
-    print('  2) tools\\macro-hub\\start_app.bat    — 매크로 허브 시작(트레이에 강아지 아이콘)')
+    print('  2) tools\\macro-hub\\start_app.bat    — 자동화 허브 시작(트레이에 강아지 아이콘)')
     print('  3) http://127.0.0.1:8630/ops         — ⏰ 예약 작업에서 쓸 기능을 켜고, 대상은 config.local.json 에 적습니다')
     print('  설정 보기: python setup.py --show · 알림 시험: python setup.py --test')
     return 0

@@ -278,7 +278,7 @@ def run():
         def work():
             try:
                 kit.alert('알림 시험 — 업무 자동화 키트',
-                          '이 메일이 보이면 매크로 허브의 실패 알림·감시 알림이 여기로 옵니다.\n\n설정 파일: %s' % kit.F_CONFIG)
+                          '이 메일이 보이면 자동화 허브의 실패 알림·감시 알림이 여기로 옵니다.\n\n설정 파일: %s' % kit.F_CONFIG)
                 err = None
             except Exception as e:      # 서버마다 예외 종류가 달라 그대로 보여 준다
                 err = e

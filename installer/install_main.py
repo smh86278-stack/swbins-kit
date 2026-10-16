@@ -55,7 +55,7 @@ def payload_version():
 # ---------------------------------------------------------------- 설치 단계
 
 def stop_running(target):
-    """설치 폴더 안의 프로그램(허브·서비스·매크로)을 끈다 — 파일을 덮어쓰려면 꺼져 있어야 한다."""
+    """설치 폴더 안의 프로그램(허브·서비스·자동화)을 끈다 — 파일을 덮어쓰려면 꺼져 있어야 한다."""
     ps = ("$t = [IO.Path]::GetFullPath('%s').TrimEnd('\\') + '\\'; "
           "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($t, "
           "[StringComparison]::OrdinalIgnoreCase) -and $_.ProcessId -ne %d } | "

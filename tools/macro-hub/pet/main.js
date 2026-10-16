@@ -1,5 +1,5 @@
 'use strict';
-/* 매크로 허브 데스크톱 펫 — 허브가 내려 주는 투명 페이지(http://127.0.0.1:8630/pet)를 화면 구석에 띄운다.
+/* 자동화 허브 데스크톱 펫 — 허브가 내려 주는 투명 페이지(http://127.0.0.1:8630/pet)를 화면 구석에 띄운다.
  *
  *   npm start                 펫 시작 (이미 떠 있으면 두 번째는 바로 종료)
  *   npx electron . --selftest 창·마우스 처리 자가 점검(JSON 출력 후 종료, 설정 파일을 건드리지 않는다)
@@ -111,7 +111,7 @@ async function showMenu() {
     },
     { label: '항상 위에 표시', type: 'checkbox', checked: settings.alwaysOnTop, click: () => applySettings({ alwaysOnTop: !settings.alwaysOnTop }) },
     { type: 'separator' },
-    { label: '매크로 허브 열기', click: openHub },
+    { label: '자동화 허브 열기', click: openHub },
     { label: '펫 끄기  (트레이 메뉴·허브 화면에서 다시 켤 수 있어요)', click: askOff },
   ]);
   menu.popup({ window: win });
@@ -132,7 +132,7 @@ function createWindow() {
   win = new BrowserWindow({
     ...b,
     transparent: true, frame: false, resizable: false, hasShadow: false, show: false,
-    skipTaskbar: true, focusable: false, alwaysOnTop: !!settings.alwaysOnTop, title: '매크로 허브 펫',
+    skipTaskbar: true, focusable: false, alwaysOnTop: !!settings.alwaysOnTop, title: '자동화 허브 펫',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: false },
   });
   win.setAlwaysOnTop(!!settings.alwaysOnTop, 'floating');

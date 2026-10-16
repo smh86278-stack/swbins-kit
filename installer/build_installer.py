@@ -9,11 +9,11 @@
 하는 일
   1. 키트 파일 — git 에 커밋된 것만(git archive HEAD). 작업 중인 변경·설정·기록은 들어가지 않는다.
   2. 내장 파이썬(runtime\\) — 이 빌드를 돌리는 파이썬의 본체(sys.base_prefix)를 복사한다. 테스트·문서는 뺀다(tkinter·tcl 은 설정 창용으로 남김).
-     패키지는 --site-packages 에서 복사하되 빌드 전용·웹 매크로 전용(playwright, 100MB 넘음)은 뺀다.
+     패키지는 --site-packages 에서 복사하되 빌드 전용·웹 자동화 전용(playwright, 100MB 넘음)은 뺀다.
      ⚠ 패키지를 가져오는 site-packages 와 이 파이썬은 같은 버전(예: 3.10)이어야 한다 — 확인하고 다르면 멈춘다.
   3. 1+2 를 payload.zip 으로 → install_main.py 와 함께 PyInstaller 한 파일 exe(창 모드)로.
 결과: installer\\dist\\WorkKitSetup-<VERSION>.exe  (git 에 넣지 않는다)
-웹 매크로(playwright)가 필요한 회사는 설치 뒤:  runtime\\python.exe -m pip install playwright
+웹 자동화(playwright)가 필요한 회사는 설치 뒤:  runtime\\python.exe -m pip install playwright
 """
 import argparse
 import glob
@@ -36,7 +36,7 @@ ICON = os.path.join(ROOT, 'tools', 'macro-hub', 'web', 'app.ico')
 SKIP_TOP = {'Doc', 'Tools', 'include', 'libs', 'Scripts', 'NEWS.txt'}      # tcl 은 남긴다 — 메일·계정 설정 창(tkinter)이 쓴다
 SKIP_LIB = {'site-packages', 'test', 'idlelib', 'turtledemo', 'lib2to3', 'ensurepip', 'unittest\\test',
             'distutils\\tests', '__pycache__'}
-# site-packages 에서 뺄 것 — 빌드 도구 · 웹 매크로(playwright 와 그 의존) · 문서
+# site-packages 에서 뺄 것 — 빌드 도구 · 웹 자동화(playwright 와 그 의존) · 문서
 SKIP_PKG = re.compile(r'^(playwright|greenlet|pyee|pyinstaller|PyInstaller|_pyinstaller_hooks_contrib|altgraph|pefile|'
                       r'pywin32_ctypes|win32ctypes|PyWin32\.chm|__pycache__)', re.I)
 

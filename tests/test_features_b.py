@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""감시·백업 매크로(job_monitors · job_pc_watch · job_backup)의 판단 로직 회귀 테스트.
+"""감시·백업 자동화(job_monitors · job_pc_watch · job_backup)의 판단 로직 회귀 테스트.
 
     python -X utf8 -m unittest tests.test_features_b -v
 

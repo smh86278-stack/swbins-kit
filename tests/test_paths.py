@@ -44,7 +44,7 @@ class ConfigExample(unittest.TestCase):
 
 
 class ServicesJson(unittest.TestCase):
-    """services.json(선택) — 매크로 허브 트레이가 읽는 서버·도구 목록. 없으면 건너뛴다."""
+    """services.json(선택) — 자동화 허브 트레이가 읽는 서버·도구 목록. 없으면 건너뛴다."""
 
     def setUp(self):
         if not os.path.isfile(os.path.join(ROOT, 'services.json')):
@@ -128,7 +128,7 @@ class HubServiceMacros(unittest.TestCase):
         d = os.path.join(HUB, 'macros')
         files = [f for f in os.listdir(d) if f.startswith('svc_') and f.endswith('.py')]
         if not files:
-            self.skipTest('svc_* 매크로가 없음')
+            self.skipTest('svc_* 자동화가 없음')
         for f in files:
             with self.subTest(f):
                 meta = runner.read_meta(os.path.join(d, f))

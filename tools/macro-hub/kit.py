@@ -3,7 +3,7 @@
 
 어느 회사에서나 쓰도록 회사마다 다른 값은 전부 저장소 맨 위의 config.local.json 한 곳에 둔다
 (견본은 config.example.json, 처음 설정은 「메일·계정 설정」 창 setup_gui.py — 명령 창이면 `python setup.py`). 이 모듈은 표준 라이브러리만 쓴다 —
-허브(macrohub.py·alertmail.py)와 허브 매크로(macros\\*.py), 메일 게이트웨이가 함께 import 한다.
+허브(macrohub.py·alertmail.py)와 허브 자동화(macros\\*.py), 메일 게이트웨이가 함께 import 한다.
 
     import kit
     cfg = kit.load_config()
@@ -506,7 +506,7 @@ def write_status(feature, items, note=''):
 
 # ---------------------------------------------------------------- 변경 이력(감사 기록)
 # 누가(Windows 사용자)·어디서(화면 주소 · 트레이 · 설정 프로그램)·언제·무엇을. 덧붙이기만 하고, 비밀값은 적지 않는다.
-# 허브(켜고 끄기·다시 띄우기·지금 실행·예약 시각·매크로 만듦)와 save_config(설정 바꿈)가 쓴다. 운영 화면 「📜 변경 이력」.
+# 허브(켜고 끄기·다시 띄우기·지금 실행·예약 시각·자동화 만듦)와 save_config(설정 바꿈)가 쓴다. 운영 화면 「📜 변경 이력」.
 
 AUDIT_MAX = 2 * 1024 * 1024
 

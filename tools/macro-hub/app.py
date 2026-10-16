@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""매크로 허브 트레이 앱 — 실행하면 트레이에 상주하며 허브(웹 화면·트리거·상시 매크로)를 돌린다.
+"""자동화 허브 트레이 앱 — 실행하면 트레이에 상주하며 허브(웹 화면·트리거·상시 자동화)를 돌린다.
 
     pythonw app.py                  트레이 앱 시작 (이미 떠 있으면 웹 화면만 연다)
     python app.py --install-autostart   로그온 시 자동 시작 등록 (HKCU Run — 관리자 권한 불필요)
     python app.py --remove-autostart    등록 해제
     python app.py --quiet           시작 알림 풍선 없이 (자동 시작용)
 
-트레이 아이콘: 초록=켜 둔 상시 매크로가 모두 동작 중 · 노랑=멈췄거나 일시정지/재시작 중 · 회색=켜 둔 게 없음
+트레이 아이콘: 초록=켜 둔 상시 자동화가 모두 동작 중 · 노랑=멈췄거나 일시정지/재시작 중 · 회색=켜 둔 게 없음
 메뉴: 서버·도구 상태와 시작/재시작·일시정지·도구별 명령·로그(저장소 맨 위 services.json 이 있을 때만 — 없어도 된다),
 예약 작업, 🔗 바로가기(config.local.json 의 "links"). 서버·워처는 작업 스케줄러 대신 허브가 띄우고 지킨다(macros\svc_*.py, extsvc.py).
   얼굴은 허브 화면에서 고른 스킨(모습)의 강아지 역할 캐릭터를 따른다. 스킨이 없으면 직접 그린 강아지.
-왼쪽 클릭/더블클릭 = 웹 화면 열기, 우클릭 = 메뉴(상시 매크로 켜기/끄기, 재개, 자동 시작, 종료).
-알림 풍선: 매크로가 ctx.notify() 를 부르거나, 자동 실행된 매크로가 실패하거나, 상시 매크로가 죽었을 때.
+왼쪽 클릭/더블클릭 = 웹 화면 열기, 우클릭 = 메뉴(상시 자동화 켜기/끄기, 재개, 자동 시작, 종료).
+알림 풍선: 자동화가 ctx.notify() 를 부르거나, 자동 실행된 자동화가 실패하거나, 상시 자동화가 죽었을 때.
 """
 import ctypes
 import json
@@ -43,7 +43,7 @@ PYTHONW = _pick_python('pythonw.exe')
 LOG = os.path.join(HERE, 'data.local', 'app.log')
 
 
-def message_box(text, title='매크로 허브'):
+def message_box(text, title='자동화 허브'):
     ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)
 
 
@@ -120,7 +120,7 @@ def already_running():
 
 
 def kill_orphan_runners():
-    """이전 허브가 비정상 종료돼 남은 이 폴더의 runner.py 를 정리한다 — 안 그러면 같은 매크로가 둘 떠서 서로 방해한다."""
+    """이전 허브가 비정상 종료돼 남은 이 폴더의 runner.py 를 정리한다 — 안 그러면 같은 자동화가 둘 떠서 서로 방해한다."""
     me = os.getpid()
     for pid, (_ppid, name) in hub.pl.snapshot().items():
         if pid == me or name.lower() not in ('python.exe', 'pythonw.exe'):
@@ -234,7 +234,7 @@ def services():
 def compute_state():
     enabled = [m for m in services() if hub.state['enabled'].get(m['id'])]
     if not enabled:
-        return 'idle', '켜 둔 상시 매크로 없음'
+        return 'idle', '켜 둔 상시 자동화 없음'
     paused = [m for m in enabled if os.path.exists(paused_flag(m))]
     down = [m for m in enabled if not hub.running_run(m['id'])]
     if down:
@@ -286,8 +286,8 @@ def tools_config():
     return {'services': pick('services'), 'watchers': pick('watchers')}
 
 
-def company_title(base='매크로 허브'):
-    """트레이 이름 — 설정에 회사 이름이 있으면 '매크로 허브 · 회사'."""
+def company_title(base='자동화 허브'):
+    """트레이 이름 — 설정에 회사 이름이 있으면 '자동화 허브 · 회사'."""
     try:
         name = kit.company_name()
     except Exception:
@@ -317,7 +317,7 @@ def _wpath(w, rel):
 
 def watcher_status(w):
     """(표시, 일시정지 플래그 경로, 일시정지 여부). 도구가 30초마다 갱신하는 state 파일의 수정 시각으로 생존을 본다.
-    state 파일이 없는 도구(허브 매크로 자체)는 허브 실행 상태로 본다."""
+    state 파일이 없는 도구(허브 자동화 자체)는 허브 실행 상태로 본다."""
     pause = _wpath(w, w.get('pause_file'))
     paused = bool(pause and os.path.exists(pause))
     sf = _wpath(w, w.get('state_file'))
@@ -356,7 +356,7 @@ def hub_action(mid, action):
     def run(icon, item):
         hub.set_via('트레이')                          # 변경 이력의 '어디서'
         ok, msg = hub.service_action(mid, action)
-        _balloon(icon, '매크로 허브', msg)
+        _balloon(icon, '자동화 허브', msg)
         refresh(icon)
     return run
 
@@ -419,7 +419,7 @@ def opener(target, program=None):
 
 
 def start_plain(s):
-    """허브 매크로가 없는 서버(services.json 에 start 만 있는 것)는 시작 배치를 허브와 떨어진 프로세스로 띄운다."""
+    """허브 자동화가 없는 서버(services.json 에 start 만 있는 것)는 시작 배치를 허브와 떨어진 프로세스로 띄운다."""
     def run(icon, item):
         try:
             extsvc.launch(['cmd.exe', '/c', s['start']], cwd=s.get('dir'), log=os.path.join(extsvc.ROOT, 'logs', s['key'] + '.log'))
@@ -432,14 +432,14 @@ def start_plain(s):
 def _enabled_item(mid, label='상시 실행 (허브가 지킴)'):
     m = hub.find_macro(mid)
     if not m:
-        return pystray.MenuItem('(허브에 없는 매크로: %s)' % mid, None, enabled=False)
+        return pystray.MenuItem('(허브에 없는 자동화: %s)' % mid, None, enabled=False)
     return pystray.MenuItem(label, toggle_service(m), checked=lambda item, mid=mid: bool(hub.state['enabled'].get(mid)))
 
 
 def server_items(cfg):
     for s in cfg['services']:
         if s.get('port') == hub_port():
-            continue                                        # 매크로 허브 자신
+            continue                                        # 자동화 허브 자신
         alive = extsvc.port_open(s['port'], timeout=0.2)
         sub, mid = [], s.get('hub')
         if alive:
@@ -488,7 +488,7 @@ def _group(title, entries, problems=0):
 def build_menu():
     """맨 위에는 묶음만 둔다 — 서버·도구·예약·설정을 다 펼치면 20줄 가까이 된다."""
     def items():
-        yield pystray.MenuItem('매크로 허브 열기', open_ui, default=True)
+        yield pystray.MenuItem('자동화 허브 열기', open_ui, default=True)
         yield pystray.MenuItem('⏰ 운영 화면 열기', lambda icon, item: open_window('/ops'))
         yield pystray.Menu.SEPARATOR
         cfg = tools_config()
@@ -502,7 +502,7 @@ def build_menu():
         tools = list(watcher_items(cfg))
         bad = sum(1 for it in tools if '⛔' in it.text or '⚠' in it.text)
         mapped = {x.get('hub') for x in cfg['services'] + cfg['watchers']}
-        for m in (m for m in services() if m['id'] not in mapped):      # services.json 에 안 걸린 상시 매크로
+        for m in (m for m in services() if m['id'] not in mapped):      # services.json 에 안 걸린 상시 자동화
             tools.append(pystray.MenuItem('상시: ' + m['name'], toggle_service(m),
                                           checked=lambda item, m=m: bool(hub.state['enabled'].get(m['id']))))
             if os.path.exists(paused_flag(m)):
@@ -636,19 +636,19 @@ def notifier(icon):
             continue
         kind = msg.get('t')
         if kind == 'notify':
-            balloon(msg.get('title') or msg.get('macro', '매크로 허브'), msg.get('text', ''))
+            balloon(msg.get('title') or msg.get('macro', '자동화 허브'), msg.get('text', ''))
         elif kind == 'note':
-            balloon('매크로 허브', msg.get('text', ''))
+            balloon('자동화 허브', msg.get('text', ''))
         elif kind == 'run':
             r = msg['run']
             if r.get('tool') or r['status'] not in ('fail', 'timeout'):
                 continue
             if r['trigger'] == 'manual':
                 continue                                        # 직접 실행한 건 화면에서 이미 보고 있다
-            if time.time() - last_fail.get(r['macro'], 0) < 60:  # 계속 죽는 상시 매크로가 풍선을 도배하지 않게
+            if time.time() - last_fail.get(r['macro'], 0) < 60:  # 계속 죽는 상시 자동화가 풍선을 도배하지 않게
                 continue
             last_fail[r['macro']] = time.time()
-            balloon('매크로 실패' if r['trigger'] != 'service' else '상시 매크로가 멈췄습니다',
+            balloon('자동화 실패' if r['trigger'] != 'service' else '상시 자동화가 멈췄습니다',
                     '%s (%s) — 로그는 허브 화면에서 확인하세요' % (r['name'], '시간 초과' if r['status'] == 'timeout' else '오류'))
 
 
@@ -678,7 +678,7 @@ def main():
         srv = hub.start_services('127.0.0.1', PORT)
     except OSError as e:
         log('서버 시작 실패: %s' % e)
-        message_box('포트 %d 를 쓸 수 없습니다.\n다른 매크로 허브(콘솔 모드)가 떠 있는지 확인하세요.\n\n%s' % (PORT, e))
+        message_box('포트 %d 를 쓸 수 없습니다.\n다른 자동화 허브(콘솔 모드)가 떠 있는지 확인하세요.\n\n%s' % (PORT, e))
         return
     threading.Thread(target=srv.serve_forever, daemon=True, name='http').start()
 
@@ -692,7 +692,7 @@ def main():
         if hub.state.get('pet'):
             hub.start_pet()
         if '--quiet' not in args:
-            icon.notify('트레이 아이콘을 클릭하면 웹 화면이 열립니다.', '매크로 허브가 시작되었습니다')
+            icon.notify('트레이 아이콘을 클릭하면 웹 화면이 열립니다.', '자동화 허브가 시작되었습니다')
 
     icon.run(setup)
     if RESTART['on']:

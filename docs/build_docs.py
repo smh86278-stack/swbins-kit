@@ -6,8 +6,8 @@
 
 재료(코드가 바뀌면 문서도 따라 바뀐다)
   - config.example.json   기능(갈래)마다 견본 값과 "_…설명" 문구
-  - 매크로·도구 파일의 맨 위 설명(docstring) — ast 로 읽기만 하고 실행하지 않는다
-  - tools/macro-hub/runner.py 의 Ctx 메서드 설명 — 매크로가 쓰는 ctx 도구 목록
+  - 자동화·도구 파일의 맨 위 설명(docstring) — ast 로 읽기만 하고 실행하지 않는다
+  - tools/macro-hub/runner.py 의 Ctx 메서드 설명 — 자동화가 쓰는 ctx 도구 목록
   - tools/macro-hub/kit.py 의 CHANNEL_TYPES · channel_payload — 알림 출구가 보내는 JSON
 회사 이름·주소·계정은 넣지 않는다(키트 규칙). 표준 라이브러리만.
 """
@@ -48,7 +48,7 @@ FIXED = {
     'links': '허브 트레이 메뉴에 띄울 사내 사이트 바로가기 [{"name", "url"}].',
 }
 HUB_API = [
-    ('GET', '/api/macros', '매크로 목록(켜짐·트리거·마지막 실행)'),
+    ('GET', '/api/macros', '자동화 목록(켜짐·트리거·마지막 실행)'),
     ('GET', '/api/runs', '최근 실행 기록'),
     ('GET', '/api/run?id=', '실행 하나의 로그'),
     ('GET', '/api/schedule', '예약 작업과 다음 실행 시각'),
@@ -189,10 +189,10 @@ def build():
     feats = [(k, t) for k, t, _ in SECTIONS]
     toc = ''.join('<a href="#%s">%s</a>' % (a, t) for a, t in (
         ('start', '시작하기'), ('features', '기능'), ('config', '기능별 설정'), ('notify', '알림 받는 쪽'),
-        ('macro', '매크로 만들기'), ('api', '허브 API'), ('trouble', '문제 해결')))
+        ('macro', '자동화 만들기'), ('api', '허브 API'), ('trouble', '문제 해결')))
     body = []
     body.append('<header><h1>업무 자동화 키트 — 도움말</h1>'
-                '<p class="lead">어느 회사에서나 쓰는 Windows 업무 자동화 키트. 트레이에 상주하는 <b>매크로 허브</b>가 예약 작업·감시·알림을 맡고, '
+                '<p class="lead">어느 회사에서나 쓰는 Windows 업무 자동화 키트. 트레이에 상주하는 <b>자동화 허브</b>가 예약 작업·감시·알림을 맡고, '
                 '회사마다 다른 값은 <code>config.local.json</code> 한 곳에 둔다.</p>'
                 '<nav class="toc">%s</nav></header>' % toc)
     body.append('<h2 id="start">시작하기</h2><ol>'
@@ -216,7 +216,7 @@ def build():
                 '<details open><summary>Python</summary><pre>%s</pre></details><details><summary>Node.js</summary><pre>%s</pre></details>'
                 '<p>보낸 기록(성공·실패·HTTP 코드)은 운영 화면 「📊 기능 상태」 → 알림 출구 · 보낸 기록. 주소는 기록에 남지 않는다.</p>'
                 % (', '.join('<code>%s</code>' % t for t in types), e(sample), e(VERIFY_PY), e(VERIFY_JS)))
-    body.append('<h2 id="macro">매크로 만들기</h2>'
+    body.append('<h2 id="macro">자동화 만들기</h2>'
                 '<p><code>tools/macro-hub/macros.local/</code> 에 파이썬 파일 하나를 두면 허브 목록에 뜬다(이 폴더는 git 에 들어가지 않는다). '
                 '<code>META</code> 로 이름·트리거를, <code>run(ctx)</code> 로 할 일을 적는다. 결과를 운영 화면에 남기려면 <code>kit.write_status(이름, items)</code>.</p>'
                 '<pre>%s</pre>'
@@ -226,7 +226,7 @@ def build():
                 '<tr><td><code>target</code> · <code>motion</code></td><td><code>web</code> · <code>desktop</code> — 펫이 보일 일의 모습(write·mail·search 도)</td></tr>'
                 '<tr><td><code>triggers</code></td><td><code>{"type":"schedule","at":"09:30","days":"mon-fri"}</code> · <code>{"type":"schedule","every":"10m"}</code> · 창·프로세스가 뜰 때</td></tr>'
                 '<tr><td><code>timeout</code> · <code>cooldown</code></td><td>제한 시간(초) · 다시 돌기까지 쉬는 시간(초)</td></tr>'
-                '<tr><td><code>no_mouse</code></td><td>참이면 마우스·키보드를 쓰는 대체 동작을 하지 않고 멈춘다(내 작업을 방해하면 안 되는 매크로)</td></tr></table>'
+                '<tr><td><code>no_mouse</code></td><td>참이면 마우스·키보드를 쓰는 대체 동작을 하지 않고 멈춘다(내 작업을 방해하면 안 되는 자동화)</td></tr></table>'
                 '<h3>ctx 도구</h3><table><tr><th>도구</th><th>설명</th></tr>%s</table>'
                 % (e(MACRO_SAMPLE), ''.join('<tr><td><code>%s</code></td><td>%s</td></tr>' % (e(s), e(d)) for s, d in ctx_methods())))
     body.append('<h2 id="api">허브 API (이 PC 에서만)</h2>'
@@ -240,7 +240,7 @@ def build():
                 '<li><b>기능이 안 돈다</b> — 운영 화면 「⏰ 예약 작업」에서 켜져 있는지, 「📊 기능 상태」의 마지막 결과·오류를 본다. 허브가 꺼져 있던 동안 놓친 실행은 따라잡지 않는다.</li>'
                 '<li><b>누가 무엇을 바꿨나</b> — 운영 화면 「📜 변경 이력」(켜고 끄기·예약 시각·설정 변경 — 값은 남기지 않음).</li>'
                 '<li><b>마켓 공지가 안 읽힌다</b> — 그 사이트 robots.txt 가 자동 수집을 막으면 읽지 않는다(끄는 설정 없음). 로그인 뒤에 있는 공지는 넣을 수 없다.</li></ul>')
-    body.append('<footer>이 문서는 <code>docs/build_docs.py</code> 가 코드(config.example.json·매크로 설명·runner.py)에서 만든다 — 직접 고치지 말 것.</footer>')
+    body.append('<footer>이 문서는 <code>docs/build_docs.py</code> 가 코드(config.example.json·자동화 설명·runner.py)에서 만든다 — 직접 고치지 말 것.</footer>')
     return ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             '<title>업무 자동화 키트 도움말</title>\n<style>%s</style>\n</head>\n<body>\n<div class="wrap">\n%s\n</div>\n</body>\n</html>\n'
             % (CSS, '\n'.join(body)))

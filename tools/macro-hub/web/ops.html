@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>운영 — 매크로 허브</title>
+<title>운영 — 자동화 허브</title>
 <link rel="stylesheet" href="/static/theme.css">
 <style>
 /* 운영 화면 — 예약 작업 · 상시 서비스 · 기능 상태 · 설정(보기 전용) · 에이전트.
@@ -55,7 +55,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
 <header class="top">
   <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 8 8-8v14"/></svg></div>
   <h1>운영</h1>
-  <a href="/">← 매크로 허브</a>
+  <a href="/">← 자동화 허브</a>
   <a href="http://127.0.0.1:8620/" target="_blank" title="디스패치 대화">💬 대화</a>
   <a href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 · 주간 보고 초안">📚 AI 위키</a>
   <nav class="tabs" id="tabs">
@@ -71,7 +71,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
 <main>
   <section id="sched">
     <h2>⏰ 예약 작업</h2>
-    <p class="note">허브가 정해진 시각에 실행합니다(작업 스케줄러 대신). 허브가 꺼져 있는 동안 놓친 실행은 나중에 따라잡지 않습니다. 시각을 바꾸면 매크로 파일은 그대로 두고 허브에 기억합니다 — "기본값으로" 로 되돌립니다.</p>
+    <p class="note">허브가 정해진 시각에 실행합니다(작업 스케줄러 대신). 허브가 꺼져 있는 동안 놓친 실행은 나중에 따라잡지 않습니다. 시각을 바꾸면 자동화 파일은 그대로 두고 허브에 기억합니다 — "기본값으로" 로 되돌립니다.</p>
     <div id="schedList"><div class="empty">불러오는 중…</div></div>
   </section>
   <section id="svc">
@@ -154,7 +154,7 @@ function withHidden(box, list, key, card, reload){
 async function loadSched(){
   let list; try { list = await api('/api/schedule'); } catch (e) { $('#schedList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
   const box = $('#schedList'); box.replaceChildren();
-  if (!list.length) box.append(el('div', 'empty', '예약 트리거가 있는 매크로가 없습니다.'));
+  if (!list.length) box.append(el('div', 'empty', '예약 트리거가 있는 자동화가 없습니다.'));
   withHidden(box, list, 'sched', schedCard, loadSched);
 }
 function schedCard(m, dim){
@@ -202,7 +202,7 @@ function editor(m, opener){
   bReset.onclick = async () => { try { await api('/api/schedule', {id: m.id, reset: true}); toast(m.name + ' — 기본값(' + m.default.map(schedText).join(', ') + ')으로 되돌렸습니다'); loadSched(); } catch (e) { toast(e.message); } };
   bar.append(bAdd, bSave);
   if (m.overridden) bar.append(bReset);
-  ed.append(rows, bar, el('div', 'sub', '기본값(매크로 파일): ' + (m.default.map(schedText).join(', ') || '없음')));
+  ed.append(rows, bar, el('div', 'sub', '기본값(자동화 파일): ' + (m.default.map(schedText).join(', ') || '없음')));
   opener.onclick = () => ed.classList.toggle('on');
   return ed;
 }
@@ -235,7 +235,7 @@ function svcCard(m, dim){
 
 function kv(label, val){ const d = el('div', 'sub'); d.append(label + ' ', typeof val === 'string' ? el('b', '', val) : val); return d; }
 
-/* ---------- 기능 상태 — 기능별 매크로가 남긴 status.json (kit.write_status) ---------- */
+/* ---------- 기능 상태 — 기능별 자동화가 남긴 status.json (kit.write_status) ---------- */
 function okChip(ok){ return ok === true ? el('span', 'chip ok', '정상') : ok === false ? el('span', 'chip bad', '문제') : el('span', 'chip', '—'); }
 async function loadFeat(){
   const box = $('#featBox');
