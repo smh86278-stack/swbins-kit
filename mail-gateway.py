@@ -765,6 +765,67 @@ THREAD_RE = re.compile(r"\[T(\d{1,6})\]")
 CHOICES_RE = re.compile(r"```choices[ \t]*\n(.*?)\n?```\s*$", re.S)
 STOP_WORDS = {"멈춤", "그만", "stop"}
 RETRY_WORDS = {"다시 실행", "다시실행", "재실행", "retry"}   # 실패한 대화의 지시를 그대로 다시
+
+# 권한 요청 — 워커는 --permission-mode dontAsk 라 허용 목록 밖 도구를 묻지 않고 거부한다(결과의 permission_denials).
+# 그 거부를 선택지 질문으로 바꿔 폰·디스패치 대화에서 '허용하고 이어서 하기'를 고르면 그 권한만 더해 같은 세션을 이어 간다.
+# 상한은 inbox-worker.ps1 의 $script:ToolCeiling 과 같게 — 여기 없는 도구는 묻지도 않는다(워커도 다시 거른다).
+GRANT_CEILING = ("Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash")
+GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash"}   # 고르면 대화가 수정 모드가 된다
+GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
+_SAFE_RULE = re.compile(r"^[^\"'`\r\n()]{1,200}$")       # 워커 ToolPattern 이 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
+
+
+def grant_base(rule: str) -> str:
+    return rule.split("(", 1)[0]
+
+
+def grant_rules(denials) -> list:
+    """거부된 도구들 → 허용 규칙 [(규칙, 사람이 읽을 설명)]. 상한 밖 도구는 뺀다.
+    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 Bash 전체 — 설명에 그렇게 적는다)."""
+    out, seen = [], set()
+    for d in denials or []:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("tool_name") or "")
+        inp = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
+        if name == "Bash":
+            cmd = " ".join(str(inp.get("command") or "").split())
+            if cmd and _SAFE_RULE.match(cmd):
+                rule, desc = "Bash(%s)" % cmd, "명령 실행: %s" % cmd
+            else:
+                rule, desc = "Bash", "명령 실행 전체(Bash)" + (" — 예: %s" % cmd[:80] if cmd else "")
+        elif name in ("Write", "Edit", "NotebookEdit"):
+            path = str(inp.get("file_path") or inp.get("notebook_path") or "")
+            rule, desc = name, {"Write": "파일 만들기·덮어쓰기", "Edit": "파일 고치기", "NotebookEdit": "노트북 고치기"}[name] + (
+                " (예: %s)" % path if path else "")
+        else:
+            rule, desc = name, name
+        if grant_base(rule) not in GRANT_CEILING or rule in seen:
+            continue
+        seen.add(rule)
+        out.append((rule, desc))
+    return out
+
+
+def grant_ask(job: dict):
+    """끝난 잡이 권한 때문에 막혔으면 (선택지, 허용할 규칙 목록). 아니면 (None, [])."""
+    base = job.get("tools_used") or job.get("allowed_tools")
+    if job.get("status") != "done" or job.get("source") != "mail" or not job.get("session_id") or not base:
+        return None, []
+    rules = [r for r in grant_rules(job.get("denials")) if r[0] not in base]
+    if not rules:
+        return None, []
+    q = "이 일을 마치려면 권한이 더 필요합니다 — " + " · ".join(d for _r, d in rules) + ". 이 대화에서 허용할까요?"
+    return {"question": q, "multi": False, "options": list(GRANT_OPTIONS)}, [r for r, _d in rules]
+
+
+def grant_answer(said: str):
+    """권한 질문에 대한 답 → 'allow' / 'deny' / None(번호 답이 아님 — 평소 말로 이어 간다)."""
+    first = next((l.strip() for l in (said or "").splitlines() if l.strip()), "")
+    m = re.match(r"^([12])\s*(?:번)?(?:[.:)]|\s|$)", first)
+    if not m:
+        return None
+    return "allow" if m.group(1) == "1" else "deny"
 ISSUE_KEY_RE = r"[A-Z][A-Z0-9_]*-\d+"
 ACKED_PATH = os.path.join(INBOX, "acked.json")            # 접수 신호를 보낸 잡 id(send_acks)
 ASK_CLOSED_PATH = os.path.join(INBOX, "ask-closed.json")  # 답 기한이 지나 닫은(또는 답이 와서 볼 일 없는) 질문의 잡 id(expire_asks)
@@ -1518,7 +1579,8 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 # 이어받을 잡: 제목의 스레드 표식([T12])이 먼저, 없으면 In-Reply-To/References.
                 resume_id = None
                 denied = []
-                prev = (find_thread_job(thread_no) if thread_no is not None else None) or find_resume_job(head)
+                granted = None                                 # 권한 질문에 '허용' — (이전 잡, 더한 도구 목록)
+                prev =(find_thread_job(thread_no) if thread_no is not None else None) or find_resume_job(head)
                 if prev:
                     resume_id, denied = prev["session_id"], prev.get("disallowed_tools") or []
                     thread_no = prev.get("thread") or thread_no
@@ -1531,6 +1593,18 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                     if said.strip().lower() in STOP_WORDS:
                         said = "멈춤"
                     prompt = (parse_answer(said, prev.get("ask")) or said or prompt)[: int(cfg["max_prompt_chars"])]
+                    # 권한 질문(grant_ask)에 대한 답 — 허용이면 그 규칙을 더한 도구 목록으로, 수정 도구가 끼면 수정 모드로(폴더 정책도 그 기준으로 본다)
+                    decision = grant_answer(said) if prev.get("grant") else None
+                    if decision == "allow":
+                        tools = list(prev.get("tools_used") or prev.get("allowed_tools") or [])
+                        tools += [r for r in prev["grant"] if r not in tools]
+                        granted = (prev, tools)
+                        if any(grant_base(r) in GRANT_WRITE for r in prev["grant"]):
+                            mode = "write"
+                        prompt = ("사용자가 디스패치 대화에서 권한을 허용했다: %s. 아까 권한이 없어 못 한 일을 이어서 끝내라."
+                                  % ", ".join(prev["grant"]))
+                    elif decision == "deny":
+                        prompt = "사용자가 권한을 허용하지 않았다. 그 일은 하지 말고, 권한 없이 할 수 있는 데까지만 정리해 답하라."
 
                 if not os.path.isdir(workdir):
                     log("작업 폴더가 없습니다: %s" % workdir)
@@ -1559,8 +1633,10 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 job = new_job(prompt, workdir, label, msgid, clean_subject, sender, mode, cfg,
                               resume_id=resume_id, confirm=needs_confirm, disallowed_tools=denied,
                               thread=thread_no if resume_id else None,
-                              allowed_tools=(prev or {}).get("allowed_tools") if resume_id else None,
+                              allowed_tools=granted[1] if granted else ((prev or {}).get("allowed_tools") if resume_id else None),
                               stopped=stopped, attach_dir=attach_dir, blocked=blocked)
+                if granted and not blocked:      # 잡 파일은 다시 쓰지 않는다 — 워커가 이미 집었으면 상태를 되돌려 두 번 돈다
+                    log("권한 허용 %s ← %s: %s" % (job["id"], granted[0]["id"], ", ".join(granted[0]["grant"])))
                 if blocked:
                     log("막음 %s — %s" % (job["id"], blocked))
                 if stopped:
@@ -1614,6 +1690,8 @@ def reply_parts(job: dict):
     body, ask = parse_choices(job.get("result") or "")
     if job["status"] != "done":
         ask = None
+    if not ask and job.get("grant"):
+        ask = job.get("ask")                               # 권한 질문(send_replies 가 grant_ask 로 붙였다)
     text = format_reply(dict(job, result=body), footer=False)
     return ask, text, reply_footer(job)
 
@@ -1646,7 +1724,10 @@ def format_reply(job: dict, footer: bool = True) -> str:
 
     denied = sorted({d.get("tool_name", "?") for d in (job.get("denials") or []) if isinstance(d, dict)})
     if denied:
-        lines += ["", "--", "차단된 도구: %s (읽기 전용이라 실행되지 않았습니다)" % ", ".join(denied)]
+        if job.get("grant"):
+            lines += ["", "--", "권한이 없어 막힌 도구: %s — 아래에서 허용하면 그 권한만 더해 이어서 합니다" % ", ".join(denied)]
+        else:
+            lines += ["", "--", "차단된 도구: %s (읽기 전용이라 실행되지 않았습니다)" % ", ".join(denied)]
 
     if footer:
         lines += ["", "--", reply_footer(job)]
@@ -1958,6 +2039,12 @@ def send_replies(cfg: dict, password: str) -> int:
                 ensure_thread(job, cfg)
                 # 번호 답을 풀 수 있게 이번 질문(선택지)을 잡에 남긴다 — 다음 답장이 이 잡을 이어받는다
                 job["ask"] = parse_choices(job.get("result") or "")[1] if job.get("status") == "done" else None
+                # Claude 가 따로 묻지 않았는데 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask)
+                job.pop("grant", None)
+                if not job["ask"]:
+                    ask, grant = grant_ask(job)
+                    if grant:
+                        job["ask"], job["grant"] = ask, grant
                 msg, rmid = build_reply_message(cfg, job)
                 # 회사 모드 폴더의 일이면 폰엔 내용 없는 알림만(결과·선택지 글자는 회사 메일함에만)
                 company = is_company_job(cfg, job) and not job.get("policy_denied")   # 정책 거절 이유는 폰에도 그대로

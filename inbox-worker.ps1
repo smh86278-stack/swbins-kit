@@ -288,6 +288,7 @@ function Invoke-Job($entry) {
         # 없으면 config.local.json 의 dispatch.read_tools(읽기 전용 기본값).
         # 아래 --permission-mode dontAsk 라야 이 목록이 상한이 된다 — 사용자 설정이 auto·acceptEdits 모드면 목록 밖 도구도 통과한다.
         $tools = if ($job.allowed_tools) { @($job.allowed_tools) } else { @($cfg.AllowedTools) }
+        $baseTools = @($tools)   # 결과에 tools_used 로 남긴다 — 게이트웨이가 권한 질문('허용하고 이어서 하기')에서 여기에 더한다
         # RTK 같은 훅이 Bash 명령을 'rtk <명령>' 으로 다시 쓰면 규칙이 안 맞으므로 Bash(…) 허용 규칙마다 rtk 접두 짝을 더한다
         $tools = @($tools) + @($tools | ForEach-Object { if ([string]$_ -match '^Bash\((?!rtk )(.+)\)$') { "Bash(rtk $($Matches[1]))" } })
         $toolArgs = (($tools | ForEach-Object { '"' + $_ + '"' }) -join ' ')
@@ -393,6 +394,7 @@ function Invoke-Job($entry) {
         # (폰에서 던져 놓고 PC 앞에서 맥락 그대로 이어서 작업하는 용도).
         # 작업 JSON 을 만든 쪽에 없는 속성이라 Add-Member 로 붙인다.
         $job | Add-Member -NotePropertyName 'session_id' -NotePropertyValue ([string]$res.session_id) -Force
+        $job | Add-Member -NotePropertyName 'tools_used' -NotePropertyValue @($baseTools) -Force
 
         if ($res.is_error) {
             $job.status = 'error'

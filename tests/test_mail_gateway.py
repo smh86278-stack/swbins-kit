@@ -991,6 +991,98 @@ class Config(unittest.TestCase):
         self.assertFalse(mg.is_issue_prompt("/issuex PROJ-1", on))
 
 
+class GrantFlow(unittest.TestCase):
+    """권한 요청 — 허용 목록 밖이라 막힌 도구(permission_denials)를 '허용하고 이어서 하기' 질문으로, 답하면 그 권한만 더해 이어 간다."""
+    SID = ChatFlow.SID
+    setUp, tearDown = PollOnceConfirmFlow.setUp, PollOnceConfirmFlow.tearDown
+    _mail, _jobs = PollOnceConfirmFlow._mail, PollOnceConfirmFlow._jobs
+    WRITE_DENIED = [{"tool_name": "Write", "tool_use_id": "t1", "tool_input": {"file_path": "C:\\w\\a.txt", "content": "hi"}}]
+
+    def _finish(self, result, denials, tools_used=("Read", "Glob")):
+        (path,) = [os.path.join(self.jobs, f) for f in os.listdir(self.jobs)]
+        j = mg.read_json(path)
+        j.update(status="done", session_id=self.SID, result=result, denials=denials, tools_used=list(tools_used))
+        mg.write_json(path, j)
+
+    def _start(self, result="권한이 없어 못 했습니다", denials=None):
+        self._mail("1", "#c 메모 파일 만들어줘", "", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        self._finish(result, self.WRITE_DENIED if denials is None else denials)
+        mg.send_replies(self.cfg, "pw")
+        return email.message_from_bytes(self.appended[-1], policy=email.policy.default)
+
+    def test_denied_write_becomes_question(self):
+        reply = self._start()
+        (job,) = self._jobs()
+        self.assertEqual(job["grant"], ["Write"])
+        self.assertEqual(job["ask"]["options"], mg.GRANT_OPTIONS)
+        self.assertIn("파일 만들기·덮어쓰기", job["ask"]["question"])
+        plain = reply.get_body(("plain",)).get_content()
+        self.assertIn("☐ 1. 허용하고 이어서 하기", plain)
+        self.assertIn("아래에서 허용하면", plain)
+
+    def test_allow_resumes_with_only_that_tool_in_write_mode(self):
+        self._start()
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "1", "<m2@x>")
+        mg.poll_once(self.cfg, "pw")
+        (new,) = [j for j in self._jobs() if j["status"] == "queued"]
+        self.assertEqual(new["resume_id"], self.SID)
+        self.assertEqual(new["allowed_tools"], ["Read", "Glob", "Write"])
+        self.assertEqual(new["mode"], "write")
+        self.assertIn("허용했다: Write", new["prompt"])
+
+    def test_deny_keeps_tools(self):
+        self._start()
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "2", "<m2@x>")
+        mg.poll_once(self.cfg, "pw")
+        (new,) = [j for j in self._jobs() if j["status"] == "queued"]
+        self.assertNotIn("allowed_tools", new)                  # 읽기 대화 그대로(워커 기본 목록)
+        self.assertEqual(new["mode"], "read")
+        self.assertIn("허용하지 않았다", new["prompt"])
+
+    def test_free_text_answer_is_not_a_grant(self):
+        self._start()
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "그냥 내용만 알려줘", "<m2@x>")
+        mg.poll_once(self.cfg, "pw")
+        (new,) = [j for j in self._jobs() if j["status"] == "queued"]
+        self.assertNotIn("allowed_tools", new)
+        self.assertEqual(new["prompt"], "그냥 내용만 알려줘")
+
+    def test_claude_question_wins(self):
+        self._start('어디에?\n```choices\n{"question": "어느 폴더?", "options": ["docs", "tmp"]}\n```')
+        (job,) = self._jobs()
+        self.assertNotIn("grant", job)
+        self.assertEqual(job["ask"]["options"], ["docs", "tmp"])
+
+    def test_folder_policy_still_applies(self):
+        self.cfg["folder_policy"] = {"default": {"write_from": []}}    # 이 폴더는 수정 지시를 아무 데서도 안 받는다
+        self._start()
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "1", "<m2@x>")
+        mg.poll_once(self.cfg, "pw")
+        new = [j for j in self._jobs() if j.get("resume_id") and j["status"] != "done"]
+        self.assertEqual(new[0]["status"], "error")
+        self.assertTrue(new[0]["policy_denied"])
+
+    def test_rules(self):
+        rules = dict(mg.grant_rules([
+            {"tool_name": "Bash", "tool_input": {"command": "npm  test"}},
+            {"tool_name": "Bash", "tool_input": {"command": 'git commit -m "x"'}},
+            {"tool_name": "mcp__other__danger", "tool_input": {}},           # 상한 밖 — 묻지도 않는다
+            {"tool_name": "WebFetch", "tool_input": {}},                     # 키트 상한 밖
+            {"tool_name": "Write", "tool_input": {"file_path": "a"}},
+            {"tool_name": "Write", "tool_input": {"file_path": "b"}},       # 같은 규칙은 한 번만
+        ]))
+        self.assertEqual(list(rules), ["Bash(npm test)", "Bash", "Write"])
+        self.assertIn("전체", rules["Bash"])
+
+    def test_no_question_without_session_or_base(self):
+        self.assertEqual(mg.grant_ask({"status": "done", "source": "mail", "session_id": "", "tools_used": ["Read"],
+                                       "denials": self.WRITE_DENIED}), (None, []))
+        self.assertEqual(mg.grant_ask({"status": "done", "source": "mail", "session_id": "s", "denials": self.WRITE_DENIED}),
+                         (None, []))                          # 어떤 목록으로 돌았는지 모르면(옛 워커) 묻지 않는다
+        self.assertEqual(mg.grant_ask({"status": "done", "source": "jira", "session_id": "s", "tools_used": ["Read"],
+                                       "denials": self.WRITE_DENIED}), (None, []))
+
 
 class SendAcks(unittest.TestCase):
     """폰 지시 접수 신호(폰 페이지의 읽음 '1'). 2026-10-08 Gmail 지시가 회사 스팸에 10분 갇혀 있는 동안
