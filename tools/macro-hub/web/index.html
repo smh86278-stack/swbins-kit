@@ -429,7 +429,8 @@ if(document.body.classList.contains('view-make')){checkChat();setInterval(checkC
 $('#askBtn').onclick=guard(async()=>{
   const what=$('#askWhat').value.trim();if(!what)throw new Error('무엇을 해 줄지 적어 주세요');
   const when=$('#askWhen').value,btn=$('#askBtn');
-  const text='자동화 허브에 자동화 만들어줘 — '+what+(when?'\n언제: '+when+' 자동 실행':'')+'\n(비밀번호가 필요하면 secret 으로, 값은 내가 넣을게)';
+  // 한 칸에 여러 가지 일을 적을 수 있다 — 일마다 자동화를 따로(허브 목록에 따로 보이게). 한 일 안의 조건은 하나로 둔다
+  const text='자동화 허브에 자동화 만들어줘 — '+what+(when?'\n언제: '+when+' 자동 실행':'')+'\n(여러 가지 일을 적었으면 일마다 자동화를 따로 만들어 줘 — 한 일 안의 조건 분기는 하나로)'+'\n(비밀번호가 필요하면 secret 으로, 값은 내가 넣을게)';
   if(chatUp){
     btn.disabled=true;btn.textContent='보내는 중…';
     try{await api('/api/ask',{text})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
