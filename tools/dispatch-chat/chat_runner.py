@@ -1492,6 +1492,7 @@ class Runner:
             args += ["--add-dir", job["attach_dir"]]
         # rtk 훅이 Bash 명령을 'rtk <명령>' 으로 다시 쓰므로 Bash(…) 허용 규칙마다 rtk 접두 짝을 더한다
         tools = tools + ["Bash(rtk %s" % t[5:] for t in tools if t.startswith("Bash(") and not t.startswith("Bash(rtk ")]
+        args += cap_args(cfg)
         args += ["--output-format", "json", "--permission-mode", "dontAsk", "--allowedTools"] + tools
         if deny:
             args += ["--disallowedTools"] + deny
@@ -1512,6 +1513,10 @@ class Runner:
             if mcp:
                 at = args.index("-p")
                 args[at:at] = ["--mcp-config", mcp]          # -p 앞에(--allowedTools 처럼 여러 값을 받는 옵션 뒤에 두지 않는다)
+            guard = guard_settings(tools, os.path.join(logs, jid), C)
+            if guard:
+                at = args.index("-p")
+                args[at:at] = ["--settings", guard]
             env = dict(os.environ)
             if not IS_WIN:                                   # Finder 로 띄운 앱은 PATH 가 짧다 — claude(node) 가 돌 수 있게
                 extra = [os.path.dirname(args[0])] + [os.path.dirname(find_tool(t)) for t in ("npx", "uvx")] + \
@@ -1563,7 +1568,7 @@ class Runner:
             self.update_job(jid, keep_canceled=True, status="done" if ok else "error", result=str(res.get("result") or ""),
                             cost_usd=res.get("total_cost_usd"), duration_ms=res.get("duration_ms") or ms,
                             denials=list(res.get("permission_denials") or []), session_id=str(res.get("session_id") or ""),
-                            finished_at=now_text(), **({} if ok else {"error": "실행 중 오류가 발생했습니다."}))
+                            finished_at=now_text(), **({} if ok else {"error": cap_error(res, cfg) or "실행 중 오류가 발생했습니다."}))
             C.log("[실행] %s %s (%d초)" % ("완료" if ok else "오류 응답", jid, ms // 1000))
         except Exception as e:
             self.update_job(jid, keep_canceled=True, status="error", error="%s" % e, finished_at=now_text(),
@@ -1573,7 +1578,8 @@ class Runner:
             self.current = ""
             if tree:
                 tree.close()
-            for f in (pf, of, ef, os.path.join(logs, jid + ".mcp.json"), os.path.join(logs, jid + ".pw.json")):
+            for f in (pf, of, ef, os.path.join(logs, jid + ".mcp.json"), os.path.join(logs, jid + ".pw.json"),
+                      os.path.join(logs, jid + ".guard.json")):
                 try:
                     os.remove(f)
                 except OSError:
@@ -1736,6 +1742,42 @@ def cost_limit(cfg, key="daily_cost_usd"):
 
 COST_BLOCKED = ("오늘 쓴 비용($%.2f)이 하루 한도($%.2f)에 닿아 새 지시를 실행하지 않았습니다 — 내일 다시 보내거나 "
                 "⚙ 설정의 하루 비용 한도를 올리세요.")
+
+
+# 작업 하나의 상한(설정 job_cost_usd · job_max_turns, 0 이면 없음) — claude -p 의 --max-budget-usd · --max-turns.
+# 하루 한도와 달리 도는 중인 작업을 끊는다. 비용은 턴이 끝날 때 보므로 조금 넘겨 멈춘다($0.01 상한 → $0.12, 2026-10-19 실측).
+# 걸리면 is_error + subtype(error_max_budget_usd · error_max_turns) 이고 세션은 남는다 — 답장으로 이어 갈 수 있다.
+def cap_args(cfg):
+    out, cost = [], cost_limit(cfg, "job_cost_usd")
+    if cost > 0:
+        out += ["--max-budget-usd", "%g" % cost]
+    try:
+        turns = int(cfg.get("job_max_turns") or 0)
+    except (TypeError, ValueError):
+        turns = 0
+    if turns > 0:
+        out += ["--max-turns", str(turns)]
+    return out
+
+
+def guard_settings(tools, base, C):
+    """브라우저 도구가 있는 작업에 브라우저 안전장치(browser-guard.js, PreToolUse 훅)를 거는 --settings 파일, 없으면 "".
+    보내기·삭제·결제 같은 단추는 사람이 '진행해도 됩니다' 라고 답하기 전엔 막는다. 훅은 node 로 돈다(브라우저가 npx 라 늘 있다)."""
+    js = os.path.join(C.RES, "browser-guard.js")
+    if not any(t.startswith(BROWSER_TOOL) for t in tools) or not os.path.isfile(js):
+        return ""
+    node = find_tool("node") or "node"
+    hook = {"type": "command", "command": '"%s" "%s"' % (node.replace("\\", "/"), js.replace("\\", "/"))}
+    path = base + ".guard.json"
+    C.write_json(path, {"hooks": {"PreToolUse": [{"matcher": BROWSER_TOOL + "__.*", "hooks": [hook]}]}})
+    return path
+
+
+def cap_error(res, cfg):
+    sub = str(res.get("subtype") or "")
+    cap = ("작업 하나 비용 상한($%.2f)" % cost_limit(cfg, "job_cost_usd") if sub == "error_max_budget_usd" else
+           "작업 하나 턴 상한(%s턴)" % cfg.get("job_max_turns") if sub == "error_max_turns" else "")
+    return "%s에 닿아 중간에 멈췄습니다. 이어서 하려면 '계속' 이라고 답하세요." % cap if cap else ""
 
 
 def parse_dirs(text):

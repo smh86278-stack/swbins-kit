@@ -38,6 +38,7 @@ def main():
            "--name", "DispatchChat",
            "--add-data", os.path.join(HERE, "ui.html") + os.pathsep + ".",
            "--add-data", os.path.join(HERE, "chat-protocol.md") + os.pathsep + ".",   # 이 PC 에서 직접 실행할 때 claude 에 덧붙이는 대화 규칙
+           "--add-data", os.path.join(HERE, "browser-guard.js") + os.pathsep + ".",   # 브라우저 안전장치 훅(node 로 돈다)
            *[x for f in pets for x in ("--add-data", f + os.pathsep + "pet")],
            *(["--add-data", PET_PLUSH + os.pathsep + os.path.join("pet", "skin", "plush")] if os.path.isdir(PET_PLUSH) else []),
            *(["--add-data", COMPANY + os.pathsep + "."] if os.path.isfile(COMPANY) else []),

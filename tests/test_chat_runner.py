@@ -48,12 +48,16 @@ FAKE_CLAUDE = textwrap.dedent(r'''
     result = "끝냈습니다"
     if "ASK" in prompt:
         result += '\n\n```choices\n{"question": "다음은?", "multi": false, "options": ["더 보기", "여기서 멈춤"]}\n```'
+    if "CAPPED" in prompt:                         # 작업 하나 비용 상한(--max-budget-usd)에 걸림 — 결과 글 없이 세션만 남는다
+        print(json.dumps({"type": "result", "subtype": "error_max_budget_usd", "is_error": True, "result": "",
+                          "session_id": "%s", "total_cost_usd": 2.1, "duration_ms": 900, "permission_denials": []}))
+        sys.exit(0)
     denials = []
     if "DENYWRITE" in prompt:                      # 허용 목록 밖이라 막힌 파일 쓰기(dontAsk)
         denials = [{"tool_name": "Write", "tool_use_id": "t1", "tool_input": {"file_path": "a.txt", "content": "x"}}]
     print(json.dumps({"type": "result", "is_error": False, "result": result, "session_id": "%s",
                       "total_cost_usd": 0.01, "duration_ms": 1200, "permission_denials": denials}))
-''' % SESSION)
+''' % (SESSION, SESSION))
 
 
 class FakeIMAP:
@@ -564,6 +568,30 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(self.r.info()["cost"], 1.0)
         with self.assertRaises(ValueError):
             self.r.configure({"cost": "다섯"})
+
+    def test_job_caps_passed_and_explained(self):
+        """작업 하나 상한(job_cost_usd · job_max_turns)을 claude 에 넘기고, 걸려 멈추면 이유와 이어 가는 법을 회신 — 세션은 남긴다."""
+        self.turn_on(job_cost_usd=2, job_max_turns=30)
+        add(self.box, mail("#c CAPPED 큰 일", "")[0])
+        self.step()
+        args = self.calls_made()[-1]["args"]
+        self.assertEqual(args[args.index("--max-budget-usd") + 1], "2")
+        self.assertEqual(args[args.index("--max-turns") + 1], "30")
+        rep = self.replies("reply")[-1]
+        self.assertEqual(rep["X-Dispatch-Status"], "error")
+        self.assertIn("비용 상한($2.00)에 닿아", rep.get_body(("plain",)).get_content())
+        self.assertEqual(self.r.iter_jobs()[0].get("session_id"), SESSION)   # 답장('계속')으로 이어 갈 세션
+        # 0 이면 넘기지 않는다
+        self.assertEqual(runner.cap_args({"job_cost_usd": 0, "job_max_turns": ""}), [])
+
+    def test_browser_guard_settings(self):
+        """브라우저 도구가 있는 작업에만 안전장치 훅(--settings)을 건다."""
+        base = os.path.join(self.tmp, "j1")
+        self.assertEqual(runner.guard_settings(["Read", "Write"], base, chat), "")
+        path = runner.guard_settings(["Read", "mcp__browser"], base, chat)
+        hook = chat.read_json(path)["hooks"]["PreToolUse"][0]
+        self.assertEqual(hook["matcher"], "mcp__browser__.*")
+        self.assertIn("browser-guard.js", hook["hooks"][0]["command"])
 
     def test_unanswered_question_closes_once(self):
         """선택지로 물은 뒤 하루 넘게 답이 없으면 질문을 닫는 알림 1통(선택지 없음) — 답이 와서 다음 작업이 있거나 일주일 넘은 것은 빼고."""

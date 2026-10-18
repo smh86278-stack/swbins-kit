@@ -97,15 +97,22 @@ function Get-InboxConfig {
     $keep = 200
     $extra = @()
     $enabled = $false
+    # 잡 하나의 상한(0 = 없음) — claude -p 의 --max-budget-usd · --max-turns. 하루 한도(daily_cost_usd)와 달리
+    # 도는 중인 잡을 끊는다. 비용은 턴이 끝날 때 보므로 조금 넘겨 멈춘다($0.01 상한 → $0.12 에서 멈춤 실측)
+    $budget = 0
+    $turns = 0
     if ($cfg) {
         if ($cfg.read_tools)  { $allowed = @($cfg.read_tools) }
         if ($cfg.timeout_sec) { $timeout = [int]$cfg.timeout_sec }
         if ($cfg.keep_jobs)   { $keep = [int]$cfg.keep_jobs }
+        if ($cfg.max_budget_usd) { $budget = [double]$cfg.max_budget_usd }
+        if ($cfg.max_turns)      { $turns = [int]$cfg.max_turns }
         # 도구 상한에 더하는 것은 이름(괄호 없는 기본 이름)만 받는다
         if ($cfg.extra_tools) { $extra = @($cfg.extra_tools | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^[A-Za-z0-9_]+$' }) }
         $enabled = [bool]$cfg.enabled
     }
-    return [pscustomobject]@{ AllowedTools = $allowed; TimeoutSec = $timeout; KeepJobs = $keep; ExtraTools = $extra; Enabled = $enabled }
+    return [pscustomobject]@{ AllowedTools = $allowed; TimeoutSec = $timeout; KeepJobs = $keep; ExtraTools = $extra; Enabled = $enabled
+                              MaxBudgetUsd = $budget; MaxTurns = $turns }
 }
 
 # 오래된 작업 정리(개수 제한) — 정리하지 않으면 작업이 계속 쌓이고, 게이트웨이가 20초마다 전부 훑어 점점 느려진다.
@@ -319,7 +326,10 @@ function Invoke-Job($entry) {
         # 폰이 지시와 함께 보낸 사진 폴더(게이트웨이 attach_dir) — 작업 폴더 밖이라 --add-dir 로 읽기를 열어 준다
         $addDirArg = ''
         if ($job.attach_dir -and (Test-Path -LiteralPath $job.attach_dir)) { $addDirArg = '--add-dir "' + $job.attach_dir + '" ' }
-        $argLine  = "-p ${resumeArg}${addDirArg}--output-format json --permission-mode dontAsk --allowedTools $toolArgs$denyArgs$chatArg"
+        $capArg = ''
+        if ($cfg.MaxBudgetUsd -gt 0) { $capArg += '--max-budget-usd ' + $cfg.MaxBudgetUsd.ToString([Globalization.CultureInfo]::InvariantCulture) + ' ' }
+        if ($cfg.MaxTurns -gt 0)     { $capArg += "--max-turns $($cfg.MaxTurns) " }
+        $argLine  = "-p ${resumeArg}${addDirArg}${capArg}--output-format json --permission-mode dontAsk --allowedTools $toolArgs$denyArgs$chatArg"
 
         $p = Start-Process -FilePath 'claude' -ArgumentList $argLine `
                 -WorkingDirectory $job.workdir `
@@ -399,7 +409,13 @@ function Invoke-Job($entry) {
         if ($res.is_error) {
             $job.status = 'error'
             $job.error = '실행 중 오류가 발생했습니다.'
-            Write-Log "오류 응답 $id"
+            # 잡 상한에 걸려 멈춤 — 세션은 남아 있어 답장('계속')으로 이어 갈 수 있다
+            $cap = switch ([string]$res.subtype) {
+                'error_max_budget_usd' { "잡 하나 비용 상한(`$$($cfg.MaxBudgetUsd))" }
+                'error_max_turns'      { "잡 하나 턴 상한($($cfg.MaxTurns)턴)" }
+            }
+            if ($cap) { $job.error = "${cap}에 닿아 중간에 멈췄습니다. 이어서 하려면 이 메일에 '계속' 이라고 답하세요." }
+            Write-Log "오류 응답 $id$(if ($cap) { " — $cap" })"
             Add-Notify '작업 인박스' '지시 실행 중 오류가 발생했습니다.' 'Warning'
         } else {
             $job.status = 'done'
