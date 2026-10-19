@@ -33,7 +33,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <div class="wrap">
 <header><h1>업무 자동화 키트 — 도움말</h1><p class="lead">어느 회사에서나 쓰는 Windows 업무 자동화 키트. 트레이에 상주하는 <b>자동화 허브</b>가 예약 작업·감시·알림을 맡고, 회사마다 다른 값은 <code>config.local.json</code> 한 곳에 둔다.</p><nav class="toc"><a href="#start">시작하기</a><a href="#features">기능</a><a href="#config">기능별 설정</a><a href="#notify">알림 받는 쪽</a><a href="#macro">자동화 만들기</a><a href="#api">허브 API</a><a href="#trouble">문제 해결</a></nav></header>
 <h2 id="start">시작하기</h2><ol><li>설치 파일(<code>WorkKitSetup-…exe</code>)을 실행하거나, 저장소를 받아 <code>python setup.py</code> — 처음 설정(회사 이름·메일 계정·알림 받는 곳).</li><li>허브를 띄운다(트레이 아이콘). 화면은 이 PC 에서만 열린다: <code>http://127.0.0.1:8630/</code></li><li>운영 화면 <code>/ops</code> 의 「⏰ 예약 작업」에서 쓸 기능을 켜고, 대상은 <code>config.local.json</code> 에 적는다(아래 견본).</li><li>슬랙·Teams 로도 받으려면 <code>python setup.py --webhook</code>. 알림 시험은 <code>python setup.py --test</code>.</li></ol><div class="note">비밀번호·토큰·웹훅 주소는 Windows DPAPI 로 이 PC·이 사용자에 묶어 암호화한 값만 파일에 남는다. 허브는 <code>127.0.0.1</code> 에만 열린다 — 다른 PC 에서 들어올 수 없다.</div>
-<h2 id="features">기능</h2><table><tr><th>기능</th><th>설정 갈래</th></tr><tr><td><a href="#cfg-company">회사</a></td><td><code>company</code></td></tr><tr><td><a href="#cfg-mail">메일 계정 · 알림 메일</a></td><td><code>mail</code></td></tr><tr><td><a href="#cfg-notify">알림 출구(슬랙·Teams·웹훅)</a></td><td><code>notify</code></td></tr><tr><td><a href="#cfg-scheduled_mails">정기 메일</a></td><td><code>scheduled_mails</code></td></tr><tr><td><a href="#cfg-tidy">폴더 정리</a></td><td><code>tidy</code></td></tr><tr><td><a href="#cfg-monitors">사이트·서버 감시</a></td><td><code>monitors</code></td></tr><tr><td><a href="#cfg-pc_watch">PC 디스크 감시</a></td><td><code>pc_watch</code></td></tr><tr><td><a href="#cfg-backups">폴더 백업</a></td><td><code>backups</code></td></tr><tr><td><a href="#cfg-cred_watch">로그인·키 만료 예고</a></td><td><code>cred_watch</code></td></tr><tr><td><a href="#cfg-market_notice">마켓 장애 공지 감시</a></td><td><code>market_notice</code></td></tr><tr><td><a href="#cfg-category_watch">카테고리·정보고시 변경 감시</a></td><td><code>category_watch</code></td></tr><tr><td><a href="#cfg-rate_limits">API 호출 한도 조절 · 미터기</a></td><td><code>rate_limits</code></td></tr><tr><td><a href="#cfg-links">바로가기</a></td><td><code>links</code></td></tr><tr><td><a href="#cfg-dispatch">디스패치(메일 → Claude Code, 고급)</a></td><td><code>dispatch</code></td></tr><tr><td><a href="#cfg-jira">Jira 새 이슈 감시(고급)</a></td><td><code>jira</code></td></tr><tr><td><a href="#cfg-ai_share">AI 공유 위키 · 주간 보고 초안</a></td><td><code>ai_share</code></td></tr></table>
+<h2 id="features">기능</h2><table><tr><th>기능</th><th>설정 갈래</th></tr><tr><td><a href="#cfg-company">회사</a></td><td><code>company</code></td></tr><tr><td><a href="#cfg-mail">메일 계정 · 알림 메일</a></td><td><code>mail</code></td></tr><tr><td><a href="#cfg-notify">알림 출구(슬랙·Teams·웹훅)</a></td><td><code>notify</code></td></tr><tr><td><a href="#cfg-scheduled_mails">정기 메일</a></td><td><code>scheduled_mails</code></td></tr><tr><td><a href="#cfg-tidy">폴더 정리</a></td><td><code>tidy</code></td></tr><tr><td><a href="#cfg-monitors">사이트·서버 감시</a></td><td><code>monitors</code></td></tr><tr><td><a href="#cfg-pc_watch">PC 디스크 감시</a></td><td><code>pc_watch</code></td></tr><tr><td><a href="#cfg-backups">폴더 백업</a></td><td><code>backups</code></td></tr><tr><td><a href="#cfg-cred_watch">로그인·키 만료 예고</a></td><td><code>cred_watch</code></td></tr><tr><td><a href="#cfg-morning_brief">아침 브리핑</a></td><td><code>morning_brief</code></td></tr><tr><td><a href="#cfg-market_notice">마켓 장애 공지 감시</a></td><td><code>market_notice</code></td></tr><tr><td><a href="#cfg-category_watch">카테고리·정보고시 변경 감시</a></td><td><code>category_watch</code></td></tr><tr><td><a href="#cfg-rate_limits">API 호출 한도 조절 · 미터기</a></td><td><code>rate_limits</code></td></tr><tr><td><a href="#cfg-links">바로가기</a></td><td><code>links</code></td></tr><tr><td><a href="#cfg-dispatch">디스패치(메일 → Claude Code, 고급)</a></td><td><code>dispatch</code></td></tr><tr><td><a href="#cfg-jira">Jira 새 이슈 감시(고급)</a></td><td><code>jira</code></td></tr><tr><td><a href="#cfg-ai_share">AI 공유 위키 · 주간 보고 초안</a></td><td><code>ai_share</code></td></tr></table>
 <h2 id="config">기능별 설정</h2><p>모두 저장소 맨 위 <code>config.local.json</code> 에 적는다(견본 <code>config.example.json</code>). "_" 로 시작하는 키는 설명이라 지워도 된다.</p>
 <section id="cfg-company"><h3>회사 <code>company</code></h3>
 <p>회사 이름 — 알림 메일 제목 앞에 [이름] 으로 붙는다. 비워도 된다.</p>
@@ -233,6 +233,23 @@ params {&quot;dry_run&quot;: true} 면 robocopy /L(목록만) 로 돌리고 지�
         &quot;fix&quot;: &quot;판매자 센터 → API 키 재발급 후 쓰는 곳에 바꿔 넣기&quot;
       }
     ]
+  }
+}</pre></details>
+</section>
+<section id="cfg-morning_brief"><h3>아침 브리핑 <code>morning_brief</code></h3>
+<p>아침 한 통 브리핑 — 이 요일·시각에 어제 자동화(성공·실패)·메일/대화로 맡긴 일·답 기다리는 질문·상시 서비스·「📊 기능 상태」의 ✖ 를 한 통으로 알린다(메일 + notify 출구). LLM 을 쓰지 않는다. 허브 「지금 실행」으로 꺼진 채 미리 받아 볼 수 있다.</p>
+<details><summary>자세한 동작 (tools/macro-hub/macros/job_morning_brief.py)</summary><pre>아침 한 통 브리핑 — config &quot;morning_brief&quot; 의 요일·시각에 어제 자동화(성공·실패)·메일/대화로 맡긴 일·답 기다리는 질문·
+상시 서비스·「📊 기능 상태」의 ✖ 를 한 통에 모아 알림(kit.alert — 메일 + 슬랙·Teams 등 출구)으로 보낸다.
+
+    &quot;morning_brief&quot;: {&quot;enabled&quot;: false, &quot;at&quot;: &quot;08:30&quot;, &quot;days&quot;: &quot;mon-fri&quot;}
+
+내용은 mcp_server.brief() — 허브 MCP 도구 hub_brief 와 같은 것. LLM 없이 기록에서 바로 만든다(매일 같은 모양, 사용량 0).
+돌고 나면 바로 마지막 실행을 기록한다 — 같은 날 두 번 보내지 않게. 알림이 실패하면 RETRY_MIN 분 뒤 다시(시각에서 3시간 안).</pre></details>
+<details><summary>설정 견본</summary><pre>{
+  &quot;morning_brief&quot;: {
+    &quot;enabled&quot;: false,
+    &quot;at&quot;: &quot;08:30&quot;,
+    &quot;days&quot;: &quot;mon-fri&quot;
   }
 }</pre></details>
 </section>

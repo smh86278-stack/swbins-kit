@@ -25,6 +25,8 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | 💾 폴더 백업 | 폴더를 정한 시각에 날짜별 폴더로 복사하고, 오래된 백업은 정리한다 | `backups` |
 | 🔔 실패 알림 메일 | 위 작업이 실패하면 나에게 메일로 알린다(같은 작업은 60분에 한 번) | `mail.alert_to` · `mail.alert_via` |
 | 📣 알림 출구 | 모든 알림을 메일과 함께 슬랙·Teams·디스코드·구글 챗·웹훅으로도 — `python setup.py --webhook` 으로 추가(주소는 암호화 저장), 보낸 기록이 남는다 | `notify` |
+| ☀ 아침 브리핑 | 정한 요일·시각에 어제 자동화(성공·실패)·맡긴 일·답 기다리는 질문·상시 서비스·기능 상태 ✖ 를 한 통으로(LLM 안 씀) | `morning_brief` |
+| 🔌 허브 MCP 서버 | Claude Code·Claude Desktop·Cursor 같은 AI 도구가 허브 상태(서비스·실행 기록·로그·기능 상태·맡긴 일)를 **읽기 전용** 도구로 바로 묻는다 — `python setup.py --mcp` 로 등록(실행·끄기·비밀값은 내주지 않음) | `dispatch.extra_tools` |
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
 | 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
 | 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |

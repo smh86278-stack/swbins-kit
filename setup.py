@@ -6,6 +6,7 @@
     python setup.py --show     지금 설정 보기 (비밀번호는 가린다)
     python setup.py --jira     Jira 새 이슈 감시 — 주소·인증 방식·토큰 넣기 (토큰도 DPAPI 로 암호화)
     python setup.py --webhook  알림 출구 추가 — 슬랙·Teams·디스코드·구글 챗·웹훅 (주소도 DPAPI 로 암호화)
+    python setup.py --mcp      허브 MCP 서버(읽기 전용)를 Claude Code 에 'hub' 로 등록하고, 디스패치 지시에서도 쓰게 도구 목록에 더한다
 
 - config.local.json 이 없으면 config.example.json 을 복사해 시작한다. 이 파일은 git 에 넣지 않는다.
 - 비밀번호는 Windows DPAPI 로 이 PC·이 Windows 사용자에 묶어 암호화한 값(password_enc)만 저장한다.
@@ -401,6 +402,51 @@ def wizard():
     return 0
 
 
+MCP_TOOL = 'mcp__hub'
+# 목록을 안 적어 둔 곳의 기본값 — inbox-worker.ps1 Get-InboxConfig(read_tools) · mail-gateway.py DEFAULTS(write_tools) 와 같게
+READ_DEFAULT = ['Read', 'Glob', 'Grep', 'Bash(git log:*)', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git show:*)']
+WRITE_DEFAULT = ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'NotebookEdit', 'Bash']
+
+
+def add_mcp_tool(cfg):
+    """디스패치 지시(메일·대화)가 허브 MCP 도구를 쓰게 — 도구 상한(extra_tools)·읽기·쓰기 목록에 mcp__hub. 바뀌었으면 True.
+    읽기·쓰기 목록을 안 적어 뒀으면 기본 목록에 더해 적는다(안 그러면 기본값이라 mcp__hub 가 빠진다)."""
+    d = cfg.setdefault('dispatch', {})
+    changed = False
+    for key, default in (('extra_tools', []), ('read_tools', READ_DEFAULT), ('write_tools', WRITE_DEFAULT)):
+        cur = list(d.get(key) or default)
+        if MCP_TOOL not in cur:
+            d[key] = cur + [MCP_TOOL]
+            changed = True
+    return changed
+
+
+def mcp_register(run=None, which=None):
+    """claude mcp add --scope user hub -- <이 파이썬> tools/macro-hub/mcp_server.py — 이미 있으면 그대로."""
+    import subprocess
+    run = run or subprocess.run
+    claude = (which or shutil.which)('claude')
+    if not claude:
+        print('claude(Claude Code)를 찾지 못했습니다 — 설치·로그인한 뒤 다시 하세요.')
+        return 1
+    server = os.path.join(ROOT, 'tools', 'macro-hub', 'mcp_server.py')
+    py = sys.executable.replace('pythonw.exe', 'python.exe')     # MCP 는 표준 입출력으로 말한다 — 창 없는 pythonw 는 안 된다
+    if run([claude, 'mcp', 'get', 'hub'], capture_output=True, text=True).returncode == 0:
+        print("이미 'hub' 가 등록돼 있습니다 — 바꾸려면: claude mcp remove hub -s user 뒤 다시")
+    else:
+        r = run([claude, 'mcp', 'add', '--scope', 'user', 'hub', '--', py, server], capture_output=True, text=True)
+        if r.returncode != 0:
+            print('등록 실패: %s' % (r.stderr or r.stdout).strip())
+            return 1
+        print("Claude Code 에 'hub' 로 등록했습니다 — 새로 여는 세션부터 hub_status·hub_runs 등을 씁니다.")
+    ensure_config()
+    cfg = kit.load_config()
+    if add_mcp_tool(cfg):
+        kit.save_config(cfg)
+        print('디스패치 지시에서도 쓰게 dispatch 도구 목록에 %s 를 더했습니다(게이트웨이·워커를 다시 띄우면 적용).' % MCP_TOOL)
+    return 0
+
+
 def main(argv=None):
     try:
         sys.stdout.reconfigure(errors='replace')
@@ -411,9 +457,12 @@ def main(argv=None):
     ap.add_argument('--show', action='store_true', help='지금 설정을 보여 준다(비밀번호는 가림)')
     ap.add_argument('--jira', action='store_true', help='Jira 새 이슈 감시 — 주소·인증·토큰 넣기')
     ap.add_argument('--webhook', action='store_true', help='알림 출구 추가 — 슬랙·Teams·디스코드·구글 챗·웹훅')
+    ap.add_argument('--mcp', action='store_true', help="허브 MCP 서버(읽기 전용)를 Claude Code 에 'hub' 로 등록")
     a = ap.parse_args(argv)
     if a.show:
         return show()
+    if a.mcp:
+        return mcp_register()
     if a.webhook:
         try:
             return webhook_wizard()

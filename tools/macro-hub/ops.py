@@ -149,6 +149,7 @@ FEATURES = (
     ('backups', '폴더 백업'),
     ('jira', 'Jira 새 이슈 감시'),     # 예약 작업이 아니라 상시 서비스(svc_jira_watch)가 남긴다
     ('weekly_report', '주간 업무 보고 초안'),
+    ('morning_brief', '아침 브리핑'),
 )
 
 

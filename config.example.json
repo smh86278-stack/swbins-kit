@@ -72,6 +72,13 @@
     ]
   },
 
+  "morning_brief": {
+    "_설명": "아침 한 통 브리핑 — 이 요일·시각에 어제 자동화(성공·실패)·메일/대화로 맡긴 일·답 기다리는 질문·상시 서비스·「📊 기능 상태」의 ✖ 를 한 통으로 알린다(메일 + notify 출구). LLM 을 쓰지 않는다. 허브 「지금 실행」으로 꺼진 채 미리 받아 볼 수 있다.",
+    "enabled": false,
+    "at": "08:30",
+    "days": "mon-fri"
+  },
+
   "notify": {
     "_설명": "알림 출구 — 실패 알림·감시·로그인·키·마켓 공지 알림(kit.alert)을 메일과 함께 슬랙·Teams·디스코드·구글 챗·웹훅으로도 보낸다. 출구는 python setup.py --webhook 으로 추가한다(주소는 이 PC·이 사용자만 풀 수 있게 암호화한 url_enc 로만 저장). mail=false 면 메일은 빼고 출구로만. 출구마다 on=false 로 잠시 끌 수 있다. 보낸 기록은 tools/macro-hub/data.local/notify/sent.jsonl, 운영 화면 「📊 기능 상태」 → 알림 출구.",
     "mail": true,
