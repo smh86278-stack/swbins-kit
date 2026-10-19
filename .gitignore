@@ -65,6 +65,8 @@ tools/macro-hub/shell/window.local.json
 tools/macro-hub/pet/settings.selftest.json
 # 허브 화면에서 가져온 스킨(모습)은 각자 PC 의 것 — 견본 설명(README.md)만 담는다
 tools/macro-hub/web/skins/*/
+!tools/macro-hub/web/skins/plush/
+# ↑ 기본 모습(인형, AI(SDXL)로 직접 만든 그림 — 남의 그림이 아니라 저장소에 담는다. 조건은 plush\LICENSE.txt)
 
 # ── IDE ─────────────────────────────────────────────────────────
 .idea/

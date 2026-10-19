@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>자동화 허브 펫</title>
+<title>D&amp;C 펫</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/pets.css">
 <style>
@@ -36,6 +36,7 @@ body.dragging .pet .art svg{cursor:grabbing}
     <div class="pet cat" id="cat" data-mood="idle"><div class="art" id="catArt"></div></div>
   </div>
 </div>
+<script src="/static/petwarp.js"></script>
 <script src="/static/pets.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -45,8 +46,7 @@ const params = new URLSearchParams(location.search);     // ?dog=sleep&cat=work&
 let macros = [], connected = false;
 const flash = PetMood.newFlash();
 
-$('#dogArt').innerHTML = '<div class="art-svg">' + PetArt.dog + '</div>';
-$('#catArt').innerHTML = '<div class="art-svg">' + PetArt.cat + '</div>' + PetArt.badge;
+$('#catArt').innerHTML = PetArt.badge;                   // 그림은 스킨(기본 plush)이 그린다
 
 /* ---------- 말풍선: 말이 바뀔 때와 마우스를 올릴 때만 잠깐 보인다 ---------- */
 const bubbles = {dog: {el: $('#dogBubble'), text: '', timer: 0}, cat: {el: $('#catBubble'), text: '', timer: 0}};
@@ -63,13 +63,18 @@ function update() {
   if (!connected) { dog = 'sleep'; dogText = '허브에 연결 중…'; }
   const D = $('#dog'), C = $('#cat');
   D.dataset.mood = dog; D.dataset.bark = r.barking ? 'on' : 'off'; C.dataset.mood = r.cat; C.dataset.motion = r.catMotion || '';
-  renderSkin('dog', dog, r.barking); renderSkin('cat', r.cat, false, r.catMotion);
+  const pd = petting === 'dog' ? PetSkin.petted('dog', dog, r.barking) : {mood: dog, bark: r.barking};
+  const pc = petting === 'cat' ? PetSkin.petted('cat', r.cat, false) : {mood: r.cat, bark: false};
+  D.classList.toggle('petting', petting === 'dog'); C.classList.toggle('petting', petting === 'cat');
+  renderSkin('dog', pd.mood, pd.bark); renderSkin('cat', pc.mood, false, r.catMotion);
   track('dog', dogText); track('cat', r.catText);
 }
 
 /* ---------- 스킨: 움직이는 이미지/영상으로 통째로 바꾸기 (web/skins/README.md) ---------- */
 let skin = null, skinId = null; const curFile = {dog: null, cat: null};
-async function setSkin(id) { skinId = id; skin = await PetSkin.load(id); curFile.dog = curFile.cat = null; update(); }
+let skinKey = null;                                      // 스킨 + 품종 — 바뀐 경우에만 다시 읽는다
+async function setSkin(id, breed) { skinId = id; skinKey = JSON.stringify([id || null, breed || {}]); skin = await PetSkin.load(id, breed); curFile.dog = curFile.cat = null; update(); }
+const skinChanged = j => JSON.stringify([j.skin || null, j.breed || {}]) !== skinKey;
 function renderSkin(kind, mood, bark, motion) {
   const pet = $('#' + kind), art = $('#' + kind + 'Art');
   const file = skin ? PetSkin.file(skin, kind, mood, bark, motion) : null;
@@ -86,7 +91,7 @@ async function loadMacros() {
   try { macros = await (await fetch('/api/macros')).json(); connected = true; update(); } catch (e) { connected = false; }
 }
 async function loadSkin() {                              // 스킨은 허브가 정본 — 연결될 때마다 맞춘다
-  try { const j = await (await fetch('/api/skin')).json(); if ((j.skin || null) !== skinId) setSkin(j.skin || null); } catch (e) {}
+  try { const j = await (await fetch('/api/skin')).json(); if (skinChanged(j)) setSkin(j.skin || null, j.breed); } catch (e) {}
 }
 function connect() {
   const es = new EventSource('/events');
@@ -96,7 +101,7 @@ function connect() {
     const m = JSON.parse(ev.data);
     if (m.t === 'run') { PetMood.react(flash, m.run); if (!m.run.tool) loadMacros(); update(); }
     else if (m.t === 'macros' || m.t === 'motion') loadMacros();
-    else if (m.t === 'skin') { if ((m.skin || null) !== skinId) setSkin(m.skin || null); }
+    else if (m.t === 'skin') { if (skinChanged(m)) setSkin(m.skin || null, m.breed); }
     else if (m.t === 'notify') { PetMood.notify(flash, m); say('dog', (m.title || '알림') + (m.text ? ' — ' + m.text : ''), 6500); update(); }
   };
 }
@@ -105,13 +110,21 @@ function connect() {
 function isHit(el) {
   if (!el) return false;
   if (el.closest && el.closest('.bubble.show')) return true;
-  if (el.classList && el.classList.contains('skin-media')) return true;
-  return el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg';     // 그림이 실제로 칠해진 곳만
+  if (el.closest && el.closest('.skin-media')) return true;                 // 스킨 그림(연출 fx 면 안쪽 img)
+  return el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg';     // 일의 종류 배지에서 칠해진 곳
 }
 let ignoring = null, dragging = false, drag = null;
 function setIgnore(v) { if (ignoring !== v) { ignoring = v; if (api) api.setIgnore(v); } }
-document.addEventListener('mousemove', e => { if (!dragging) setIgnore(!isHit(e.target)); });
-document.addEventListener('mouseleave', () => { if (!dragging) setIgnore(true); });
+let petting = null;                                      // 마우스가 올라가 있는 펫('dog'·'cat') — 표정이 바뀌고 하트가 뜬다
+function setPetting(v) { if (petting !== v) { petting = v; update(); } }
+document.addEventListener('mousemove', e => {
+  if (dragging) return;
+  const hit = isHit(e.target);
+  setIgnore(!hit);
+  const p = hit && e.target.closest ? e.target.closest('.pet') : null;
+  setPetting(p ? p.id : null);
+});
+document.addEventListener('mouseleave', () => { if (!dragging) { setIgnore(true); setPetting(null); } });
 
 function petOf(el) { return el && el.closest ? el.closest('.pet') : null; }
 document.addEventListener('pointerdown', e => {
@@ -152,9 +165,9 @@ function applySettings(s) {
 }
 if (api) { api.getSettings().then(applySettings); api.onSettings(applySettings); }
 if (api) {
-  // 우클릭 메뉴의 모습 선택 — 허브가 기억하고 허브 화면과 같이 바뀐다
-  api.onSetSkin(id => fetch('/api/skin', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
-    body: JSON.stringify({skin: id})}).catch(() => {}));
+  // 우클릭 메뉴의 모습·품종 선택 — 허브가 기억하고 허브 화면과 같이 바뀐다. 값은 스킨 id 또는 {breed: {dog: 'corgi'}}
+  api.onSetSkin(v => fetch('/api/skin', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
+    body: JSON.stringify(v && typeof v === 'object' ? v : {skin: v})}).catch(() => {}));
   // 메뉴의 '펫 끄기' — 허브에 알려 '꺼 둔 상태'로 기억시킨다(그래야 허브를 다시 켤 때 펫이 되살아나지 않는다)
   api.onAskOff(() => fetch('/api/pet', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
     body: JSON.stringify({on: false})}).catch(() => {}));

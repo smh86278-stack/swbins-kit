@@ -58,6 +58,7 @@ STATIC_TYPES = {'css': 'text/css; charset=utf-8', 'js': 'text/javascript; charse
                 'png': 'image/png', 'apng': 'image/apng', 'webp': 'image/webp', 'gif': 'image/gif', 'jpg': 'image/jpeg',
                 'jpeg': 'image/jpeg', 'mp4': 'video/mp4', 'webm': 'video/webm', 'json': 'application/json; charset=utf-8'}
 SKIN_DIR = os.path.join(WEB_DIR, 'skins')
+DEFAULT_SKIN = 'plush'                        # 기본 모습(인형 강아지·고양이). 저장소에 들어 있다 — web/pets.js 의 PetSkin.DEFAULT 와 같게
 
 TOKEN = secrets.token_urlsafe(24)
 NO_WINDOW = 0x08000000
@@ -1172,7 +1173,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {'error': 'no such run'})
             return self._send(200, dict(r.summary(), lines=list(r.lines)))
         if u.path == '/api/skin':
-            return self._send(200, {'skin': state.get('skin')})
+            return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}})
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/schedule':
@@ -1312,13 +1313,18 @@ class Handler(BaseHTTPRequestHandler):
                                  title, tool=True, timeout=120)
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/skin':                       # 펫과 허브 화면이 같이 쓰는 모습(스킨) — 허브가 한 곳에서 기억한다
-            sid = body.get('skin') or None
-            if sid is not None and not (re.fullmatch(r'[\w\-]+', str(sid)) and os.path.isfile(os.path.join(SKIN_DIR, str(sid), 'skin.json'))):
+            sid = (body.get('skin') if 'skin' in body else state.get('skin')) or DEFAULT_SKIN   # 옛 '기본 그림'(없음)은 없앴다 — 비우면 기본 스킨
+            if not (re.fullmatch(r'[\w\-]+', str(sid)) and os.path.isfile(os.path.join(SKIN_DIR, str(sid), 'skin.json'))):
                 return self._send(404, {'error': '없는 스킨입니다'})
+            breed = dict(state.get('breed') or {})    # 품종(강아지·고양이 따로) — {"breed": {"dog": "corgi"}} 처럼 바꿀 쪽만 보내도 된다
+            for kind, bid in (body.get('breed') or {}).items():
+                if kind in ('dog', 'cat') and isinstance(bid, str) and re.fullmatch(r'[\w\-]+', bid):
+                    breed[kind] = bid
             state['skin'] = sid
+            state['breed'] = breed
             save_state()
-            broadcast({'t': 'skin', 'skin': sid})
-            return self._send(200, {'ok': True, 'skin': sid})
+            broadcast({'t': 'skin', 'skin': sid, 'breed': breed})
+            return self._send(200, {'ok': True, 'skin': sid, 'breed': breed})
         if path == '/api/theme':                      # 화면 모드 — 허브 화면·운영 화면·전용 창이 같이 따른다
             mode = body.get('mode')
             if mode not in UI_MODES:

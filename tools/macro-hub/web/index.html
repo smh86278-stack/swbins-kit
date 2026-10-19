@@ -10,7 +10,7 @@
 #dot{width:9px;height:9px;border-radius:50%;background:var(--bad);transition:background .3s,box-shadow .3s}
 #dot.on{background:var(--ok);animation:ping 2.4s ease-out infinite}
 @keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%,100%{box-shadow:0 0 0 8px transparent}}
-#skinSel{max-width:170px}
+#skinSel{max-width:170px}.breedSel{max-width:120px}
 
 /* ---------- 히어로: 강아지 · 통계 · 고양이 (작은 띠) ---------- */
 .hero{position:relative;margin:12px 16px 0;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);
@@ -143,6 +143,8 @@ pre#log .ln{animation:fadein .35s ease both}
   <a class="nav" href="http://127.0.0.1:8640/" target="_blank" title="AI 공유 위키 — 내 이슈·커밋 모아 보기 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜬다)">📚 AI 위키</a>
   <a class="nav" href="/ops" data-app-hide title="예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트">⏰ 운영</a>
   <select id="skinSel" title="강아지·고양이 모습 — 펫과 같이 바뀝니다"></select>
+  <select id="dogBreed" class="breedSel" title="강아지(감시견) 품종 — 펫과 같이 바뀝니다" hidden></select>
+  <select id="catBreed" class="breedSel" title="고양이(일꾼) 품종 — 펫과 같이 바뀝니다" hidden></select>
   <button id="petBtn" title="화면 구석에 강아지·고양이 펫을 띄웁니다">화면 펫</button>
   <span id="modeSw"></span>
   <span class="sub autonote" style="margin-left:auto">자동 실행은 자동화마다 켜야 동작합니다 (기본 꺼짐)</span>
@@ -230,6 +232,7 @@ pre#log .ln{animation:fadein .35s ease both}
 </main>
 <div id="toast"></div>
 <script src="/static/theme.js"></script>
+<script src="/static/petwarp.js"></script>
 <script src="/static/pets.js"></script>
 <script>
 const TOKEN='__TOKEN__';
@@ -406,19 +409,28 @@ function numTo(id,n){
   const t0=performance.now();(function step(t){const k=Math.min(1,(t-t0)/450),v=Math.round(from+(n-from)*(1-Math.pow(1-k,3)));e.textContent=v;if(k<1)requestAnimationFrame(step)})(t0);
 }
 let skin=null,skinId=null;
-async function setSkin(id){skinId=id||null;skin=await PetSkin.load(skinId);PetSkin.reset($('#dogArt'));PetSkin.reset($('#catArt'));const sel=$('#skinSel');if(sel)sel.value=skinId||'';updatePets()}
+async function setSkin(id,breed){skinId=id||null;skin=await PetSkin.load(skinId,breed);PetSkin.reset($('#dogArt'));PetSkin.reset($('#catArt'));const sel=$('#skinSel');if(sel)sel.value=skinId||PetSkin.DEFAULT;
+  for(const kind of ['dog','cat']){const bs=$('#'+kind+'Breed'),ids=PetSkin.breedIds(skin,kind);bs.hidden=!ids.length;   // 품종 — 스킨에 breeds 가 있을 때만
+    bs.replaceChildren(...ids.map(b=>new Option((kind==='dog'?'🐶 ':'🐱 ')+(skin.breeds[kind][b].name||b),b)));if(ids.length)bs.value=skin._breed[kind]}
+  updatePets()}
 async function loadSkins(){
-  const list=await PetSkin.list(),sel=$('#skinSel');sel.replaceChildren(new Option('기본 그림',''));
+  const list=await PetSkin.list(),sel=$('#skinSel');sel.replaceChildren();
   list.forEach(k=>sel.append(new Option(k.name||k.id,k.id)));
-  try{const j=await api('/api/skin');await setSkin(j.skin)}catch(e){}
+  try{const j=await api('/api/skin');await setSkin(j.skin,j.breed)}catch(e){}
 }
 $('#skinSel').onchange=e=>api('/api/skin',{skin:e.target.value||null}).catch(x=>toast(x.message));
+$('#dogBreed').onchange=e=>api('/api/skin',{breed:{dog:e.target.value}}).catch(x=>toast(x.message));
+$('#catBreed').onchange=e=>api('/api/skin',{breed:{cat:e.target.value}}).catch(x=>toast(x.message));
+let petting=null;                                          // 마우스를 올린 펫 — 표정이 바뀌고 하트가 뜬다(PetSkin.petted)
+for(const k of ['dog','cat']){$('#'+k).addEventListener('mouseenter',()=>{petting=k;updatePets()});$('#'+k).addEventListener('mouseleave',()=>{petting=null;updatePets()})}
 function updatePets(){
   const now=Date.now();
   const r=PetMood.compute(macros,flash,now,{dog:params.get('dog'),cat:params.get('cat'),motion:params.get('motion')});
   const D=$('#dog'),C=$('#cat');
   D.dataset.mood=r.dog;D.dataset.bark=r.barking?'on':'off';C.dataset.mood=r.cat;C.dataset.motion=r.catMotion||'';
-  PetSkin.render(skin,D,$('#dogArt'),'dog',r.dog,r.barking);PetSkin.render(skin,C,$('#catArt'),'cat',r.cat,false,r.catMotion);
+  const pd=petting==='dog'?PetSkin.petted('dog',r.dog,r.barking):{mood:r.dog,bark:r.barking},pc=petting==='cat'?PetSkin.petted('cat',r.cat,false):{mood:r.cat};
+  D.classList.toggle('petting',petting==='dog');C.classList.toggle('petting',petting==='cat');
+  PetSkin.render(skin,D,$('#dogArt'),'dog',pd.mood,pd.bark);PetSkin.render(skin,C,$('#catArt'),'cat',pc.mood,false,r.catMotion);
   setBubble('#dogBubble',r.dogText);setBubble('#catBubble',r.catText);
   numTo('#sSvc',r.on.length-r.down.length);numTo('#sRun',r.working.length);
   const day0=new Date().setHours(0,0,0,0),today=runs.filter(x=>x.started>=day0);
@@ -448,7 +460,7 @@ function connect(){
     else if(m.t==='log'){if(m.run===sel){const pre=$('#log'),near=pre.scrollHeight-pre.scrollTop-pre.clientHeight<48;addLine(m.line,true);if(near)pre.scrollTop=pre.scrollHeight}}
     else if(m.t==='macros'||m.t==='motion')loadMacros();
     else if(m.t==='pet')setTimeout(petState,400);
-    else if(m.t==='skin')setSkin(m.skin);
+    else if(m.t==='skin')setSkin(m.skin,m.breed);
     else if(m.t==='theme')HubMode.apply(m.mode);
     else if(m.t==='note')toast(m.text);
     else if(m.t==='notify'){toast('🔔 '+m.title+' — '+m.text);PetMood.notify(flash,m)}
@@ -501,7 +513,7 @@ async function petState(){try{const p=await api('/api/pet');const b=$('#petBtn')
 $('#petBtn').onclick=guard(async()=>{const p=await api('/api/pet');await api('/api/pet',{on:!p.on});setTimeout(petState,600)});
 petState();loadSkins();
 api('/api/info').then(i=>{$('#info').textContent=i.venv?'':'⚠ .venv 없음 — setup.bat 을 먼저 실행하세요'});
-$('#dogArt').innerHTML='<div class="art-svg">'+PetArt.dog+'</div>';$('#catArt').innerHTML='<div class="art-svg">'+PetArt.cat+'</div>'+PetArt.badge;
+$('#catArt').innerHTML=PetArt.badge;
 setInterval(updatePets,1000);
 updatePets();connect();
 </script>

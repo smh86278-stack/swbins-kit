@@ -140,9 +140,9 @@ BADGE, BADGE_LINE = (241, 236, 255, 255), (138, 114, 238, 255)                  
 
 def make_icon(kind):
     """스킨 얼굴(있으면) 또는 직접 그린 강아지 + 우하단 상태 점."""
-    sid = hub.state.get('skin')
+    sid = hub.state.get('skin') or hub.DEFAULT_SKIN
     if sid:
-        face = skinicon.face_icon(os.path.join(hub.SKIN_DIR, sid), kind, 256)
+        face = skinicon.face_icon(os.path.join(hub.SKIN_DIR, sid), kind, 256, (hub.state.get('breed') or {}).get('dog'))
         if face:
             img = face.copy()
             _status_dot(ImageDraw.Draw(img), kind)
@@ -637,7 +637,7 @@ _last = {'sig': None}
 def refresh(icon):
     kind, text = compute_state()
     cfg = tools_config()
-    sig = (kind, text, hub.state.get('skin'), tuple(sorted((k, v) for k, v in hub.state['enabled'].items())),
+    sig = (kind, text, hub.state.get('skin'), (hub.state.get('breed') or {}).get('dog'), tuple(sorted((k, v) for k, v in hub.state['enabled'].items())),
            tuple(os.path.exists(paused_flag(m)) for m in services()),
            tuple(extsvc.port_open(s['port'], timeout=0.2) for s in cfg['services'] if s.get('port') != PORT),
            tuple(watcher_status(w)[0] for w in cfg['watchers']),       # 메뉴에 보이는 서버·도구 상태가 바뀌면 다시 그린다

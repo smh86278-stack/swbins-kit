@@ -1,0 +1,415 @@
+{
+ "name": "인형 (AI 생성)",
+ "breeds": {
+  "dog": {
+   "shiba": {
+    "name": "시바",
+    "alert": "dog-shiba.webp",
+    "sleep": "dog-shiba-sleep.webp",
+    "worried": "dog-shiba-worried.webp",
+    "bark": "dog-shiba-bark.webp",
+    "rig": {
+     "neck": [
+      0.559,
+      0.506
+     ],
+     "pawL": [
+      0.401,
+      0.93
+     ],
+     "pawR": [
+      0.716,
+      0.93
+     ]
+    }
+   },
+   "corgi": {
+    "name": "웰시코기",
+    "alert": "dog-corgi.webp",
+    "sleep": "dog-corgi-sleep.webp",
+    "rig": {
+     "neck": [
+      0.551,
+      0.48
+     ],
+     "pawL": [
+      0.406,
+      0.93
+     ],
+     "pawR": [
+      0.697,
+      0.93
+     ]
+    }
+   },
+   "pomeranian": {
+    "name": "포메라니안",
+    "alert": "dog-pomeranian.webp",
+    "sleep": "dog-pomeranian-sleep.webp",
+    "rig": {
+     "neck": [
+      0.503,
+      0.48
+     ],
+     "pawL": [
+      0.377,
+      0.93
+     ],
+     "pawR": [
+      0.63,
+      0.93
+     ]
+    }
+   },
+   "maltese": {
+    "name": "말티즈",
+    "alert": "dog-maltese.webp",
+    "sleep": "dog-maltese-sleep.webp",
+    "rig": {
+     "neck": [
+      0.531,
+      0.518
+     ],
+     "pawL": [
+      0.383,
+      0.93
+     ],
+     "pawR": [
+      0.679,
+      0.93
+     ]
+    }
+   },
+   "poodle": {
+    "name": "토이푸들",
+    "alert": "dog-poodle.webp",
+    "rig": {
+     "neck": [
+      0.495,
+      0.516
+     ],
+     "pawL": [
+      0.338,
+      0.93
+     ],
+     "pawR": [
+      0.652,
+      0.93
+     ]
+    }
+   },
+   "bichon": {
+    "name": "비숑",
+    "alert": "dog-bichon.webp",
+    "sleep": "dog-bichon-sleep.webp",
+    "rig": {
+     "neck": [
+      0.503,
+      0.533
+     ],
+     "pawL": [
+      0.345,
+      0.93
+     ],
+     "pawR": [
+      0.66,
+      0.93
+     ]
+    }
+   },
+   "golden": {
+    "name": "골든리트리버",
+    "alert": "dog-golden.webp",
+    "sleep": "dog-golden-sleep.webp",
+    "rig": {
+     "neck": [
+      0.547,
+      0.48
+     ],
+     "pawL": [
+      0.396,
+      0.93
+     ],
+     "pawR": [
+      0.698,
+      0.93
+     ]
+    }
+   },
+   "husky": {
+    "name": "허스키",
+    "alert": "dog-husky.webp",
+    "sleep": "dog-husky-sleep.webp",
+    "rig": {
+     "neck": [
+      0.498,
+      0.502
+     ],
+     "pawL": [
+      0.352,
+      0.93
+     ],
+     "pawR": [
+      0.644,
+      0.93
+     ]
+    }
+   },
+   "jindo": {
+    "name": "진돗개",
+    "alert": "dog-jindo.webp",
+    "sleep": "dog-jindo-sleep.webp",
+    "rig": {
+     "neck": [
+      0.578,
+      0.52
+     ],
+     "pawL": [
+      0.431,
+      0.93
+     ],
+     "pawR": [
+      0.725,
+      0.93
+     ]
+    }
+   },
+   "dachshund": {
+    "name": "닥스훈트",
+    "alert": "dog-dachshund.webp",
+    "rig": {
+     "neck": [
+      0.515,
+      0.48
+     ],
+     "pawL": [
+      0.341,
+      0.93
+     ],
+     "pawR": [
+      0.69,
+      0.93
+     ]
+    }
+   },
+   "panda": {
+    "name": "판다",
+    "alert": "panda.webp",
+    "rig": {
+     "neck": [
+      0.514,
+      0.518
+     ],
+     "pawL": [
+      0.319,
+      0.93
+     ],
+     "pawR": [
+      0.709,
+      0.93
+     ]
+    }
+   }
+  },
+  "cat": {
+   "cream": {
+    "name": "크림",
+    "idle": "cat-cream.webp",
+    "rig": {
+     "neck": [
+      0.512,
+      0.56
+     ],
+     "pawL": [
+      0.323,
+      0.93
+     ],
+     "pawR": [
+      0.701,
+      0.93
+     ]
+    }
+   },
+   "cheese": {
+    "name": "치즈태비",
+    "idle": "cat-cheese.webp",
+    "rig": {
+     "neck": [
+      0.553,
+      0.48
+     ],
+     "pawL": [
+      0.421,
+      0.93
+     ],
+     "pawR": [
+      0.684,
+      0.93
+     ]
+    }
+   },
+   "mackerel": {
+    "name": "고등어태비",
+    "idle": "cat-mackerel.webp",
+    "rig": {
+     "neck": [
+      0.504,
+      0.545
+     ],
+     "pawL": [
+      0.331,
+      0.93
+     ],
+     "pawR": [
+      0.677,
+      0.93
+     ]
+    }
+   },
+   "tuxedo": {
+    "name": "턱시도",
+    "idle": "cat-tuxedo.webp",
+    "rig": {
+     "neck": [
+      0.48,
+      0.52
+     ],
+     "pawL": [
+      0.33,
+      0.93
+     ],
+     "pawR": [
+      0.63,
+      0.93
+     ]
+    }
+   },
+   "calico": {
+    "name": "삼색이",
+    "idle": "cat-calico.webp",
+    "rig": {
+     "neck": [
+      0.52,
+      0.53
+     ],
+     "pawL": [
+      0.37,
+      0.93
+     ],
+     "pawR": [
+      0.67,
+      0.93
+     ]
+    }
+   },
+   "russianblue": {
+    "name": "러시안블루",
+    "idle": "cat-russianblue.webp",
+    "rig": {
+     "neck": [
+      0.498,
+      0.56
+     ],
+     "pawL": [
+      0.325,
+      0.93
+     ],
+     "pawR": [
+      0.672,
+      0.93
+     ]
+    }
+   },
+   "siamese": {
+    "name": "샴",
+    "idle": "cat-siamese.webp",
+    "rig": {
+     "neck": [
+      0.5,
+      0.55
+     ],
+     "pawL": [
+      0.35,
+      0.93
+     ],
+     "pawR": [
+      0.65,
+      0.93
+     ]
+    }
+   },
+   "persian": {
+    "name": "페르시안",
+    "idle": "cat-persian.webp",
+    "rig": {
+     "neck": [
+      0.574,
+      0.48
+     ],
+     "pawL": [
+      0.443,
+      0.93
+     ],
+     "pawR": [
+      0.705,
+      0.93
+     ]
+    }
+   },
+   "panda": {
+    "name": "판다",
+    "idle": "panda.webp",
+    "rig": {
+     "neck": [
+      0.514,
+      0.518
+     ],
+     "pawL": [
+      0.319,
+      0.93
+     ],
+     "pawR": [
+      0.709,
+      0.93
+     ]
+    }
+   }
+  }
+ },
+ "dog": {
+  "alert": {
+   "fx": "idle"
+  },
+  "sleep": {
+   "from": "alert",
+   "fx": "sleep",
+   "filter": "brightness(.9) saturate(.88)"
+  },
+  "worried": {
+   "from": "alert",
+   "fx": "worried"
+  },
+  "bark": {
+   "from": "alert",
+   "fx": "bark"
+  }
+ },
+ "cat": {
+  "idle": {
+   "fx": "idle"
+  },
+  "work": {
+   "from": "idle",
+   "fx": "work"
+  },
+  "happy": {
+   "from": "idle",
+   "fx": "happy"
+  },
+  "sad": {
+   "from": "idle",
+   "fx": "sad",
+   "filter": "saturate(.7) brightness(.93)"
+  }
+ }
+}

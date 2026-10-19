@@ -1,0 +1,9 @@
+인형 스킨 — 이 PC 에서 AI 로 생성한 그림 (2026-10-07)
+
+- 모델: Stable Diffusion XL 1.0 + SDXL-Lightning 4단계 LoRA (CreativeML OpenRAIL++-M)
+  생성물의 공개·상업 사용 가능 (OpenRAIL++ 사용 제한 조항만 지키면 됨)
+- 배경 제거: rembg (isnet-general-use)
+- 원본 1024px PNG 와 생성 스크립트: ..\_source\plush\
+  시바 seed 23 · 크림 고양이 seed 42 · 다른 품종과 판다는 plush_breeds.py·plush_extra.py (품종마다 시안 4장 중 하나)
+- 시바는 얼굴만 다시 그린(inpaint) 표정 그림이 있다: dog-sleep(눈 감음) · dog-worried · dog-bark(혀)
+- 고양이는 한 장 — 상태는 skin.json 의 fx(연출)로 움직임과 장식을 얹는다

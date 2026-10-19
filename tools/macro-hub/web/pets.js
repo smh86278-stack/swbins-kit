@@ -1,82 +1,7 @@
 /* 강아지 · 고양이 — 허브 페이지(index.html)와 데스크톱 펫(pet.html)이 함께 쓴다.
-   PetArt  : SVG 그림 (모양은 pets.css 의 data-mood / data-bark 로 바뀐다)
+   PetArt  : 고양이 일의 종류 배지와 문구 (그림은 스킨 — 기본은 web/skins/plush, 옛 내장 SVG 그림은 2026-10-07 에 없앴다)
    PetMood : 허브 상태(macros)와 최근 사건(flash)으로 두 마리의 표정·말풍선을 계산한다 */
 window.PetArt = {
-  dog: `<svg viewBox="0 0 240 250" aria-label="감시견 강아지">
-        <defs>
-          <linearGradient id="dBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34363d"/><stop offset="1" stop-color="#1b1c20"/></linearGradient>
-          <linearGradient id="dHead" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2e3036"/><stop offset="1" stop-color="#1f2024"/></linearGradient>
-          <linearGradient id="dWhite" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf9"/><stop offset="1" stop-color="#eee8df"/></linearGradient>
-          <radialGradient id="dIris" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#b07a3c"/><stop offset="1" stop-color="#5b3517"/></radialGradient>
-        </defs>
-        <ellipse cx="120" cy="244" rx="86" ry="9" fill="#0002"/>
-        <g class="bodywrap">
-          <g class="tail"><path d="M206 234 C228 230 240 208 232 184 C228 196 218 206 204 212 Z" fill="#1c1d21"/><path d="M232 184 C231 192 226 199 220 204 C229 202 235 194 232 184 Z" fill="#fffdf9"/></g>
-          <path d="M26 250 C26 196 70 168 120 168 C170 168 214 196 214 250 Z" fill="url(#dBody)"/>
-          <path d="M90 250 C94 206 108 184 120 182 C132 184 146 206 150 250 Z" fill="url(#dWhite)"/>
-          <path d="M64 250 C60 224 70 204 90 192" stroke="#fff1" stroke-width="3" fill="none" stroke-linecap="round"/>
-          <g class="head">
-            <g class="earL"><path d="M66 58 C42 64 30 98 36 136 C54 138 76 118 86 88 Z" fill="#1c1d21"/><path d="M64 78 C52 86 48 104 50 120 C60 116 70 104 76 90 Z" fill="#3a3c44" opacity=".7"/></g>
-            <g class="earR"><path d="M174 58 C198 64 210 98 204 136 C186 138 164 118 154 88 Z" fill="#1c1d21"/><path d="M176 78 C188 86 192 104 190 120 C180 116 170 104 164 90 Z" fill="#3a3c44" opacity=".7"/></g>
-            <path d="M120 38 C172 38 196 76 194 114 C192 154 158 180 120 180 C82 180 48 154 46 114 C44 76 68 38 120 38 Z" fill="url(#dHead)"/>
-            <path d="M120 42 C134 42 141 70 139 98 C137 120 141 138 148 156 C140 172 100 172 92 156 C99 138 103 120 101 98 C99 70 106 42 120 42 Z" fill="url(#dWhite)"/>
-            <ellipse cx="120" cy="146" rx="38" ry="30" fill="url(#dWhite)"/>
-            <ellipse cx="88" cy="86" rx="7" ry="4.5" fill="#b9733a"/><ellipse cx="152" cy="86" rx="7" ry="4.5" fill="#b9733a"/>
-            <g class="eyeL"><g class="lid pv"><ellipse cx="88" cy="108" rx="13" ry="14" fill="#fff" opacity=".95"/>
-              <g class="pupils"><ellipse cx="88" cy="109" rx="10.5" ry="12" fill="url(#dIris)"/><circle cx="88" cy="109" r="5.6" fill="#0d0d10"/><circle cx="84.6" cy="104.6" r="2.7" fill="#fff"/><circle cx="92" cy="113" r="1.2" fill="#fff" opacity=".8"/></g></g></g>
-            <g class="eyeR"><g class="lid pv"><ellipse cx="152" cy="108" rx="13" ry="14" fill="#fff" opacity=".95"/>
-              <g class="pupils"><ellipse cx="152" cy="109" rx="10.5" ry="12" fill="url(#dIris)"/><circle cx="152" cy="109" r="5.6" fill="#0d0d10"/><circle cx="148.6" cy="104.6" r="2.7" fill="#fff"/><circle cx="156" cy="113" r="1.2" fill="#fff" opacity=".8"/></g></g></g>
-            <ellipse cx="120" cy="130" rx="12.5" ry="9" fill="#141416"/><ellipse cx="116" cy="127" rx="4.5" ry="2.2" fill="#fff" opacity=".55"/>
-            <path d="M120 139 L120 150 M120 150 C112 162 98 159 96 152 M120 150 C128 162 142 159 144 152" stroke="#25262b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-            <path class="tongue" d="M111 154 C111 176 129 176 129 154 Z" fill="#ff7f93"/>
-            <ellipse cx="66" cy="136" rx="9" ry="6" fill="#ff9aa8" opacity=".22"/><ellipse cx="174" cy="136" rx="9" ry="6" fill="#ff9aa8" opacity=".22"/>
-          </g>
-          <g class="sweat"><path d="M186 70 C180 82 180 90 186 92 C192 90 192 82 186 70 Z" fill="#79c4ff"/></g>
-        </g>
-        <g class="zz"><text x="170" y="60">Z</text><text x="186" y="42">z</text><text x="200" y="26">z</text></g>
-      </svg>`,
-  cat: `<svg viewBox="0 0 240 250" aria-label="일꾼 고양이">
-        <defs>
-          <linearGradient id="cBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2a04c"/><stop offset="1" stop-color="#d9822f"/></linearGradient>
-          <linearGradient id="cHead" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6aa56"/><stop offset="1" stop-color="#e58f3a"/></linearGradient>
-          <linearGradient id="cWhite" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf2"/><stop offset="1" stop-color="#f1e6d6"/></linearGradient>
-          <radialGradient id="cIris" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="#d4f27c"/><stop offset="1" stop-color="#5fae3e"/></radialGradient>
-          <linearGradient id="cLap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfe3ea"/><stop offset="1" stop-color="#aeb4c0"/></linearGradient>
-        </defs>
-        <ellipse cx="120" cy="244" rx="90" ry="9" fill="#0002"/>
-        <g class="bodywrap">
-          <g class="tail"><path d="M36 240 C8 238 -2 214 12 194 C17 188 26 191 23 198 C17 212 24 224 44 226 Z" fill="#ec9640"/><path d="M14 200 L24 204 M10 214 L21 215 M16 228 L26 224" stroke="#c46f1f" stroke-width="3.2" stroke-linecap="round" fill="none"/></g>
-          <path d="M30 250 C30 200 72 174 120 174 C168 174 210 200 210 250 Z" fill="url(#cBody)"/>
-          <path d="M70 250 C72 222 82 204 98 194 M170 250 C168 222 158 204 142 194" stroke="#c46f1f" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5"/>
-          <path d="M96 250 C100 210 110 192 120 190 C130 192 140 210 144 250 Z" fill="url(#cWhite)"/>
-          <g class="head">
-            <g class="earL"><path d="M60 96 L54 34 L110 66 Z" fill="#ec9640"/><path d="M69 86 L66 52 L98 70 Z" fill="#f6a9ac"/></g>
-            <g class="earR"><path d="M180 96 L186 34 L130 66 Z" fill="#ec9640"/><path d="M171 86 L174 52 L142 70 Z" fill="#f6a9ac"/></g>
-            <ellipse cx="120" cy="114" rx="76" ry="64" fill="url(#cHead)"/>
-            <path d="M120 54 L120 78 M104 56 L107 76 M136 56 L133 76" stroke="#c46f1f" stroke-width="5" stroke-linecap="round" opacity=".75"/>
-            <path d="M46 112 L60 108 M46 124 L62 122 M194 112 L180 108 M194 124 L178 122" stroke="#c46f1f" stroke-width="4" stroke-linecap="round" opacity=".6"/>
-            <ellipse cx="120" cy="142" rx="32" ry="23" fill="url(#cWhite)"/>
-            <g><g class="eye-open"><g class="lid pv"><ellipse cx="86" cy="110" rx="16" ry="17" fill="url(#cIris)"/><ellipse class="pupil pv" cx="86" cy="111" rx="5" ry="12.5" fill="#101114"/><circle cx="80.5" cy="104" r="3.6" fill="#fff"/><circle cx="92" cy="118" r="1.6" fill="#fff" opacity=".8"/></g></g>
-              <path class="arc" d="M71 114 C77 100 95 100 101 114" stroke="#5a3210" stroke-width="5" fill="none" stroke-linecap="round"/></g>
-            <g><g class="eye-open"><g class="lid pv"><ellipse cx="154" cy="110" rx="16" ry="17" fill="url(#cIris)"/><ellipse class="pupil pv" cx="154" cy="111" rx="5" ry="12.5" fill="#101114"/><circle cx="148.5" cy="104" r="3.6" fill="#fff"/><circle cx="160" cy="118" r="1.6" fill="#fff" opacity=".8"/></g></g>
-              <path class="arc" d="M139 114 C145 100 163 100 169 114" stroke="#5a3210" stroke-width="5" fill="none" stroke-linecap="round"/></g>
-            <path d="M111 131 L129 131 L120 142 Z" fill="#f08c9c" stroke="#f08c9c" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M120 142 L120 148 M120 148 C114 157 103 155 101 148 M120 148 C126 157 137 155 139 148" stroke="#6b3a1a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-            <path d="M80 142 L34 132 M80 149 L32 150 M82 156 L38 168 M160 142 L206 132 M160 149 L208 150 M158 156 L202 168" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity=".85"/>
-            <ellipse cx="62" cy="140" rx="9" ry="6" fill="#ff9aa8" opacity=".3"/><ellipse cx="178" cy="140" rx="9" ry="6" fill="#ff9aa8" opacity=".3"/>
-          </g>
-          <g class="laptop">
-            <rect x="58" y="186" width="124" height="64" rx="9" fill="url(#cLap)"/>
-            <rect class="screen" x="66" y="192" width="108" height="3" rx="1.5" fill="#6aa0ff"/>
-            <circle cx="120" cy="220" r="7.5" fill="#fff" opacity=".65"/>
-            <ellipse class="pawL" cx="92" cy="188" rx="17" ry="12" fill="#ec9640"/><ellipse class="pawR" cx="148" cy="188" rx="17" ry="12" fill="#ec9640"/>
-            <path d="M86 186 L86 192 M92 185 L92 192 M98 186 L98 192 M142 186 L142 192 M148 185 L148 192 M154 186 L154 192" stroke="#fffaf2" stroke-width="2" stroke-linecap="round"/>
-          </g>
-          <g class="sweat"><path d="M190 76 C184 88 184 96 190 98 C196 96 196 88 190 76 Z" fill="#79c4ff"/></g>
-        </g>
-        <g class="sparks"><path class="spk pv" d="M40 62 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4z" fill="#ffd54a"/><path class="spk pv" d="M204 54 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#ffd54a"/><path class="spk pv" d="M214 120 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="#fff"/></g>
-      </svg>`,
-  // 일의 종류(motion) 표시 — 고양이 머리 옆 말풍선. 스킨을 써도 그대로 보인다(data-motion 으로 하나만 켜진다)
   badge: `<div class="motion-badge" aria-hidden="true"><svg viewBox="0 0 48 48">
         <circle cx="24" cy="24" r="21" fill="#fff"/><circle cx="24" cy="24" r="21" fill="none" stroke="#0001" stroke-width="1.5"/>
         <g class="mo mo-web"><circle cx="24" cy="24" r="11" fill="#dbeafe" stroke="#3b82f6" stroke-width="2.4"/>
@@ -144,16 +69,35 @@ window.PetMood = {
                   {"frames":["a_00.png","a_01.png",...], "fps":12}    (PNG 시퀀스를 fps 로 반복 재생)
                   {"from":"alert", "filter":"brightness(.7)", "fps":4}  (다른 상태 것을 빌려 효과만 바꿈 — 예: 잠자는 모습)
                   공통 효과: filter(CSS 필터) · flip(좌우 반전) · scale(1=기본 폭)
+                  fx(연출): idle · sleep · worried · bark · work · happy · sad — 그림 한 장으로도 상태가 보이게 움직임과 장식을 얹는다
    고양이 "work" 는 일의 종류별로 "work:web" · "work:desktop" · "work:write" · "work:mail" · "work:search" 를 따로 줄 수 있다(없으면 work). */
 window.PetSkin = {
+  DEFAULT: 'plush',                                          // 스킨을 안 골랐을 때 쓰는 기본 모습(인형 시바·고양이 — 저장소에 들어 있다)
+  BASE: '/',                                                 // 스킨 폴더 앞 경로 — 허브·메신저는 '/skin/…', 폰 페이지(GitHub Pages 하위 경로)는 'pet/' 로 바꿔 'pet/skin/…'
   async list(){ try { return await (await fetch('/api/skins')).json(); } catch (e) { return []; } },
-  async load(id){
-    if (!id) return null;
+  async load(id, breed){
+    id = id || this.DEFAULT;
     try {
-      const r = await fetch('/skin/' + encodeURIComponent(id) + '/skin.json');
+      const r = await fetch(this.BASE + 'skin/' + encodeURIComponent(id) + '/skin.json');
       if (!r.ok) return null;
-      const m = await r.json(); m._id = id; m._cache = {}; return m;
+      const m = await r.json(); m._id = id; m._cache = {}; this.applyBreed(m, breed); return m;
     } catch (e) { return null; }
+  },
+  /* 품종: skin.json 의 "breeds": {"dog": {"shiba": {"name": "시바", "alert": "dog-shiba.webp", "sleep": ...}}, "cat": {...}}
+     고른 품종(없거나 모르는 것이면 첫 번째)의 상태별 파일을 dog/cat 표에 덮어쓴다 — 효과(fx·filter·from)는 표의 것을 그대로 쓴다 */
+  breedIds(manifest, kind){ return Object.keys(((manifest && manifest.breeds) || {})[kind] || {}); },
+  applyBreed(m, breed){
+    m._breed = {};
+    for (const kind of ['dog', 'cat']) {
+      const ids = this.breedIds(m, kind);
+      if (!ids.length) continue;
+      const b = ids.includes((breed || {})[kind]) ? breed[kind] : ids[0];
+      m._breed[kind] = b;
+      const t = m[kind] = Object.assign({}, m[kind]);
+      const {name, rig, ...files} = m.breeds[kind][b];
+      for (const [state, file] of Object.entries(files)) t[state] = Object.assign({}, typeof t[state] === 'string' ? {file: t[state]} : t[state], {file});
+      if (rig) for (const state of Object.keys(t)) t[state] = Object.assign({}, typeof t[state] === 'string' ? {file: t[state]} : t[state], {rig});   // 품종 그림의 목·앞발 위치(그물 변형)
+    }
   },
   resolve(manifest, kind, key){                              // 상태 값을 하나의 객체로 풀어 준다(from 처리). 같은 객체를 돌려줘야 바뀐 줄 안다
     const t = (manifest && manifest[kind]) || {};
@@ -174,7 +118,7 @@ window.PetSkin = {
     if (motion) { const w = this.resolve(manifest, kind, mood + ':' + motion); if (w) return w; }   // 일의 종류별 모습(work:mail 등), 없으면 그냥 work
     return this.resolve(manifest, kind, mood) || this.resolve(manifest, kind, kind === 'dog' ? 'alert' : 'idle');
   },
-  url(manifest, file){ return '/skin/' + encodeURIComponent(manifest._id) + '/' + encodeURIComponent(file); },
+  url(manifest, file){ return this.BASE + 'skin/' + encodeURIComponent(manifest._id) + '/' + encodeURIComponent(file); },
   isVideo(file){ return /\.(mp4|webm)$/i.test(file); },
   element(manifest, spec){                                   // 스펙에 맞는 요소를 만든다
     const o = typeof spec === 'string' ? {file: spec} : spec;
@@ -185,6 +129,8 @@ window.PetSkin = {
       el = document.createElement('img'); el.alt = ''; el.draggable = false; el.src = urls[0];
       let n = 0;
       if (urls.length > 1) el._timer = setInterval(() => { n = (n + 1) % urls.length; el.src = urls[n]; }, 1000 / Math.max(1, Math.min(60, o.fps || 10)));
+    } else if (o.rig && o.file && !this.isVideo(o.file) && window.PetWarp && PetWarp.ok()) {   // 그물 변형(web/petwarp.js): 고개 갸웃·끄덕·앞발 들기·숨쉬기
+      el = PetWarp.element(this.url(manifest, o.file), o.rig, o.fx);
     } else if (this.isVideo(o.file)) {
       el = document.createElement('video'); el.src = this.url(manifest, o.file); el.loop = true; el.muted = true; el.autoplay = true; el.playsInline = true;
     } else {
@@ -192,13 +138,31 @@ window.PetSkin = {
     }
     el.className = 'skin-media';
     if (o.pixel) el.style.imageRendering = 'pixelated';                   // 도트 그림이 번지지 않게
-    if (o.frames && o.frames.length === 1) el.classList.add('still');    // 한 장짜리 자세(잠자기 등)는 숨 쉬듯 살짝 움직인다
+    if (o.frames && o.frames.length === 1 && !o.fx) el.classList.add('still');    // 한 장짜리 자세(잠자기 등)는 숨 쉬듯 살짝 움직인다
     if (o.filter) el.style.filter = o.filter;
     if (o.flip) el.style.transform = 'scaleX(-1)';
     if (o.scale) { el.style.width = (o.scale * 100) + '%'; el.style.margin = '0 auto'; }
-    return el;
+    if (!o.fx || !this.FX.hasOwnProperty(o.fx)) return el;
+    const box = document.createElement('div');                           // 연출(fx): 그림을 움직이고 💤·땀방울·"멍!" 같은 장식을 얹는다(pets.css 의 .fx-*)
+    box.className = 'skin-media skin-fx fx-' + o.fx;
+    el.className = 'skin-img';
+    box._timer = el._timer; box._stop = el._stop;
+    box.append(el);
+    box.insertAdjacentHTML('beforeend', this.FX[o.fx]);
+    return box;
   },
-  dispose(el){ if (el && el._timer) clearInterval(el._timer); if (el && el.remove) el.remove(); },
+  FX: {                                                      // 그림 한 장으로 상태를 보여 주는 연출 — 장식 HTML
+    idle: '', work: '',
+    sleep: '<i class="fx-deco fx-z" aria-hidden="true"><b>z</b><b>z</b><b>Z</b></i>',
+    worried: '<i class="fx-deco fx-drop" aria-hidden="true"><svg viewBox="0 0 12 18"><path d="M6 0C2 7 0 10 0 12.5A6 6 0 0 0 12 12.5C12 10 10 7 6 0Z"/></svg></i>',
+    sad: '<i class="fx-deco fx-drop" aria-hidden="true"><svg viewBox="0 0 12 18"><path d="M6 0C2 7 0 10 0 12.5A6 6 0 0 0 12 12.5C12 10 10 7 6 0Z"/></svg></i>',
+    bark: '<i class="fx-deco fx-say" aria-hidden="true">멍!</i>',
+    happy: '<i class="fx-deco fx-spark" aria-hidden="true"><b>✦</b><b>✦</b><b>✦</b></i>',
+  },
+  petted(kind, mood, bark){                                  // 마우스를 올렸을 때(쓰다듬기): 강아지는 반갑게 짖고(자다가도 깬다), 고양이는 기뻐한다 — 일하는 중이면 그대로
+    return kind === 'dog' ? {mood: mood === 'sleep' ? 'alert' : mood, bark: true} : {mood: mood === 'work' ? mood : 'happy', bark};
+  },
+  dispose(el){ if (el && el._timer) clearInterval(el._timer); if (el && el._stop) el._stop(); if (el && el.remove) el.remove(); },
   render(manifest, petEl, artEl, kind, mood, bark, motion){  // 허브 화면과 펫이 같이 쓴다: 상태에 맞는 스킨을 art 칸에 그린다(없으면 내장 그림)
     const spec = manifest ? this.file(manifest, kind, mood, bark, motion) : null;
     petEl.classList.toggle('skinned', !!spec);

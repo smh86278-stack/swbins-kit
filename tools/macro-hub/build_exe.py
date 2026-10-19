@@ -19,12 +19,14 @@ WORK = os.path.join(HERE, 'data.local', 'build')
 
 
 def make_icon():
-    """트레이의 직접 그린 강아지(상태 점 없이)를 여러 크기로 담은 .ico."""
+    """인형 시바 얼굴(기본 스킨 plush)을 여러 크기로 담은 .ico — 그림이 없으면 트레이의 직접 그린 강아지."""
     sys.path.insert(0, HERE)
-    from PIL import Image
-    import app                                          # draw_dog_icon — 트레이 아이콘과 같은 그림
-    big = app.draw_dog_icon('ok', dot=False, size=256)
-    big.save(ICO, format='ICO', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    import skinicon
+    shiba = os.path.join(HERE, 'web', 'skins', 'plush', 'dog-shiba.webp')
+    if not (os.path.isfile(shiba) and skinicon.app_icon(shiba, ICO)):
+        import app                                      # draw_dog_icon — 트레이 아이콘과 같은 그림
+        big = app.draw_dog_icon('ok', dot=False, size=256)
+        big.save(ICO, format='ICO', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
     print('아이콘:', ICO)
 
 

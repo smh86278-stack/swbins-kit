@@ -31,7 +31,7 @@ web\skins\내스킨\
 | | `happy` | 방금 성공 |
 | | `sad` | 방금 실패 |
 
-**없는 상태는 기본(`alert` / `idle`) 파일로 대신하고, 기본도 없으면 내장 그림이 나옵니다.** 일부만 만들어도 됩니다.
+**없는 상태는 기본(`alert` / `idle`) 파일로 대신합니다.** 일부만 만들어도 됩니다. (옛 내장 SVG 그림은 없앴다 — 스킨을 안 고르면 `plush`)
 
 일의 종류별 모습은 새 그림이 없어도 `from` 으로 `work` 를 빌려 효과만 바꾸면 됩니다 — 예: `"work:search": {"from": "work", "flip": true, "fps": 9}`.
 `skin_import.py` 는 `work:write`(빨리) · `work:mail`(조금 빨리) · `work:search`(반대쪽을 보며 천천히)를 이렇게 자동으로 넣습니다.
@@ -62,6 +62,27 @@ web\skins\내스킨\
 | `from` | 다른 상태의 모습을 빌려 오고 아래 효과만 바꿈 — 예: 대기 모습을 어둡게 해서 "잠" 대신 쓰기 |
 | `filter` | CSS 필터 (`brightness(.7)`, `grayscale(1)`, `hue-rotate(40deg)` …) |
 | `flip` / `scale` | 좌우 반전 / 폭 배율(1 = 기본) |
+| `fx` | 연출 — 그림 한 장으로도 상태가 보이게 움직임과 장식을 얹는다: `idle`(숨쉬기·살랑) · `sleep`(기울고 💤) · `worried`(떨림·땀방울) · `bark`(통통 튀기·"멍!") · `work`(빠르게 까딱) · `happy`(튀기·반짝이) · `sad`(처짐·눈물) |
+
+## 품종 — 강아지·고양이를 따로 고르기
+
+`skin.json` 에 `breeds` 를 두면 허브 화면 위쪽(🐶·🐱 선택칸)과 펫 우클릭(강아지 품종 · 고양이 품종)에서 고를 수 있다.
+고른 품종은 허브가 기억한다(`/api/skin` 의 `breed: {dog, cat}`). 품종마다 **상태별 파일만** 적고, 효과(fx·filter·from)는 `dog`/`cat` 표의 것을 쓴다.
+
+```json
+"breeds": {
+  "dog": { "shiba": {"name": "시바", "alert": "dog-shiba.webp", "sleep": "dog-shiba-sleep.webp"},
+           "corgi": {"name": "웰시코기", "alert": "dog-corgi.webp"} },
+  "cat": { "cream": {"name": "크림", "idle": "cat-cream.webp"} }
+},
+"dog": { "alert": {"fx": "idle"}, "sleep": {"from": "alert", "fx": "sleep"} }
+```
+
+고른 게 없거나 목록에 없는 품종이면 첫 번째가 쓰인다. 품종에 `"rig": {"neck": [x, y], "pawL": [x, y], "pawR": [x, y]}`(그림 한 변 = 1)를 주면
+그림 대신 그물 변형 캔버스(`web\petwarp.js`)로 고개 갸웃·끄덕이기·앞발 들기·숨쉬기를 한다 — `plush` 는 `_source\plush\make_rigs.py` 로 눈 위치에서 계산했다. 같은 그림을 양쪽 목록에 넣으면 어느 자리에나 둘 수 있다(`plush` 의 판다).
+
+그림이 한 장뿐이면 `fx` 로 상태를 나눈다 — 예: `"sleep": {"from": "alert", "fx": "sleep", "filter": "brightness(.88)"}`.
+`plush`(인형, 이 PC 에서 AI 로 생성 · 원본과 생성 스크립트는 `_source\plush\`)가 이렇게 만들어져 있다.
 
 ## 외부에서 받은 스프라이트 팩을 한 번에 가져오기 — `skin_import.py`
 
@@ -96,5 +117,5 @@ skin_import.py "Pet Cats Pack.zip" --name petcats --sheet --pixel --cat-variant 
 ## 라이선스를 꼭 확인하세요
 
 남이 만든 캐릭터·애니메이션은 **저작권과 사용 조건**이 각자 다릅니다(CC0 · CC BY 는 출처 표기 필요 · 상업 사용 금지 등).
-회사 PC에서 쓰거나 다른 사람에게 나눠 줄 때는 조건을 지키세요. 이 저장소는 스킨 폴더를 **git 에 올리지 않습니다**(`.gitignore`) —
+회사 PC에서 쓰거나 다른 사람에게 나눠 줄 때는 조건을 지키세요. 이 저장소는 스킨 폴더를 **git 에 올리지 않습니다**(`.gitignore` — 직접 만든 기본 스킨 `plush` 만 예외) —
 남의 그림이 저장소에 섞여 들어가지 않게 하려는 것입니다. 출처와 조건은 스킨 폴더 안에 `LICENSE.txt` 로 같이 두는 것을 권합니다.

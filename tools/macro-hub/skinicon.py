@@ -86,17 +86,30 @@ def _badge(face, size, pixel):
     return img.resize((size, size), Image.LANCZOS)
 
 
-def face_icon(skin_dir, kind, size=64):
+def _breed_table(m, breed):
+    """강아지 표에 고른 품종의 상태별 파일을 덮어쓴다(web/pets.js 의 applyBreed 와 같게 — 모르는 품종이면 첫 번째)."""
+    table = dict(m.get('dog') or {})
+    ids = list(((m.get('breeds') or {}).get('dog') or {}).keys())
+    if ids:
+        b = breed if breed in ids else ids[0]
+        for state, f in m['breeds']['dog'][b].items():
+            if state != 'name':
+                v = table.get(state)
+                table[state] = dict({'file': v} if isinstance(v, str) else (v or {}), file=f)
+    return table
+
+
+def face_icon(skin_dir, kind, size=64, breed=None):
     mf = os.path.join(skin_dir, 'skin.json')
     try:
-        key = (skin_dir, kind, size, os.path.getmtime(mf))
+        key = (skin_dir, kind, size, breed, os.path.getmtime(mf))
     except OSError:
         return None
     if key in _cache:
         return _cache[key]
     out = None
     try:
-        table = (json.load(open(mf, encoding='utf-8-sig')) or {}).get('dog') or {}
+        table = _breed_table(json.load(open(mf, encoding='utf-8-sig')) or {}, breed)
         spec = _resolve(table, STATE[kind])
         if not spec and kind in FALLBACK_FILTER:
             spec = _resolve(table, 'alert')
@@ -119,3 +132,14 @@ def face_icon(skin_dir, kind, size=64):
         out = None
     _cache[key] = out
     return out
+
+
+def app_icon(image_path, ico_path, sizes=(16, 24, 32, 48, 64, 128, 256)):
+    """캐릭터 그림 한 장 → 앱 아이콘(.ico, 여러 크기). 트레이와 같은 '밝은 원 위 얼굴' — 허브는 인형 시바(web\skins\plush\dog-shiba.webp)."""
+    img = Image.open(image_path).convert('RGBA')
+    face = _face(img)
+    if not face:
+        return None
+    frames = [_badge(face, s, False) for s in sizes]
+    frames[-1].save(ico_path, format='ICO', sizes=[(s, s) for s in sizes], append_images=frames[:-1])
+    return ico_path
