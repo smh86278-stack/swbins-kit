@@ -640,7 +640,7 @@ def schedule_view():
         nexts = [n for n in (next_fire(m, t) for t in sched) if n] if enabled else []
         v = macro_view(m)
         out.append({'id': m['id'], 'name': m['name'], 'desc': m['desc'], 'enabled': enabled,
-                    'running': v['running'], 'last': v['last'], 'schedule': sched, 'hidden': v['hidden'],
+                    'running': v['running'], 'last': v['last'], 'schedule': sched, 'hidden': v['hidden'], 'local': m['local'],
                     'default': [t for t in meta if t.get('type') == 'schedule'],
                     'overridden': m['id'] in (state.get('schedule') or {}),
                     'next': int(min(nexts) * 1000) if nexts else None})

@@ -304,6 +304,7 @@ function drawMacros(){
 function delBtn(m){
   const b=el('button','hidebtn del','지우기');b.title='내 자동화를 지웁니다 — 아래 「지운 것」에서 되살릴 수 있습니다';
   b.onclick=async e=>{e.stopPropagation();
+    if(m.enabled||m.running){toast('켜져 있거나 실행 중이면 지울 수 없습니다 — 먼저 「자동 실행」을 끄세요');return}
     if(!confirm('「'+m.name+'」을(를) 지울까요?\n파일은 data.local\\deleted 로 옮겨져, 목록 아래 「지운 것」에서 되살릴 수 있습니다.'))return;
     try{await api('/api/delete',{id:m.id});toast(m.name+' — 지웠습니다 (아래 「지운 것」에서 되살리기)')}catch(err){toast(err.message)}};
   return b;
@@ -341,7 +342,7 @@ function macroCard(m,idx,dim){
     }
     if(dim)act.append(hideBtn(m.id,m.name,false));
     else if(!m.enabled&&!m.running)act.append(hideBtn(m.id,m.name,true));
-    if(m.local&&!m.enabled&&!m.running)act.append(delBtn(m));
+    if(m.local)act.append(delBtn(m));
     act.classList.add('act');top.append(act);return c;
 }
 /* 만들기 · 녹화 · 도구 칸 — 안 쓰는 줄 숨기기 */
