@@ -170,9 +170,11 @@ function withHidden(box, list, key, card, reload){
 /* ---------- 예약 작업 ---------- */
 async function loadSched(){
   let list; try { list = await api('/api/schedule'); } catch (e) { $('#schedList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const se = document.scrollingElement, y = se.scrollTop;   // 다시 그리는 사이 창이 위로 튀지 않게 — 끝에서 되돌린다
   const box = $('#schedList'); box.replaceChildren();
   if (!list.length) box.append(el('div', 'empty', '예약 트리거가 있는 자동화가 없습니다.'));
   withHidden(box, list, 'sched', schedCard, loadSched);
+  se.scrollTop = y;
 }
 function schedCard(m, dim){
   {
@@ -228,8 +230,10 @@ function editor(m, opener){
 /* ---------- 상시 서비스 ---------- */
 async function loadSvc(){
   let list; try { list = await api('/api/macros'); } catch (e) { $('#svcList').replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const se = document.scrollingElement, y = se.scrollTop;   // 다시 그리는 사이 창이 위로 튀지 않게 — 끝에서 되돌린다
   const box = $('#svcList'); box.replaceChildren();
   withHidden(box, list.filter(x => x.service), 'svc', svcCard, loadSvc);
+  se.scrollTop = y;
 }
 function svcCard(m, dim){
   {

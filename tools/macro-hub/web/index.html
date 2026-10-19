@@ -279,6 +279,7 @@ function hiddenBar(n,key,redraw){
   b.onclick=()=>{toggleHidden(key);redraw()};return b;
 }
 function drawMacros(){
+  const se=document.scrollingElement,y=se.scrollTop;   // 다시 그리는 사이 목록이 잠깐 비어 창이 위로 튀지 않게 — 끝에서 되돌린다
   const box=$('#macros');box.replaceChildren();
   if(!macros.length){box.append(el('div','empty','자동화가 없습니다. 오른쪽에서 새로 만들거나 녹화하세요.'));return}
   const vis=macros.filter(m=>!isHid(m)),hid=macros.filter(isHid);
@@ -299,6 +300,7 @@ function drawMacros(){
     }
   }
   firstDraw=false;
+  se.scrollTop=y;
 }
 // 내 자동화 지우기 — 바로 지우지 않고 data.local\deleted 로 옮긴다(목록 아래 「지운 것」에서 되살리기)
 function delBtn(m){
