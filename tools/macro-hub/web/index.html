@@ -242,10 +242,17 @@ const STATUS={running:'실행 중',ok:'성공',fail:'실패',stopped:'중지됨'
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function hm(ms){const d=new Date(ms),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),3500)}
+function staleToken(r,j){  // 허브가 다시 뜨면 토큰이 새로 생긴다 — 옛 화면은 403 forbidden. 한 번만 알아서 새로 고친다
+  if(r.status!==403||j.error!=='forbidden')return false;
+  let last=0;try{last=+sessionStorage.getItem('hub.tokenReload')||0}catch(e){}
+  if(Date.now()-last<15000)return false;
+  try{sessionStorage.setItem('hub.tokenReload',String(Date.now()))}catch(e){}
+  location.reload();return true;
+}
 async function api(path,body){
   const opt=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Hub-Token':TOKEN},body:JSON.stringify(body)};
   const r=await fetch(path,opt);let j={};try{j=await r.json()}catch(e){}
-  if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j;
+  if(!r.ok){if(staleToken(r,j))return new Promise(()=>{});throw new Error(j.error==='forbidden'?'허브가 다시 켜졌습니다 — 화면을 새로 고쳐 주세요(F5)':j.error||('오류 '+r.status))}return j;
 }
 function chip(s){return el('span','chip s-'+s,STATUS[s]||s)}
 function trgText(t){
