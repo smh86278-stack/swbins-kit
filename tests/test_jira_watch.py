@@ -218,6 +218,12 @@ class JobShape(Base):
         return jw.normalize(cloud_issue('AB-12', '로그인 오류', '2026-10-12T10:00:00.000+0900', desc=desc),
                             self.cfg['base_url'])
 
+    def test_summary_cannot_carry_thread_mark(self):
+        """요약에 '[T12]' 를 넣은 이슈가 남의 대화에 끼어들지 않게 — 표식은 지운다(게이트웨이도 제목의 번호를 믿지 않는다)."""
+        issue = jw.normalize(cloud_issue('AB-13', '[T12] 오류 [k:x]', '2026-10-12T10:00:00.000+0900'), self.cfg['base_url'])
+        self.assertEqual(issue['summary'], '오류')
+        self.assertNotIn('[T12]', jw.make_job(self.cfg, issue)['mail_subject'])
+
     def test_confirm_job(self):
         job = jw.make_job(self.cfg, self.issue())
         self.assertEqual(job['status'], 'awaiting_confirm')
@@ -350,9 +356,10 @@ class EndToEnd(Base):
         super().setUp()
         os.makedirs(self.jobs)
         names = ('JOBS', 'SEEN_PATH', 'LOG_PATH', 'NOTIFY_PATH', 'THREAD_SEQ_PATH', 'imap_connect', 'resolve_folders',
-                 'notify', 'EARLY_STOP_PATH', 'ATTACH')
+                 'notify', 'EARLY_STOP_PATH', 'ATTACH', 'REJECTED_PATH')
         self._mg = {k: getattr(mg, k) for k in names}
         mg.JOBS = self.jobs
+        mg.REJECTED_PATH = os.path.join(self.tmp, 'mail-rejected.json')
         mg.EARLY_STOP_PATH = os.path.join(self.tmp, 'early-stops.json')
         mg.ATTACH = os.path.join(self.tmp, 'attachments')
         mg.THREAD_SEQ_PATH = os.path.join(self.tmp, 'thread-seq.json')

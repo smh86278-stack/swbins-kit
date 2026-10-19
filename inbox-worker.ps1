@@ -195,7 +195,9 @@ function Count-Queued {
 # 상한은 기본 도구 + 설정의 dispatch.extra_tools(예: 이슈 조회용 MCP 도구 이름)다.
 $script:ToolCeiling = @('Read', 'Glob', 'Grep', 'Edit', 'Write', 'NotebookEdit', 'Bash')
 $script:MailSources = @('mail', 'jira')
-$script:ToolPattern = '^[A-Za-z0-9_]+(\([^"''`\r\n]*\))?$'
+# 괄호 안에는 따옴표·줄바꿈·괄호·역슬래시와 cmd.exe·셸이 해석하는 & | ^ % < > ; $ 를 받지 않는다 —
+# 'Read(a) WebFetch(b)' 처럼 규칙 하나에 둘을 끼우거나, 역슬래시로 닫는 따옴표를 삼키지 못하게
+$script:ToolPattern = '^[A-Za-z0-9_]+(\([^"''`\r\n()\\&|^%<>;$]*\))?$'
 
 # 통과하면 $null, 막으면 사유 문자열
 function Test-JobInputs($job, $cfg) {
@@ -218,13 +220,14 @@ function Test-JobInputs($job, $cfg) {
         if ($null -eq $t) { continue }
         if ([string]$t -notmatch $script:ToolPattern) { return "허용되지 않는 거부 규칙 표기입니다: $t" }
     }
-    # 사진 폴더(게이트웨이 attach_dir)도 --add-dir 로 명령줄에 붙는다 — 인박스 사진 폴더 아래만, 따옴표 없이
+    # 사진 폴더(게이트웨이 attach_dir)도 --add-dir "…" 로 명령줄에 붙는다 — 인박스 사진 폴더 아래만, 따옴표 없이,
+    # 끝이 역슬래시·공백이 아니게(끝의 \ 가 닫는 따옴표를 삼켜 뒤의 --permission-mode dontAsk 가 한 인자로 먹혔다)
     if ($job.attach_dir) {
         $dir = [string]$job.attach_dir
         $att = Join-Path (Split-Path -Parent $jobsDir) 'attachments'
         try { $full = [System.IO.Path]::GetFullPath($dir); $att = [System.IO.Path]::GetFullPath($att) } catch { return 'attach_dir 형식이 올바르지 않습니다.' }
-        if ($dir.Contains('"') -or -not $full.StartsWith($att + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
-            return 'attach_dir 는 인박스 사진 폴더(inbox\attachments) 아래여야 합니다.'
+        if ($dir.Contains('"') -or $dir -match '[\\/\s]$' -or -not $full.StartsWith($att + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return 'attach_dir 는 인박스 사진 폴더(inbox\attachments) 아래여야 합니다(따옴표·끝 역슬래시 없이).'
         }
     }
     return $null
@@ -298,6 +301,24 @@ function Invoke-Job($entry) {
         $baseTools = @($tools)   # 결과에 tools_used 로 남긴다 — 게이트웨이가 권한 질문('허용하고 이어서 하기')에서 여기에 더한다
         # RTK 같은 훅이 Bash 명령을 'rtk <명령>' 으로 다시 쓰면 규칙이 안 맞으므로 Bash(…) 허용 규칙마다 rtk 접두 짝을 더한다
         $tools = @($tools) + @($tools | ForEach-Object { if ([string]$_ -match '^Bash\((?!rtk )(.+)\)$') { "Bash(rtk $($Matches[1]))" } })
+
+        # 명령 안전장치(PreToolUse 훅, tools\dispatch-chat\bash-guard.js — node 로 돈다) — Bash 가 정해진 명령만 허용된 작업
+        # (읽기 지시의 Bash(git log:*) 등)에 붙인다. 허용 규칙은 명령 앞부분만 봐서 'git log --output=.git/config' 로 설정을 쓰고
+        # 'git status' 로 아무 명령이나 돌릴 수 있었다. 훅을 못 붙이면(node·훅 파일 없음) Bash 규칙을 빼고 돌린다(fail-closed).
+        $settingsArg = ''
+        if (-not ($tools -contains 'Bash') -and @($tools | Where-Object { [string]$_ -like 'Bash(*' }).Count -gt 0) {
+            $nodeExe = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+            $bashGuard = Join-Path $root 'tools\dispatch-chat\bash-guard.js'
+            if ($nodeExe -and (Test-Path -LiteralPath $bashGuard)) {
+                $hook = @{ type = 'command'; command = ('"' + ($nodeExe -replace '\\', '/') + '" "' + ($bashGuard -replace '\\', '/') + '"') }
+                $gsFile = Join-Path $logsDir 'guard-settings.json'
+                [System.IO.File]::WriteAllText($gsFile, (@{ hooks = @{ PreToolUse = @(@{ matcher = 'Bash'; hooks = @($hook) }) } } | ConvertTo-Json -Depth 8), $Utf8NoBom)
+                $settingsArg = '--settings "' + $gsFile + '" '
+            } else {
+                Write-Log "[$id] 명령 안전장치(node·bash-guard.js)를 붙일 수 없어 Bash 규칙을 뺍니다"
+                $tools = @($tools | Where-Object { [string]$_ -notlike 'Bash(*' })
+            }
+        }
         $toolArgs = (($tools | ForEach-Object { '"' + $_ + '"' }) -join ' ')
 
         # 읽기 지시(자기 도구 목록 없음)가 '/' 로 시작하면 슬래시 명령으로 펼쳐지지 않게 앞에 글을 붙인다 —
@@ -329,7 +350,7 @@ function Invoke-Job($entry) {
         $capArg = ''
         if ($cfg.MaxBudgetUsd -gt 0) { $capArg += '--max-budget-usd ' + $cfg.MaxBudgetUsd.ToString([Globalization.CultureInfo]::InvariantCulture) + ' ' }
         if ($cfg.MaxTurns -gt 0)     { $capArg += "--max-turns $($cfg.MaxTurns) " }
-        $argLine  = "-p ${resumeArg}${addDirArg}${capArg}--output-format json --permission-mode dontAsk --allowedTools $toolArgs$denyArgs$chatArg"
+        $argLine  = "-p ${resumeArg}${addDirArg}${settingsArg}${capArg}--output-format json --permission-mode dontAsk --allowedTools $toolArgs$denyArgs$chatArg"
 
         $p = Start-Process -FilePath 'claude' -ArgumentList $argLine `
                 -WorkingDirectory $job.workdir `

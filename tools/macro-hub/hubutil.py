@@ -80,3 +80,27 @@ def totp(base32_secret, digits=6, period=30, at=None):
 
 def totp_remaining(period=30):
     return period - int(time.time()) % period
+
+
+# ---------------------------------------------------------------- 비밀값 가리기
+
+_REDACT = [
+    (re.compile(r'(?i)(\bauthorization\s*[:=]\s*)\S.*'), r'\1●●●'),                     # Authorization: Basic …  — 줄 끝까지
+    (re.compile(r'(?i)(\bbearer\s+)[A-Za-z0-9\-._~+/]+=*'), r'\1●●●'),
+    (re.compile(r'(?i)(\b(?:password|passwd|pwd|pass|token|access_token|refresh_token|secret|client_secret|'
+                r'api[_-]?key|apikey|private_key|cookie|session(?:id)?)\b["\']?\s*[:=]\s*["\']?)([^\s"\'&,;}]+)'), r'\1●●●'),
+    (re.compile(r'(https?://[^\s:/@]+:)[^\s@/]+@'), r'\1●●●@'),                            # https://user:비밀번호@host
+]
+
+
+def redact(text, values=()):
+    """로그 한 줄에서 비밀값을 ●●● 로 — 'password=…'·'token: …'·'Bearer …'·'Authorization: …'·URL 속 비밀번호,
+    그리고 values(ctx.secret 으로 읽은 값 등 4글자 이상) 자체. 실행 로그 끝부분이 runs.jsonl·실패 알림 메일·웹훅·
+    🩹 고쳐 달라기로 나가기 전에 허브가 줄마다 부른다(2026-10-19 보안 점검)."""
+    s = str(text)
+    for v in values:
+        if v and len(v) >= 4:
+            s = s.replace(v, '●●●')
+    for rx, rep in _REDACT:
+        s = rx.sub(rep, s)
+    return s

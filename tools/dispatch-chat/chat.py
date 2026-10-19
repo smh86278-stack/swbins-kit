@@ -1154,6 +1154,21 @@ def compose(cfg, data, threads):
     return subject, body, "", {"thread": None, "mode": mode, "tag": tag, "text": text}
 
 
+def instruction_word(cfg, src):
+    """지시·답 메일 본문 끝에 붙일 암호 단어. 이 앱 설정의 key_word(회사 밖 메일), 없으면 — 키트 설정을 따르는
+    대화 앱(게이트웨이 PC)이고 게이트웨이가 모든 지시에 단어를 요구하면(dispatch.require_word_all) — dispatch.company_word,
+    그다음 dispatch.keyed_senders 의 내 주소 단어. 요구하지 않으면 붙이지 않는다(단어가 지시문에 섞여 기록에 남지 않게)."""
+    key = str(cfg.get("key_word") or "").strip()
+    if key or src != "kit" or not KIT_CFG:
+        return key
+    d = kit_dispatch()
+    if not d.get("require_word_all"):
+        return ""
+    me = str(cfg.get("user") or "").strip().lower()
+    ks = {str(a).strip().lower(): str(w).strip() for a, w in (d.get("keyed_senders") or {}).items()}
+    return str(d.get("company_word") or "").strip() or ks.get(me, "")
+
+
 def send(data):
     cfg, _ = load_cfg()
     subject, body, reply_to, shown = compose(cfg, data, BOX.threads())
@@ -1165,8 +1180,8 @@ def send(data):
     msg["X-Dispatch-Client"] = "chat"
     if reply_to:
         msg["In-Reply-To"] = msg["References"] = reply_to
-    key = str(cfg.get("key_word") or "").strip()
-    if key:                                        # 회사 밖 메일(Gmail 등) — 게이트웨이는 본문 마지막 줄 [k:단어] 가 맞아야 받는다(화면에서는 뗀다)
+    key = instruction_word(cfg, _)
+    if key:                                        # 게이트웨이는 본문 마지막 줄 [k:단어] 가 맞아야 받는다(화면에서는 뗀다)
         body = (body or "").rstrip() + "\n\n[k:%s]" % key
     msg.set_content(body or " ")
     pw = password(cfg)
@@ -1203,6 +1218,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
+        # 클릭재킹 막기 — 다른 웹 페이지가 대화 화면을 투명 iframe 으로 덮어 보내기를 누르게 하지 못하게
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
 
@@ -1273,8 +1292,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path == "/api/setup":
             cfg, src = load_cfg()
             return self._send(200, {k: cfg.get(k) for k in ("user", "login_user", "imap_host", "imap_port", "smtp_host", "smtp_port",
-                                                           "send_mode", "jira_prefix", "issue_command", "key_word")}
-                              | {"source": src, "has_password": bool(cfg.get("password_enc")), "presets": COMPANY.get("presets") or []})
+                                                           "send_mode", "jira_prefix", "issue_command")}
+                              # 암호 단어는 비밀번호처럼 — 있는지만(토큰 없는 GET 이라 이 PC 의 아무 프로그램이나 읽을 수 있다)
+                              | {"source": src, "has_password": bool(cfg.get("password_enc")), "has_key_word": bool(cfg.get("key_word")),
+                                 "presets": COMPANY.get("presets") or []})
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -1321,9 +1342,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def save_setup(data):
     """다른 PC 에서 처음 열 때 넣는 메일 계정. 연결을 먼저 확인하고, 되면 비밀번호를 감춰(윈도우 DPAPI · 맥 키체인) 저장한다."""
     own = read_json(OWN_CFG) or {}
-    for k in ("user", "login_user", "imap_host", "smtp_host", "send_mode", "jira_prefix", "issue_command", "key_word"):
+    for k in ("user", "login_user", "imap_host", "smtp_host", "send_mode", "jira_prefix", "issue_command"):
         if k in data:
             own[k] = str(data[k]).strip()
+    # 암호 단어 — 화면은 원문을 받지 않으니(has_key_word) 비워 두면 그대로, '-' 하나면 지운다
+    kw = str(data.get("key_word") or "").strip()
+    if kw == "-":
+        own.pop("key_word", None)
+    elif kw:
+        own["key_word"] = kw
     for k in ("imap_port", "smtp_port"):
         if str(data.get(k) or "").isdigit():
             own[k] = int(data[k])

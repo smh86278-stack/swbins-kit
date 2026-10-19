@@ -181,6 +181,9 @@ def check_jira(full, now, warn_days, opener=None):
         return None
     server = str(j.get('auth') or '').strip().lower() in ('server', 'datacenter', 'dc', 'pat', 'bearer')
     name, fix = 'Jira 토큰', 'Jira 에서 토큰을 새로 만들어 python setup.py --jira 로 다시 넣기'
+    if not kit.url_ok(base, local_http=False):          # http 면 토큰이 평문으로 나간다 — 묻지 않는다
+        return {'id': 'jira', 'name': name, 'level': 'bad', 'text': 'Jira 주소가 https 가 아니라 토큰을 보내지 않았습니다: %s' % base,
+                'fix': 'config 의 jira.base_url 을 https:// 주소로'}
     try:
         token = kit.unprotect(j['token_enc'])
     except Exception as e:

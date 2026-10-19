@@ -116,7 +116,8 @@ CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "
 GRANT_CEILING = tuple(WRITE_TOOLS) + (BROWSER_TOOL,)
 GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash", "Skill", "WebFetch", "WebSearch", BROWSER_TOOL}   # 고르면 대화가 수정 모드가 된다
 GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
-_SAFE_RULE = re.compile(r"^[^\"'`\r\n()]{1,200}$")       # TOOL_RE 가 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
+_SAFE_RULE = re.compile(r"^[^\"'`\r\n()&|^%<>;$\\]{1,200}$")   # TOOL_RE 가 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음,
+#                                                         cmd.exe·셸이 해석하는 & | ^ % < > ; $ \ 도 없음 — 2026-10-19 보안 점검)
 
 
 def grant_base(rule):
@@ -125,7 +126,8 @@ def grant_base(rule):
 
 def grant_rules(denials):
     """거부된 도구들 → 허용 규칙 [(규칙, 사람이 읽을 설명)]. 상한 밖 도구는 뺀다.
-    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 Bash 전체 — 설명에 그렇게 적는다)."""
+    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 묻지 않는다 — 예전엔 'Bash 전체' 를 물어 답 '1' 하나로
+    모든 명령이 열렸다, 2026-10-19 보안 점검)."""
     out, seen = [], set()
     for d in denials or []:
         if not isinstance(d, dict):
@@ -139,7 +141,7 @@ def grant_rules(denials):
             if cmd and _SAFE_RULE.match(cmd):
                 rule, desc = "Bash(%s)" % cmd, "명령 실행: %s" % cmd
             else:
-                rule, desc = "Bash", "명령 실행 전체(Bash)" + (" — 예: %s" % cmd[:80] if cmd else "")
+                continue
         elif name in ("Write", "Edit", "NotebookEdit"):
             path = str(inp.get("file_path") or inp.get("notebook_path") or "")
             rule, desc = name, {"Write": "파일 만들기·덮어쓰기", "Edit": "파일 고치기", "NotebookEdit": "노트북 고치기"}[name] + (
@@ -478,6 +480,7 @@ class Runner:
         self.wake = threading.Event()            # 메일함 다시 읽기
         self.kick = threading.Event()            # 대기 작업 집기
         self.stop_req = set()
+        self.skipped = set()                     # 지시가 아니거나 거절한 메일 키 — 처리 기록(seen)과 따로(밀어내기 막기)
         self.current = ""
         self.error = ""
         self.polled = 0.0
@@ -828,10 +831,13 @@ class Runner:
             return st["seq"]
 
     def ensure_thread(self, job, cfg):
-        n = job.get("thread") or thread_of(job.get("mail_subject")) or self.next_seq()
+        # 작업의 thread 값만 믿는다 — 제목 속 [T12] 를 믿으면 Jira 요약에 '[T12]' 를 넣은 이슈가 남의 대화에 끼어들었다
+        # (2026-10-19 보안 점검). 다른 번호 표식은 지우고 진짜 번호를 넣는다.
+        n = job.get("thread") or self.next_seq()
         job["thread"] = n
         subject = job.get("mail_subject") or (cfg.get("tags") or ["#c"])[0]
-        if thread_of(subject) is None:
+        if thread_of(subject) != n:
+            subject = " ".join(THREAD_RE.sub(" ", subject).split())
             tag, _ = self.C.match_tag(subject, cfg)
             subject = ("%s [T%d] %s" % (tag, n, subject[len(tag):].strip())).rstrip() if tag else ("[T%d] %s" % (n, subject)).rstrip()
         job["mail_subject"] = subject
@@ -981,7 +987,7 @@ class Runner:
                             self.max_thread = max(self.max_thread, tn)
                         mid = (h.get("Message-ID") or "").strip()
                         key = mid or "%s#uid%s" % (box, uid)
-                        if not C.match_tag(subj, cfg)[0] or key in st["seen"]:
+                        if not C.match_tag(subj, cfg)[0] or key in st["seen"] or key in self.skipped:
                             done.add(uid)
                             continue
                         idate = _idate(head_b, h)
@@ -994,8 +1000,9 @@ class Runner:
                         elif not h.get("X-Dispatch-Mirror") and mid not in own and idate is not None and idate >= since_ts:
                             cands.append((uid, key))
                             continue
-                        with self.lock:
-                            st["seen"][key] = None
+                        # 지시가 아닌 것(봇 메일·사본·켜기 전 메일)은 처리 기록(seen, 800건)이 아니라 이 실행 동안의 건너뛰기 목록에 —
+                        # 남이 태그 붙은 메일을 잔뜩 보내 처리 기록을 밀어내면 이미 실행한 지시가 다시 돌 수 있었다(2026-10-19 보안 점검)
+                        self.skipped.add(key)
                         done.add(uid)
                     for uid, key in cands:
                         if n >= MAX_PER_CYCLE:
@@ -1009,8 +1016,11 @@ class Runner:
                         except Exception:
                             C.log("[실행] 지시 처리 실패 — %s" % traceback.format_exc(limit=3))
                             made = False
-                        with self.lock:
-                            st["seen"][key] = None
+                        if made is None:                    # 거절(남의 주소·단어 틀림·인증 실패) — 처리 기록에 넣지 않는다(위와 같은 까닭)
+                            self.skipped.add(key)
+                        else:
+                            with self.lock:
+                                st["seen"][key] = None
                         done.add(uid)
                         n += 1 if made else 0
         finally:
@@ -1022,16 +1032,22 @@ class Runner:
         return n
 
     def take(self, cfg, me, raw, key):
-        """지시 메일 한 통 → 작업(또는 확인 답·멈춤 처리). 작업을 만들었으면 True."""
+        """지시 메일 한 통 → 작업(또는 확인 답·멈춤 처리). 작업을 만들었으면 True, 거절한 메일이면 None."""
         C = self.C
         msg = email.message_from_bytes(raw)
         subject = C.decode_hdr(msg.get("Subject"))
         clean, skey = split_subject_key(C.strip_re(subject))
-        sender = email.utils.parseaddr(msg.get("From", ""))[1].strip().lower()
+        # From 은 주소가 정확히 하나일 때만 — 'me@corp <evil@x>' 는 parseaddr 가 me@corp 로 읽었다(2026-10-19 보안 점검)
+        addrs = [a for _n, a in email.utils.getaddresses([str(v) for v in msg.get_all("From") or []]) if a]
+        sender = addrs[0].strip().lower() if len(addrs) == 1 else ""
         if sender != me:
-            C.log("[실행] 내 주소가 아닌 메일이라 무시합니다: %s" % sender)
-            return False
+            C.log("[실행] 내 주소가 아닌 메일이라 무시합니다: %s" % (sender or " ".join(str(msg.get("From") or "").split())[:120]))
+            return None
         word = str(cfg.get("key_word") or "").strip()
+        if not word and cfg.get("require_word_all"):
+            # 모든 지시에 암호 단어 — 켜 두고 단어가 비면 막는다(내 주소를 꾸민 메일이 받은편지함에 들어와도 지시가 안 되게)
+            C.log("[실행] require_word_all 인데 암호 단어(key_word)가 없어 무시합니다: %s" % clean[:60])
+            return None
         if word:
             got = skey
             if not got:
@@ -1039,10 +1055,10 @@ class Runner:
                 got = mk.group(1) if mk else None
             if not (got and hmac.compare_digest(got.encode("utf-8"), word.encode("utf-8"))):
                 C.log("[실행] 암호 단어가 없거나 틀려 무시합니다: %s" % clean[:60])
-                return False
+                return None
         if auth_failed(msg):
             C.log("[실행] 발신 인증 실패라 무시합니다: %s" % clean[:60])
-            return False
+            return None
         body = C.BODY_KEY_RE.sub("", C.plain_body(msg) or "")
         said = C.said_text(body)
         thread_no, refs = thread_of(clean), refs_of(msg)
@@ -1314,7 +1330,7 @@ class Runner:
             def numbered(j):
                 """회신·확인 전에 대화 번호를 정해 제목에 박고 바로 적어 둔다(넣기에 실패해도 번호가 바뀌지 않게)."""
                 with self.lock:
-                    if not j.get("thread") or thread_of(j.get("mail_subject")) is None:
+                    if not j.get("thread") or thread_of(j.get("mail_subject")) != j.get("thread"):
                         self.ensure_thread(j, cfg)
                         self.update_job(j["id"], thread=j["thread"], mail_subject=j["mail_subject"])
 
@@ -1490,6 +1506,7 @@ class Runner:
             args += ["--resume", str(job["resume_id"])]
         if job.get("attach_dir") and os.path.isdir(job["attach_dir"]):
             args += ["--add-dir", job["attach_dir"]]
+        tools = guard_tools(tools, C)               # 안전장치 훅을 못 붙이면(node·훅 파일 없음) 그 도구는 뺀다
         # rtk 훅이 Bash 명령을 'rtk <명령>' 으로 다시 쓰므로 Bash(…) 허용 규칙마다 rtk 접두 짝을 더한다
         tools = tools + ["Bash(rtk %s" % t[5:] for t in tools if t.startswith("Bash(") and not t.startswith("Bash(rtk ")]
         args += cap_args(cfg)
@@ -1760,16 +1777,46 @@ def cap_args(cfg):
     return out
 
 
+def _guard_js(C, name):
+    js = os.path.join(C.RES, name)
+    return js if os.path.isfile(js) else ""
+
+
+def guard_tools(tools, C):
+    """안전장치 훅을 붙일 수 없는 도구를 뺀 목록 — node 나 훅 파일이 없으면 브라우저 도구, (Bash 전체가 아닌) Bash(…) 규칙을 뺀다.
+    막지 못하는 채로 열어 두지 않는다(fail-closed, 2026-10-19 보안 점검)."""
+    tools, node = list(tools), find_tool("node")
+    if any(t.startswith(BROWSER_TOOL) for t in tools) and not (node and _guard_js(C, "browser-guard.js")):
+        tools = [t for t in tools if not t.startswith(BROWSER_TOOL)]
+    if "Bash" not in tools and any(t.startswith("Bash(") for t in tools) and not (node and _guard_js(C, "bash-guard.js")):
+        tools = [t for t in tools if not t.startswith("Bash(")]
+    return tools
+
+
 def guard_settings(tools, base, C):
-    """브라우저 도구가 있는 작업에 브라우저 안전장치(browser-guard.js, PreToolUse 훅)를 거는 --settings 파일, 없으면 "".
-    보내기·삭제·결제 같은 단추는 사람이 '진행해도 됩니다' 라고 답하기 전엔 막는다. 훅은 node 로 돈다(브라우저가 npx 라 늘 있다)."""
-    js = os.path.join(C.RES, "browser-guard.js")
-    if not any(t.startswith(BROWSER_TOOL) for t in tools) or not os.path.isfile(js):
+    """작업에 거는 안전장치 훅(PreToolUse)의 --settings 파일, 걸 것이 없으면 "". 훅은 node 로 돈다.
+    - 브라우저 도구가 있으면 browser-guard.js — 브라우저 동작(matcher mcp__browser__.*), Bash 로 브라우저 직접 조종(matcher Bash).
+      보내기·삭제·결제 같은 단추는 사람이 '진행해도 됩니다' 라고 답하기 전엔 막는다.
+    - Bash 가 정해진 명령만 허용된 작업(읽기 지시의 Bash(git log:*) 등)이면 bash-guard.js — git 의 파일 쓰기·외부 명령 옵션,
+      명령 잇기를 막는다(2026-10-19 보안 점검: git log --output 으로 설정을 써서 아무 명령이나 돌릴 수 있었다).
+    guard_tools 를 먼저 거친 목록이어야 한다(훅 파일이 없는 도구는 이미 빠져 있다)."""
+    node = (find_tool("node") or "node").replace("\\", "/")
+    hook = lambda js: {"type": "command", "command": '"%s" "%s"' % (node, js.replace("\\", "/"))}
+    browser = any(t.startswith(BROWSER_TOOL) for t in tools)
+    bash_full = "Bash" in tools
+    bash = bash_full or any(t.startswith("Bash(") for t in tools)
+    pre = []
+    if browser and _guard_js(C, "browser-guard.js"):
+        bg = hook(_guard_js(C, "browser-guard.js"))
+        pre.append({"matcher": BROWSER_TOOL + "__.*", "hooks": [bg]})
+        if bash:
+            pre.append({"matcher": "Bash", "hooks": [bg]})
+    if bash and not bash_full and _guard_js(C, "bash-guard.js"):
+        pre.append({"matcher": "Bash", "hooks": [hook(_guard_js(C, "bash-guard.js"))]})
+    if not pre:
         return ""
-    node = find_tool("node") or "node"
-    hook = {"type": "command", "command": '"%s" "%s"' % (node.replace("\\", "/"), js.replace("\\", "/"))}
     path = base + ".guard.json"
-    C.write_json(path, {"hooks": {"PreToolUse": [{"matcher": BROWSER_TOOL + "__.*", "hooks": [hook]}]}})
+    C.write_json(path, {"hooks": {"PreToolUse": pre}})
     return path
 
 

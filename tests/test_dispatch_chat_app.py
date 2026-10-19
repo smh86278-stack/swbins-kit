@@ -168,6 +168,22 @@ class LocalMarks(unittest.TestCase):
         self.assertEqual(chat.default_folder(dict(cfg, run_workdir=r"D:\proj\shop"), True), ("shop", r"D:\proj\shop"))
         self.assertEqual(chat.DEFAULTS["workdir_keys"], [])                     # 코드 기본값엔 이 PC 폴더 이름이 없다
 
+    def test_instruction_word(self):
+        """지시 메일 본문 끝 [k:단어] — 앱 설정 key_word, 없으면 게이트웨이가 모든 지시에 단어를 요구할 때만 그 단어."""
+        for name in ("OWN_CFG", "KIT_CFG"):
+            self.addCleanup(setattr, chat, name, getattr(chat, name))
+        chat.OWN_CFG = os.path.join(self.tmp, "own.json")
+        chat.KIT_CFG = os.path.join(self.tmp, "config.local.json")
+        d = {"keyed_senders": {"me@x.test": "phoneword1"}}
+        chat.write_json(chat.KIT_CFG, {"mail": {"user": "Me@X.test"}, "dispatch": d})
+        cfg, src = chat.load_cfg()
+        self.assertEqual(chat.instruction_word(cfg, src), "")                    # 요구하지 않으면 붙이지 않는다
+        chat.write_json(chat.KIT_CFG, {"mail": {"user": "Me@X.test"}, "dispatch": dict(d, require_word_all=True)})
+        self.assertEqual(chat.instruction_word(cfg, src), "phoneword1")
+        chat.write_json(chat.KIT_CFG, {"mail": {"user": "Me@X.test"}, "dispatch": dict(d, require_word_all=True, company_word="corpword9")})
+        self.assertEqual(chat.instruction_word(cfg, src), "corpword9")
+        self.assertEqual(chat.instruction_word(dict(cfg, key_word="own123"), src), "own123")
+
     def test_save_kit_folders(self):
         """⚙ 작업 폴더 — 키트 설정의 dispatch 에 기본 폴더·키=폴더를 저장(다른 키·BOM 유지). 기본 폴더를 바꾸면 회사 모드 폴더는 옛 기본 폴더로 박는다."""
         for name in ("OWN_CFG", "KIT_CFG", "LOG_PATH"):

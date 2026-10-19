@@ -30,6 +30,7 @@ import ctypes
 import json
 import os
 import random
+import re
 import sys
 import time
 import urllib.error
@@ -274,7 +275,9 @@ def normalize(raw: dict, base_url: str) -> dict:
 
     return {
         "key": key,
-        "summary": str(f.get("summary") or "").strip(),
+        # 요약은 남이 쓴 글이라 대화 번호 표식([T12])·암호 단어 표식([k:…])을 지운다 — 메일 제목에 들어가 남의 대화에
+        # 끼어들거나(그 대화의 번호 답이 이 이슈 승인으로 먹혔다) 단어처럼 보이지 않게
+        "summary": " ".join(re.sub(r"\[(T\d{1,6}|k:[^\]]*)\]", " ", str(f.get("summary") or "")).split()),
         "description": adf_text(f.get("description")).strip(),
         "status": name(f.get("status")),
         "type": name(f.get("issuetype")),

@@ -108,6 +108,8 @@ let order = fixOrder(readState().order);
 const ORDER = () => order.filter(t => t !== 'chat' || chatUp || views.chat);
 const under = (url, base) => url === base || url.startsWith(base + '/');
 const internal = url => under(url, HUB) || under(url, CHAT);
+// 허브·메신저 밖 주소는 기본 브라우저로 — 단 http·https·mailto 만(search-ms:·file://\공유폴더 같은 것이 열리지 않게. 2026-10-19 보안 점검)
+const openOut = url => { if (/^(https?:|mailto:)/i.test(url)) shell.openExternal(url); };
 function tabFor(url) {                                                    // 주소 → 그 화면을 맡는 탭
   if (under(url, CHAT)) return 'chat';
   const p = url.slice(HUB.length).split(/[?#]/)[0];
@@ -144,11 +146,11 @@ function makeView(tab) {
   v.setBackgroundColor(bg());
   const wc = v.webContents;
   wc.on('will-navigate', (e, url) => {                                    // 다른 탭 화면으로 가는 링크는 그 탭에서 연다
-    if (!internal(url)) { e.preventDefault(); shell.openExternal(url); return; }
+    if (!internal(url)) { e.preventDefault(); openOut(url); return; }
     if (tabFor(url) !== tab) { e.preventDefault(); show(tabFor(url), url); }
   });
   wc.setWindowOpenHandler(({ url }) => {
-    if (internal(url)) show(tabFor(url), url); else shell.openExternal(url);
+    if (internal(url)) show(tabFor(url), url); else openOut(url);
     return { action: 'deny' };
   });
   wc.on('did-fail-load', (_e, code, _desc, url, main) => {               // 허브·대화가 막 뜨는 중 — 실패한 그 주소를 다시

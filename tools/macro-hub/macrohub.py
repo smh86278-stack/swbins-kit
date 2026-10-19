@@ -69,6 +69,7 @@ _spec.loader.exec_module(pl)
 
 sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
+import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
 import winevents  # noqa: E402
@@ -288,6 +289,7 @@ def _pump(run):
                            'level': n.get('level', 'info'), 'macro': run.name})
             except ValueError:
                 pass
+        line = hubutil.redact(line)                 # 비밀값 가리기 — 화면·runs.jsonl·실패 알림·웹훅·고쳐 달라기 모두 이 줄을 쓴다
         run.lines.append(line)
         broadcast({'t': 'log', 'run': run.id, 'line': line})
 
@@ -754,7 +756,7 @@ def service_loop():
 
 TEMPLATE_WEB = '''# -*- coding: utf-8 -*-
 META = {
-    "name": "%(name)s",
+    "name": %(name)s,
     "desc": "",
     "kind": "ctx",
     "target": "web",
@@ -773,7 +775,7 @@ def run(ctx):
 
 TEMPLATE_DESKTOP = '''# -*- coding: utf-8 -*-
 META = {
-    "name": "%(name)s",
+    "name": %(name)s,
     "desc": "",
     "kind": "ctx",
     "target": "desktop",
@@ -804,7 +806,8 @@ def new_macro(name, kind):
     if os.path.exists(path):
         return None, '같은 이름이 이미 있습니다'
     with open(path, 'w', encoding='utf-8') as f:
-        f.write((TEMPLATE_DESKTOP if kind == 'desktop' else TEMPLATE_WEB) % {'name': name.strip()})
+        # 이름은 파이썬 문자열 리터럴로 넣는다 — 따옴표·줄바꿈이 든 이름이 만들어지는 .py 에 코드로 끼어들지 않게
+        f.write((TEMPLATE_DESKTOP if kind == 'desktop' else TEMPLATE_WEB) % {'name': json.dumps(name.strip(), ensure_ascii=False)})
     return 'local/' + stem, None
 
 
@@ -882,6 +885,9 @@ def record_web(url, name):
     stem = safe_name(name)
     if not stem or not url:
         return '이름과 주소를 입력하세요'
+    if not re.match(r'^https?://\S+$', url.strip()):     # '-' 로 시작하면 codegen 옵션으로 읽힌다 — 웹 주소만
+        return '주소는 http:// 또는 https:// 로 시작해야 합니다'
+    url = url.strip()
     if rec['proc'] and rec['proc'].poll() is None:
         return '이미 녹화 창이 열려 있습니다'
     os.makedirs(DIR_LOCAL, exist_ok=True)
@@ -1012,15 +1018,24 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def _send(self, code, body, ctype='application/json; charset=utf-8'):
+    def _send(self, code, body, ctype='application/json; charset=utf-8', csp=None):
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
+        # 다른 웹 페이지가 허브 화면을 투명 iframe 으로 덮어 '지금 실행' 등을 누르게 하는 클릭재킹 막기 —
+        # 허브 화면은 브라우저 탭·허브 창(Electron, 최상위)으로만 열린다
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'" + ('; ' + csp if csp else ''))
+        self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.wfile.write(body)
+
+    def _token_ok(self):
+        """GET 이라도 부작용(외부 조회·프로세스 실행)이 있는 것은 POST 와 같은 토큰을 요구한다."""
+        return self.headers.get('X-Hub-Token') == TOKEN
 
     def _host_ok(self):
         return not self.allowed_hosts or self.headers.get('Host', '') in self.allowed_hosts
@@ -1065,8 +1080,8 @@ class Handler(BaseHTTPRequestHandler):
             path = os.path.join(SKIN_DIR, m.group(1), m.group(2))
             if not os.path.isfile(path):
                 return self._send(404, b'not found', 'text/plain')
-            with open(path, 'rb') as f:
-                return self._send(200, f.read(), STATIC_TYPES[m.group(3)])
+            with open(path, 'rb') as f:              # svg 는 허브와 같은 출처에서 스크립트가 돌 수 있다 — 남이 만든 스킨이면 토큰을 훔친다
+                return self._send(200, f.read(), STATIC_TYPES[m.group(3)], csp='sandbox' if m.group(3) == 'svg' else None)
         if u.path.startswith('/static/'):             # web\ 바로 아래 파일만 — 하위 폴더·경로 탈출 불가
             name = u.path[len('/static/'):]
             m = re.fullmatch(r'[\w\-]+\.(css|js|svg|png|webp|gif|mp4)', name)
@@ -1108,8 +1123,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, ops.features_status())
                 if what == 'settings':
                     return self._send(200, ops.settings_status())
-                if what == 'agents':
-                    return self._send(200, ops.agent_view(verify=q.get('verify', ['0'])[0] == '1'))
+                if what == 'agents':                  # verify=1 은 claude 를 실행한다 — 다른 웹 페이지가 <img src> 로 쌓지 못하게 토큰
+                    verify = q.get('verify', ['0'])[0] == '1'
+                    if verify and not self._token_ok():
+                        return self._send(403, {'error': 'forbidden'})
+                    return self._send(200, ops.agent_view(verify=verify))
                 if what in ('jobaudit', 'jobaudit.csv'):   # 지시 실행 기록(감사) — 화면 · CSV 내려받기
                     text = q.get('q', [''])[0]
                     if what == 'jobaudit.csv':

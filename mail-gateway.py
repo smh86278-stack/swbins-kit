@@ -127,10 +127,16 @@ DEFAULT_CFG = {
     "folders": ["INBOX"],
     # 비어 있으면 모든 메일을 무시한다(지시를 보낼 내 주소를 넣는다).
     "allowed_senders": [],
-    # From 헤더는 위조할 수 있다. True 면 서버가 붙인 Authentication-Results 에
-    # dkim=pass 또는 spf=pass 가 있는 메일만 받는다. 켜기 전에 로그의 '[인증]' 줄로
-    # 이 서버가 그 헤더를 실제로 붙이는지 확인할 것(안 붙이면 전부 막힌다).
+    # From 헤더는 위조할 수 있다. True 면 받는 서버가 맨 위에 붙인 Authentication-Results 하나만 보고
+    # dmarc=pass, 또는 From 도메인과 맞는 dkim=pass 인 메일만 받는다(보낸 쪽이 아래에 넣은 헤더·spf 는 안 믿는다).
+    # 켜기 전에 로그의 '[인증]' 줄로 이 서버가 그 헤더를 실제로 붙이는지 확인할 것(안 붙이면 전부 막힌다).
     "require_auth_results": False,
+    # 모든 지시에 암호 단어 — True 면 allowed_senders(회사 주소)로 온 지시·답장도 '[k:단어]'(제목 끝이나 본문 줄)가
+    # 맞아야 받는다. From 만 보면 회사 주소를 꾸민 메일이 받은편지함에 들어왔을 때 지시가 된다.
+    # 단어는 company_word, 비어 있으면 keyed_senders 에 적힌 그 주소의 단어. 둘 다 없으면 회사 주소 지시를 모두 막는다.
+    # 대화 앱·폰 페이지가 보낼 때 단어를 붙인다.
+    "require_word_all": False,
+    "company_word": "",
     # 스팸함도 볼 때 그 폴더 이름(예: ["Spam"] — 서버마다 다르다). 회사 메일이 폰(개인 메일)에서 온 지시를 스팸으로
     # 돌리는 경우에 쓴다. 여기서는 암호 단어(keyed_senders)가 맞는 메일만 받는다 — 회사 주소를 사칭한 메일이
     # 흔히 떨어지는 곳이라 allowed_senders 주소라도 믿지 않는다. 빈 목록이면 보지 않는다.
@@ -424,6 +430,37 @@ def key_sender_ok(cfg: dict, sender: str, key) -> bool:
     return bool(want and key and hmac.compare_digest(key.encode("utf-8"), want.encode("utf-8")))
 
 
+def company_word(cfg: dict, sender: str):
+    """회사 주소(allowed_senders)의 암호 단어 — require_word_all 일 때 쓴다. company_word, 없으면 keyed_senders 의 그 주소 단어."""
+    return str(cfg.get("company_word") or "").strip() or keyed_word(cfg, sender)
+
+
+def company_word_ok(cfg: dict, sender: str, key) -> bool:
+    want = company_word(cfg, sender)
+    return bool(want and key and hmac.compare_digest(key.encode("utf-8"), want.encode("utf-8")))
+
+
+def word_for_reply(cfg: dict, sender: str):
+    """'한 번에 답장' 링크 제목 끝에 붙일 암호 단어 — 폰 주소면 그 단어, require_word_all 이면 회사 주소도 회사 단어."""
+    word = keyed_word(cfg, sender)
+    if not word and cfg.get("require_word_all") and (sender or "").lower() in {a.lower() for a in cfg.get("allowed_senders") or []}:
+        word = company_word(cfg, sender)
+    return word or None
+
+
+def sole_sender(head) -> str:
+    """From 의 주소(소문자) — 정확히 하나일 때만. 'me@corp <evil@x.com>' 처럼 둘로 읽히거나 From 이 여러 줄이면 ''.
+    parseaddr 는 그런 꼴에서 앞의 me@corp 를 돌려줘 허용 주소로 보였다."""
+    addrs = [a for _n, a in email.utils.getaddresses([str(v) for v in head.get_all("From") or []]) if a]
+    return addrs[0].lower() if len(addrs) == 1 else ""
+
+
+def thread_trusted(job: dict, sender: str, verified: bool) -> bool:
+    """제목의 대화 번호([T12])만으로 그 대화에 답·승인·멈춤·다시 실행을 해도 되나 — 암호 단어로 확인한 메일이거나,
+    그 대화를 시작한 주소일 때만. 번호는 1씩 늘어 남이 맞힐 수 있다."""
+    return bool(verified) or bool(job) and (job.get("mail_from") or "").lower() == (sender or "").lower()
+
+
 def strip_reply_prefix(subject: str) -> str:
     """중첩된 'Re: Re: ...' 도 다 벗긴다."""
     s = subject
@@ -589,12 +626,14 @@ def parse_confirm_answer(text: str):
     return None
 
 
-def find_pending_confirm(head, thread=None):
+def find_pending_confirm(head, thread=None, trust=None):
     """들어온 메일이 우리가 보낸 확인 메일에 대한 답장이면 (경로, 잡)을 돌려준다.
-    thread 가 오면 제목 표식 [T12] 가 같은 확인 대기 잡도 답장으로 본다."""
+    thread 가 오면 제목 표식 [T12] 가 같은 확인 대기 잡도 답장으로 본다 — 단 trust(잡) 가 참일 때만(thread_trusted).
+    확인 메일 Message-ID 로 찾은 것도 trust 가 거짓이면 승인하지 않는다."""
+    trust = trust or (lambda _j: True)
     if thread is not None:
         for path, j in iter_jobs():
-            if j.get("status") == "awaiting_confirm" and j.get("thread") == thread:
+            if j.get("status") == "awaiting_confirm" and j.get("thread") == thread and trust(j):
                 return path, j
     refs = []
     for h in ("In-Reply-To", "References"):
@@ -613,7 +652,7 @@ def find_pending_confirm(head, thread=None):
             continue
         path = os.path.join(JOBS, fn)
         j = read_json(path)
-        if j and j.get("status") == "awaiting_confirm" and j.get("confirm_msgid") in refset:
+        if j and j.get("status") == "awaiting_confirm" and j.get("confirm_msgid") in refset and trust(j):
             return path, j
     return None
 
@@ -700,27 +739,30 @@ def find_resume_target(head):
     return j["session_id"], j.get("workdir"), j.get("workdir_label"), j.get("disallowed_tools") or []
 
 
-def find_live_job(head, thread_no=None):
-    """아직 끝나지 않은(대기·실행 중) 메일 잡 중 이 메일이 가리키는 것 — 대화 번호가 같거나, 답장 대상이 그 지시."""
+def find_live_job(head, thread_no=None, trust=None):
+    """아직 끝나지 않은(대기·실행 중) 메일 잡 중 이 메일이 가리키는 것 — 대화 번호가 같거나(trust 일 때만), 답장 대상이 그 지시."""
+    trust = trust or (lambda _j: True)
     refs = set()
     for h in ("In-Reply-To", "References"):
         refs.update(re.findall(r"<[^<>]+>", str(head.get(h) or "")))
     for _path, j in iter_jobs():
         if not isinstance(j, dict) or j.get("source") not in MAIL_SOURCES or j.get("status") not in ("queued", "running"):
             continue
-        if (thread_no is not None and j.get("thread") == thread_no) or (j.get("mail_msgid") and j["mail_msgid"] in refs):
+        if (thread_no is not None and j.get("thread") == thread_no and trust(j)) or (j.get("mail_msgid") and j["mail_msgid"] in refs):
             return j
     return None
 
 
-def find_failed_job(head, thread_no=None):
+def find_failed_job(head, thread_no=None, trust=None):
     """이 메일이 가리키는 대화의 가장 최근 잡이 실패(error)했으면 그 잡 — '다시 실행' 으로 같은 지시를 다시 돌린다.
-    가장 최근 잡이 실패가 아니면(이미 다시 돌렸거나 잘 끝남) None — 그때 '다시 실행' 은 평범한 이어 말하기다."""
+    가장 최근 잡이 실패가 아니면(이미 다시 돌렸거나 잘 끝남) None — 그때 '다시 실행' 은 평범한 이어 말하기다.
+    대화 번호로만 찾은 것은 trust(잡)(thread_trusted) 일 때만."""
+    trust = trust or (lambda _j: True)
     refs = set()
     for h in ("In-Reply-To", "References"):
         refs.update(re.findall(r"<[^<>]+>", str(head.get(h) or "")))
     hits = [j for _path, j in iter_jobs() if j.get("source") in MAIL_SOURCES and (
-        (thread_no is not None and j.get("thread") == thread_no) or
+        (thread_no is not None and j.get("thread") == thread_no and trust(j)) or
         ({x for x in (j.get("reply_msgid"), j.get("mail_msgid")) if x} & refs))]
     retried = {j.get("retry_of") for j in hits}          # 잡 id 는 초 단위라 같은 초의 다시 실행이 실패보다 뒤로 정렬될 수 있다
     for j in hits:
@@ -782,7 +824,7 @@ def is_progress_ask(said: str) -> bool:
 GRANT_CEILING = ("Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash")
 GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash"}   # 고르면 대화가 수정 모드가 된다
 GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
-_SAFE_RULE = re.compile(r"^[^\"'`\r\n()]{1,200}$")       # 워커 ToolPattern 이 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
+_SAFE_RULE = re.compile(r"^[^\"'`\r\n()&|^%<>;$\\]{1,200}$")   # (cmd.exe·셸이 해석하는 & | ^ % < > ; $ \ 도 없음)       # 워커 ToolPattern 이 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
 
 
 def grant_base(rule: str) -> str:
@@ -791,7 +833,7 @@ def grant_base(rule: str) -> str:
 
 def grant_rules(denials) -> list:
     """거부된 도구들 → 허용 규칙 [(규칙, 사람이 읽을 설명)]. 상한 밖 도구는 뺀다.
-    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 Bash 전체 — 설명에 그렇게 적는다)."""
+    Bash 는 그 명령 하나만(따옴표 등이 있어 규칙으로 못 적으면 묻지 않는다)."""
     out, seen = [], set()
     for d in denials or []:
         if not isinstance(d, dict):
@@ -803,7 +845,9 @@ def grant_rules(denials) -> list:
             if cmd and _SAFE_RULE.match(cmd):
                 rule, desc = "Bash(%s)" % cmd, "명령 실행: %s" % cmd
             else:
-                rule, desc = "Bash", "명령 실행 전체(Bash)" + (" — 예: %s" % cmd[:80] if cmd else "")
+                # 규칙으로 못 적는 명령(따옴표·괄호·&| 등)이면 묻지 않는다 — 예전엔 'Bash 전체' 를 물어, 일부러 그런 명령을
+                # 실패시키게 꾀면 답 '1' 하나로 모든 명령이 열렸다. 필요하면 쓰기 지시로 다시.
+                continue
         elif name in ("Write", "Edit", "NotebookEdit"):
             path = str(inp.get("file_path") or inp.get("notebook_path") or "")
             rule, desc = name, {"Write": "파일 만들기·덮어쓰기", "Edit": "파일 고치기", "NotebookEdit": "노트북 고치기"}[name] + (
@@ -937,8 +981,9 @@ def next_thread_no() -> int:
 def subject_with_thread(subject: str, n: int, cfg: dict) -> str:
     """'#c 34097 원인' → '#c [T12] 34097 원인'. 태그 바로 뒤에 넣어야 답장 제목도 태그로 시작한다."""
     subject = subject or ""
-    if thread_of(subject) is not None:
+    if thread_of(subject) == n:
         return subject
+    subject = " ".join(THREAD_RE.sub(" ", subject).split())   # 다른 번호 표식(지시·Jira 요약에 섞인 것)은 지우고 진짜 번호를 넣는다
     tag, _ = match_tag(subject, cfg)
     if tag:
         rest = subject[len(tag):].strip()
@@ -948,17 +993,19 @@ def subject_with_thread(subject: str, n: int, cfg: dict) -> str:
 
 def ensure_thread(job: dict, cfg: dict) -> int:
     """회신하기 전에 스레드 번호를 정해 제목에 박는다(다른 자동화가 만든 첫 잡도 여기서 번호를 받는다)."""
-    n = job.get("thread") or thread_of(job.get("mail_subject")) or next_thread_no()
+    # 잡의 thread 값만 믿는다 — 제목 속 [T12] 도 믿으면 Jira 요약에 '[T12]' 를 넣은 이슈가 남의 대화에 끼어들었다.
+    # 받는 쪽(poll_once)이 확인된 대화 번호를 잡에 넣어 준다.
+    n = job.get("thread") or next_thread_no()
     job["thread"] = n
     job["mail_subject"] = subject_with_thread(job.get("mail_subject") or cfg.get("tag", "#c"), n, cfg)
     return n
 
 
-def find_thread_job(n):
-    """스레드 n 의 가장 최근 잡 중 이어받을 세션이 있는 것."""
+def find_thread_job(n, trust=None):
+    """스레드 n 의 가장 최근 잡 중 이어받을 세션이 있는 것 — trust(잡)(thread_trusted) 가 거짓이면 None(번호만 맞힌 남의 메일)."""
     for _path, j in iter_jobs():
         if j.get("thread") == n and j.get("source") in MAIL_SOURCES and j.get("session_id"):
-            return j
+            return j if (trust is None or trust(j)) else None
     return None
 
 
@@ -1040,7 +1087,7 @@ def mailto(cfg: dict, job: dict, body: str) -> str:
     """'한 번에 답장' 링크 — 누르면 제목(태그·스레드 표식)과 본문이 채워진 메일 작성 화면이 열린다.
     폰(개인 주소, keyed_senders)이 보낸 지시면 제목 끝에 그 암호 단어를 붙여 폰 메일 앱에서 단추만 눌러도 받아지게 한다."""
     subject = reply_subject(job)
-    word = keyed_word(cfg, job.get("mail_from"))
+    word = word_for_reply(cfg, job.get("mail_from"))     # require_word_all 이면 회사 주소도 회사 단어
     if word:
         subject += " [k:%s]" % word
     return "mailto:%s?subject=%s&body=%s" % (cfg.get("user") or "", quote(subject), quote(body))
@@ -1345,20 +1392,44 @@ def save_processed(ids: SeenSet) -> None:
     write_json(SEEN_PATH, ids.recent(SEEN_KEEP))
 
 
+# 거절한 메일(허용 안 된 발신자·단어 틀림·인증 실패) — 처리 기록과 따로 둔다. 같이 두면 거절 메일 수백 통으로
+# 처리 기록(800건)을 밀어내 이미 실행한 지시가 다시 돌 수 있었다. 여기가 넘쳐도 다시 거절될 뿐이다.
+REJECTED_PATH = os.path.join(INBOX, "mail-rejected.json")
+REJECTED_KEEP = 2000
+
+
+def load_rejected() -> SeenSet:
+    got = read_json(REJECTED_PATH)
+    return SeenSet(got if isinstance(got, list) else ())
+
+
+def save_rejected(ids: SeenSet) -> None:
+    write_json(REJECTED_PATH, ids.recent(REJECTED_KEEP))
+
+
 _WARNED_NO_ALLOWED = False
 
 
-def auth_results_summary(head) -> tuple:
+def auth_results_summary(head, sender: str = "") -> tuple:
     """Authentication-Results 헤더에서 (통과 여부, 요약)을 뽑는다.
 
-    dkim=pass 또는 spf=pass 가 하나라도 있으면 통과. 헤더가 여러 개일 수 있어 모두 본다.
+    받는 서버가 맨 위에 붙인 헤더 하나만 믿는다 — 그 아래 것은 보낸 쪽이 넣을 수 있다(예전엔 아무 줄이든 pass 면 통과라
+    'Authentication-Results: x; dkim=pass' 를 직접 넣은 메일이 통과했다).
+    통과: dmarc=pass, 또는 From 도메인과 맞는(같거나 그 상위) header.d 의 dkim=pass. spf 는 봉투 주소라 From 을 보증하지 않는다.
     """
     values = [decode_hdr(v) for v in (head.get_all("Authentication-Results") or [])]
     if not values:
         return False, "(헤더 없음)"
-    joined = " | ".join(" ".join(v.split()) for v in values)
-    ok = bool(re.search(r"\b(dkim|spf)\s*=\s*pass\b", joined, re.IGNORECASE))
-    return ok, joined[:200]
+    top = " ".join(values[0].split())
+    domain = (sender or "").rsplit("@", 1)[-1].lower() if "@" in (sender or "") else ""
+    ok = bool(re.search(r"\bdmarc\s*=\s*pass\b", top, re.IGNORECASE))
+    if not ok and domain:
+        for m in re.finditer(r"\bdkim\s*=\s*pass\b[^;]*?\bheader\.[di]\s*=\s*@?([\w.-]+)", top, re.IGNORECASE):
+            d = m.group(1).lower().rsplit("@", 1)[-1]
+            if domain == d or domain.endswith("." + d):
+                ok = True
+                break
+    return ok, top[:200]
 
 
 GMAIL_IMAP = {"imap_host": "imap.gmail.com", "imap_port": 993, "imap_mode": "ssl"}
@@ -1410,6 +1481,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
     expire_confirms(cfg)
     prune_attachments()
     processed = load_processed()
+    rejected = load_rejected()
     since_days = int(cfg.get("lookback_days", 2))
     since = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
     max_per_cycle = int(cfg.get("max_per_cycle", 3))
@@ -1467,34 +1539,52 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 if key in processed:
                     continue
 
-                sender = email.utils.parseaddr(head.get("From", ""))[1].lower()
+                if key in rejected:
+                    continue
+                # From 은 주소가 정확히 하나일 때만 — 'me@corp <evil@x>' 는 parseaddr 가 me@corp 로 읽었다
+                sender = sole_sender(head)
+                if not sender:
+                    log("보낸 사람 주소를 하나로 정할 수 없어 무시합니다: %s" % " ".join(str(head.get("From") or "").split())[:120])
+                    rejected.add(key)
+                    continue
                 if acct and sender != acct["user"]:
                     # Gmail 받은편지함엔 우리 회신·접수 신호(회사 주소)도 같은 제목으로 온다 — 나에게 보낸 것만 지시다
-                    processed.add(key)
+                    rejected.add(key)
                     continue
                 if not acct and head.get("X-Dispatch-Mirror"):
                     processed.add(key)                 # Gmail 에서 이미 받은 지시의 사본(mirror_to_company)
                     continue
-                if sender not in allowed or in_junk or acct:
-                    if not subject_key and sender in {a.lower() for a in (cfg.get("keyed_senders") or {})}:
+                # 암호 단어 — 폰(개인 주소·Gmail·스팸함)은 늘, 회사 주소(allowed_senders)도 require_word_all 이면.
+                # 거절한 메일은 처리 기록(processed)이 아니라 따로(rejected) 둔다 — 거절 메일을 잔뜩 보내 처리 기록을 밀어내면
+                # 이미 실행한 지시가 다시 돌 수 있었다.
+                company = sender in allowed and not in_junk and not acct
+                keyed_set = {a.lower() for a in (cfg.get("keyed_senders") or {})}
+                verified = False
+                if not company or cfg.get("require_word_all"):
+                    if not subject_key and (sender in keyed_set or company):
                         typ, full = m.uid("FETCH", uid_s, "(BODY.PEEK[])")   # 암호 단어가 본문에 있을 수 있다
                         if typ == "OK" and full and full[0]:
                             subject_key = body_key(email.message_from_bytes(full[0][1]))
-                    if key_sender_ok(cfg, sender, subject_key):
+                    verified = company_word_ok(cfg, sender, subject_key) if company else key_sender_ok(cfg, sender, subject_key)
+                    if verified:
                         log("암호 단어로 확인한 발신자: %s%s" % (sender, " (스팸함에서 꺼냄)" if in_junk else ""))
                     else:
-                        why = " (암호 단어가 없거나 틀림)" if sender in {a.lower() for a in (cfg.get("keyed_senders") or {})} else ""
-                        if why and keyed_expired(cfg, sender):
+                        why = " (암호 단어가 없거나 틀림)" if sender in keyed_set or company else ""
+                        if company and not company_word(cfg, sender):
+                            why = " (require_word_all 인데 회사 단어 company_word 가 없음 — 설정에 넣으세요)"
+                        elif why and not company and keyed_expired(cfg, sender):
                             why = " (암호 단어 기한 %s 지남 — python mail-gateway.py --new-phone-word %s)" % (keyed_expires(cfg, sender), sender)
                         log("허용되지 않은 발신자라 무시합니다: %s%s" % (sender, why))
-                        processed.add(key)
+                        rejected.add(key)
                         continue
+                # 다른 자동화가 만든 잡은 mail_from 이 비어 있을 수 있다 — 그때 대화 주인은 이 계정(cfg user)
+                trust = lambda j, _s=sender, _v=verified: thread_trusted(dict(j, mail_from=j.get("mail_from") or cfg.get("user")), _s, _v)
 
-                auth_ok, auth_note = auth_results_summary(head)
+                auth_ok, auth_note = auth_results_summary(head, sender)
                 log("[인증] %s → %s : %s" % (sender, "통과" if auth_ok else "미확인", auth_note))
                 if cfg.get("require_auth_results") and not auth_ok:
-                    log("발신 인증(DKIM/SPF)을 확인하지 못해 무시합니다: %s" % sender)
-                    processed.add(key)
+                    log("발신 인증(DMARC/DKIM)을 확인하지 못해 무시합니다: %s" % sender)
+                    rejected.add(key)
                     continue
 
                 if seed_only:
@@ -1511,7 +1601,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
 
                 # 우리가 보낸 확인 메일에 대한 답장이면 새 지시가 아니라 승인/취소로 처리한다.
                 thread_no = thread_of(clean_subject)
-                pending = find_pending_confirm(head, thread_no)
+                pending = find_pending_confirm(head, thread_no, trust)
                 if pending:
                     ppath, pjob = pending
                     answer = parse_confirm_answer(plain_body(msg))
@@ -1538,7 +1628,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 # 폰 대화방의 '멈춤' 단추는 그 지시에 대한 답장으로 '멈춤' 한 마디를 보낸다. 끝난 일에 대한 '멈춤' 은
                 # 지금처럼 그 세션에 '정리하고 보고해' 로 이어진다.
                 if reply_text(plain_body(msg)).strip().lower() in STOP_WORDS:
-                    live = find_live_job(head, thread_no)
+                    live = find_live_job(head, thread_no, trust)
                     if live:
                         processed.add(key)
                         save_processed(processed)
@@ -1546,7 +1636,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         open(os.path.join(JOBS, live["id"] + ".stop"), "w").close()
                         log("멈춤 요청 %s (%s)" % (live["id"], live.get("status")))
                         continue
-                    if not find_resume_job(head) and not (thread_no is not None and find_thread_job(thread_no)):
+                    if not find_resume_job(head) and not (thread_no is not None and find_thread_job(thread_no, trust)):
                         # 멈출 일이 없다 — 대개 메일 도착 순서가 뒤바뀌어 지시보다 '멈춤' 이 먼저 온 것(그대로 두면
                         # 멈춤이 새 지시로 돌고 진짜 지시는 끝까지 돈다). 새 잡을 만들지 않고, 가리키는 지시를 기억해 둔다.
                         refs = re.findall(r"<[^<>]+>", " ".join(str(head.get(h) or "") for h in ("In-Reply-To", "References")))
@@ -1562,7 +1652,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
 
                 # 돌고 있는(대기 중인) 일에 '진행?' — 잡 파일은 워커 것이라 물음만 따로 적고, 이번 바퀴의 send_progress 가 바로 답한다
                 if phone_to(cfg, sender) and is_progress_ask(reply_text(plain_body(msg))):   # 회사 주소는 대화 앱 진행 카드가 있어 평소대로
-                    live = find_live_job(head, thread_no)
+                    live = find_live_job(head, thread_no, trust)
                     if live:
                         processed.add(key)
                         save_processed(processed)
@@ -1577,7 +1667,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 # 시간 초과처럼 세션 없이 실패한 대화는 이어받을 세션이 없어, 그냥 답하면 새 번호의 엉뚱한 지시가 됐다.
                 # 처음 실행 때 쓰기 확인을 이미 거쳤으므로 다시 묻지 않는다.
                 if reply_text(plain_body(msg)).strip().lower() in RETRY_WORDS:
-                    failed = find_failed_job(head, thread_no)
+                    failed = find_failed_job(head, thread_no, trust)
                     if failed:
                         processed.add(key)
                         save_processed(processed)
@@ -1606,7 +1696,16 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 resume_id = None
                 denied = []
                 granted = None                                 # 권한 질문에 '허용' — (이전 잡, 더한 도구 목록)
-                prev =(find_thread_job(thread_no) if thread_no is not None else None) or find_resume_job(head)
+                prev = (find_thread_job(thread_no, trust) if thread_no is not None else None) or find_resume_job(head)
+                if prev and not trust(prev):
+                    # 답장(In-Reply-To)으로 찾았어도 그 대화를 시작한 주소가 아니고 단어 확인도 없으면 잇지 않는다 — 새 지시로
+                    prev = None
+                if thread_no is not None and not prev:
+                    # 세션 없이 끝난 대화(시간 초과 등)에 번호로 이어 쓴 지시는 같은 번호로 — 단 그 대화를 믿을 수 있을 때만.
+                    # 아니면 새 대화(번호를 맞힌 남의 메일·없는 번호). ensure_thread 는 이제 제목의 번호를 믿지 않는다.
+                    tj = next((j for _p, j in iter_jobs() if j.get("thread") == thread_no and j.get("source") in MAIL_SOURCES), None)
+                    if not (tj and trust(tj)):
+                        thread_no = None
                 if prev:
                     resume_id, denied = prev["session_id"], prev.get("disallowed_tools") or []
                     thread_no = prev.get("thread") or thread_no
@@ -1658,7 +1757,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 needs_confirm = mode == "write" and not resume_id and bool(cfg.get("confirm_write", True)) and not stopped and not blocked
                 job = new_job(prompt, workdir, label, msgid, clean_subject, sender, mode, cfg,
                               resume_id=resume_id, confirm=needs_confirm, disallowed_tools=denied,
-                              thread=thread_no if resume_id else None,
+                              thread=thread_no,                # 위에서 믿을 수 있는 대화 번호만 남겼다(아니면 None — 새 번호)
                               allowed_tools=granted[1] if granted else ((prev or {}).get("allowed_tools") if resume_id else None),
                               stopped=stopped, attach_dir=attach_dir, blocked=blocked)
                 if granted and not blocked:      # 잡 파일은 다시 쓰지 않는다 — 워커가 이미 집었으면 상태를 되돌려 두 번 돈다
@@ -1677,6 +1776,7 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                 log("지시 접수 %s [%s/%s]%s — %s" % (job["id"], box, mode, tail, prompt[:55].replace("\n", " ")))
     finally:
         save_processed(processed)
+        save_rejected(rejected)
         try:
             m.close()
         except Exception:

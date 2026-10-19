@@ -513,6 +513,14 @@ def job_audit(limit=300, text='', path=None):
     return rows[:limit] if limit else rows
 
 
+def csv_cell(v):
+    """엑셀 수식 주입 막기 — 메일로 들어온 지시문·주소가 =·+·-·@·탭·CR 로 시작하면 앞에 ' 를 붙인다
+    (=HYPERLINK(…)·DDE 식이 CSV 를 연 사람 PC 에서 돌지 않게. 2026-10-19 보안 점검)."""
+    if isinstance(v, str) and v[:1] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + v
+    return v
+
+
 def job_audit_csv(text='', path=None) -> bytes:
     """엑셀에서 바로 열리는 CSV(UTF-8 BOM) — 오래된 것부터."""
     import csv
@@ -521,7 +529,7 @@ def job_audit_csv(text='', path=None) -> bytes:
     w = csv.writer(buf)
     w.writerow([h for _k, h in JOB_AUDIT_COLS])
     for r in reversed(job_audit(0, text, path)):
-        w.writerow([' '.join(map(str, v)) if isinstance(v, list) else ('' if v is None else v)
+        w.writerow([csv_cell(' '.join(map(str, v)) if isinstance(v, list) else ('' if v is None else v))
                     for v in (r.get(k) for k, _h in JOB_AUDIT_COLS)])
     return ('﻿' + buf.getvalue()).encode('utf-8')
 

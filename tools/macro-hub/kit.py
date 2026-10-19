@@ -347,6 +347,20 @@ def channel_payload(kind, subject, body, now=None):
             'source': company_name() or 'work-automation-kit'}
 
 
+def url_ok(url, local_http=True):
+    """https 주소이거나(local_http 면) 이 PC(127.0.0.1·localhost)의 http 주소인가. 앞부분 글자 비교가 아니라 실제 호스트 이름으로 —
+    'http://127.0.0.1.evil.example/'·'http://localhost@evil.example/' 같은 바깥 주소가 http(평문)로 새지 않게."""
+    import urllib.parse
+    try:
+        u = urllib.parse.urlsplit(str(url or '').strip())
+        host = (u.hostname or '').lower()
+    except ValueError:
+        return False
+    if u.scheme == 'https' and host:
+        return True
+    return local_http and u.scheme == 'http' and host in ('127.0.0.1', 'localhost') and not u.username
+
+
 def post_channel(c, subject, body, post=None):
     """출구 하나로 보낸다 → HTTP 상태 코드. 실패하면 예외(주소는 문구에 넣지 않는다)."""
     import hashlib
@@ -357,7 +371,7 @@ def post_channel(c, subject, body, post=None):
     if kind not in CHANNEL_TYPES:
         raise ValueError('출구 type 은 %s 중 하나: %s' % (' · '.join(CHANNEL_TYPES), kind))
     url = unprotect(c['url_enc']) if c.get('url_enc') else str(c.get('url') or '')
-    if not url.startswith('https://') and not url.startswith('http://127.0.0.1') and not url.startswith('http://localhost'):
+    if not url_ok(url):
         raise ValueError('웹훅 주소는 https 여야 합니다')
     data = json.dumps(channel_payload(kind, subject, body), ensure_ascii=False).encode('utf-8')
     headers = {'Content-Type': 'application/json; charset=utf-8', 'User-Agent': 'work-automation-kit/notify'}

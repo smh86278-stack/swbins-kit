@@ -28,6 +28,23 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SECRETS = os.path.join(HERE, 'secrets.local.json')
 
 
+SECRET_VALUES = []                       # ctx.secret 으로 읽은 값 — 출력(print·예외)에서 가린다
+
+
+class _Masked:
+    """stdout·stderr 를 감싸 ctx.secret 으로 읽은 값이 로그로 새지 않게 한다(허브가 줄마다 패턴으로 한 번 더 가린다)."""
+    def __init__(self, stream):
+        self._s = stream
+
+    def write(self, text):
+        for v in SECRET_VALUES:
+            text = text.replace(v, '●●●')
+        return self._s.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
 def say(msg):
     print(msg, flush=True)
 
@@ -81,7 +98,10 @@ class Ctx:
         """secrets.local.json 의 값. 계정·비밀번호는 자동화 파일에 쓰지 말고 여기에 둔다."""
         try:
             with open(SECRETS, encoding='utf-8-sig') as f:
-                return json.load(f)[key]
+                v = json.load(f)[key]
+            if isinstance(v, str) and len(v) >= 4 and v not in SECRET_VALUES:
+                SECRET_VALUES.append(v)
+            return v
         except FileNotFoundError:
             raise RuntimeError('secrets.local.json 이 없습니다 (secrets.example.json 참고)')
         except KeyError:
@@ -215,4 +235,7 @@ def main():
 
 
 if __name__ == '__main__':
+    # 자동화를 돌리는 이 프로세스에서만 감싼다 — 허브(macrohub)도 read_meta 때문에 이 파일을 import 하는데,
+    # 트레이(pythonw)는 stdout 이 None 이라 감싸면 print 가 오류가 난다
+    sys.stdout, sys.stderr = _Masked(sys.stdout), _Masked(sys.stderr)
     main()

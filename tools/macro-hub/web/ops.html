@@ -102,8 +102,8 @@ HubMode.mount('#modeSw', TOKEN);
 const $ = s => document.querySelector(s);
 function el(t, c, x){ const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 4000); }
-async function api(path, body){
-  const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN}, body: JSON.stringify(body)};
+async function api(path, body){                      // GET 에도 토큰 — 부작용 있는 조회(agents?verify=1)는 허브가 토큰을 요구한다
+  const opt = body === undefined ? {headers: {'X-Hub-Token': TOKEN}} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN}, body: JSON.stringify(body)};
   const r = await fetch(path, opt); let j = {}; try { j = await r.json(); } catch (e) {}
   if (!r.ok) throw new Error(j.error || ('오류 ' + r.status)); return j;
 }

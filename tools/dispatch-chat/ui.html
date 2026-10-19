@@ -314,7 +314,7 @@ dialog::backdrop{background:rgba(20,15,40,.35)}
     <div class="two"><div class="field"><label>Jira 키 앞부분</label><input id="sJira" type="text"></div>
       <div class="field"><label>보내기</label><select id="sSend"><option value="smtp">메일 발송</option><option value="append">메일함에 넣기</option></select></div></div>
     <div class="field"><label>이슈 명령 (게이트웨이로 보낼 땐 그 dispatch.issue_command 와 같게 — 비우면 /jira)</label><input id="sCmd" type="text" placeholder="/jira"></div>
-    <div class="field"><label>암호 단어 (회사 밖 메일일 때 — 게이트웨이 keyed_senders 와 같게)</label><input id="sKey" type="text" placeholder="회사 메일이면 비워 두세요"></div>
+    <div class="field"><label>암호 단어 (회사 밖 메일일 때 — 게이트웨이 keyed_senders 와 같게)</label><input id="sKey" type="password" autocomplete="off" placeholder="회사 메일이면 비워 두세요"></div>
     <div id="setErr"></div>
     <div class="acts"><button type="button" class="ghost" id="setCancel">닫기</button><button type="submit" class="send" id="setSave">연결 확인 후 저장</button></div>
   </form>
@@ -737,7 +737,9 @@ async function openSetup(first) {
   $('#sUser').value = s.user || ''; $('#sLogin').value = s.login_user || ''; $('#sPw').value = '';
   $('#sImap').value = s.imap_host || ''; $('#sImapPort').value = s.imap_port || 993;
   $('#sSmtp').value = s.smtp_host || ''; $('#sSmtpPort').value = s.smtp_port || 25;
-  $('#sJira').value = s.jira_prefix || ''; $('#sCmd').value = s.issue_command || ''; $('#sSend').value = s.send_mode || 'smtp'; $('#sKey').value = s.key_word || '';
+  $('#sJira').value = s.jira_prefix || ''; $('#sCmd').value = s.issue_command || ''; $('#sSend').value = s.send_mode || 'smtp';
+  // 암호 단어는 원문을 받지 않는다(비밀번호처럼) — 있으면 '비워 두면 그대로', 지우려면 - 하나
+  $('#sKey').value = ''; $('#sKey').placeholder = s.has_key_word ? '저장돼 있음 — 비워 두면 그대로 · 지우려면 -' : '회사 메일이면 비워 두세요';
   companyPresets = Array.isArray(s.presets) ? s.presets.filter(x => Array.isArray(x) && x.length >= 5) : [];
   $('#sPreset').textContent = '';
   $('#setNote').textContent = s.source === 'kit'

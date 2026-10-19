@@ -333,8 +333,9 @@ class RunnerTest(unittest.TestCase):
             {"tool_name": "mcp__browser__browser_click", "tool_input": {}},
             {"tool_name": "mcp__other__danger", "tool_input": {}},           # 상한 밖 — 묻지도 않는다
         ]))
-        self.assertEqual(list(rules), ["Bash(npm test)", "Bash", "mcp__browser"])
-        self.assertIn("전체", rules["Bash"])
+        # 규칙으로 못 적는 명령(따옴표)은 'Bash 전체' 를 묻지 않는다
+        self.assertEqual(list(rules), ["Bash(npm test)", "mcp__browser"])
+        self.assertEqual(runner.grant_rules([{"tool_name": "Bash", "tool_input": {"command": "dir&calc"}}]), [])
 
     def test_retry_failed_instruction(self):
         self.turn_on()
@@ -386,8 +387,8 @@ class RunnerTest(unittest.TestCase):
         self.step()
         return self.calls_made()[-1]
 
-    def fake_tools(self, npx=True, browser=True, uvx=True):
-        have = {"npx": npx, "uvx": uvx}
+    def fake_tools(self, npx=True, browser=True, uvx=True, node=True):
+        have = {"npx": npx, "uvx": uvx, "node": node}   # node 가 없으면 안전장치 훅을 못 붙여 브라우저 도구를 뺀다
         for name, val in (("find_tool", lambda n: "/bin/" + n if have.get(n) else ""),
                           ("find_browser", lambda: ("/bin/chrome", "chrome") if browser else ("", "")),
                           ("cdp_live", lambda: False)):
@@ -592,6 +593,34 @@ class RunnerTest(unittest.TestCase):
         hook = chat.read_json(path)["hooks"]["PreToolUse"][0]
         self.assertEqual(hook["matcher"], "mcp__browser__.*")
         self.assertIn("browser-guard.js", hook["hooks"][0]["command"])
+
+    def test_guard_hooks_for_bash(self):
+        """정해진 Bash 규칙만 있는 작업엔 bash-guard.js, 브라우저 작업은 Bash 에도 browser-guard.js.
+        node 가 없으면 훅을 못 붙여 그 도구를 뺀다(fail-closed)."""
+        base = os.path.join(self.tmp, "j2")
+        pre = chat.read_json(runner.guard_settings(runner.READ_TOOLS, base, chat))["hooks"]["PreToolUse"]
+        self.assertEqual([(p["matcher"], os.path.basename(p["hooks"][0]["command"].split('"')[-2])) for p in pre],
+                         [("Bash", "bash-guard.js")])
+        pre = chat.read_json(runner.guard_settings(runner.WRITE_TOOLS + ["mcp__browser"], base, chat))["hooks"]["PreToolUse"]
+        self.assertEqual([(p["matcher"], os.path.basename(p["hooks"][0]["command"].split('"')[-2])) for p in pre],
+                         [("mcp__browser__.*", "browser-guard.js"), ("Bash", "browser-guard.js")])   # Bash 전체면 bash-guard 는 없음
+        self.addCleanup(setattr, runner, "find_tool", runner.find_tool)
+        runner.find_tool = lambda n: ""
+        self.assertEqual(runner.guard_tools(runner.READ_TOOLS + ["mcp__browser"], chat), ["Read", "Glob", "Grep"])
+        self.assertIn("Bash", runner.guard_tools(runner.WRITE_TOOLS, chat))                          # Bash 전체는 그대로
+
+    def test_forged_from_and_word_required(self):
+        """'me <evil@x>' 처럼 주소가 둘로 읽히는 From 은 받지 않는다. require_word_all 인데 단어가 없으면 다 막는다."""
+        self.turn_on()
+        raw = mail("#c 위조")[0].replace(b"From: " + ME.encode(), b"From: " + ME.encode() + b" <evil@x.example>", 1)
+        self.assertIn(b"<evil@x.example>", raw)
+        add(self.box, raw)
+        self.step()
+        self.assertEqual(self.calls_made(), [])
+        self.turn_on(require_word_all=True)
+        add(self.box, mail("#c 단어 설정 없음")[0])
+        self.step()
+        self.assertEqual(self.calls_made(), [])
 
     def test_unanswered_question_closes_once(self):
         """선택지로 물은 뒤 하루 넘게 답이 없으면 질문을 닫는 알림 1통(선택지 없음) — 답이 와서 다음 작업이 있거나 일주일 넘은 것은 빼고."""
