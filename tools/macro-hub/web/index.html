@@ -219,7 +219,8 @@ pre#log .ln{animation:fadein .35s ease both}
     <section class="box">
       <h2>실행 기록 · 로그</h2>
       <div class="runs" id="runs"></div>
-      <div id="logTitle">실행을 선택하면 로그가 보입니다</div>
+      <div class="row"><div id="logTitle" class="grow">실행을 선택하면 로그가 보입니다</div>
+        <button id="fixBtn" hidden title="실패한 내 자동화를 로그와 함께 Claude 에게 넘겨 고쳐 달라고 해요(대화가 꺼져 있으면 부탁 글 복사)">🩹 고쳐 달라기</button></div>
       <pre id="log"></pre>
     </section>
   </div>
@@ -355,6 +356,7 @@ async function select(id){
   sel=id;drawRuns();
   const r=await api('/api/run?id='+id).catch(()=>null);if(!r||sel!==id)return;
   $('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
+  showFix(r);
   const pre=$('#log');pre.replaceChildren();r.lines.forEach(l=>addLine(l,false));pre.scrollTop=pre.scrollHeight;
 }
 function addLine(text,animate){const s=el('div',animate?'ln':'',text||' ');$('#log').append(s)}
@@ -392,9 +394,12 @@ function reactToRun(r){PetMood.react(flash,r)}
 function upsertRun(r){
   if(r.tool){toolRuns.set(r.id,r)}else{const i=runs.findIndex(x=>x.id===r.id);if(i>=0)runs[i]=r;else runs.unshift(r);runs=runs.slice(0,100)}
   reactToRun(r);drawRuns();
-  if(r.id===sel)$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
+  if(r.id===sel){$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);showFix(r)}
   if(!r.tool)loadMacros();else updatePets();
 }
+// 🩹 고쳐 달라기 — 실패한 내 자동화(local/…)에만. 녹화한 자동화가 사이트 변경으로 깨지면 로그째 Claude 에게 넘긴다.
+// 대화가 켜져 있으면 허브가 바로 보내고(/api/fix send), 꺼져 있으면 부탁 글만 복사한다(말로 부탁하기와 같음)
+function showFix(r){$('#fixBtn').hidden=!((r.status==='fail'||r.status==='timeout')&&String(r.macro).startsWith('local/'))}
 async function loadMacros(){try{macros=await api('/api/macros');drawMacros();updatePets()}catch(e){}}
 async function loadRuns(){try{runs=await api('/api/runs');runs.forEach(r=>seenRuns.add(r.id));drawRuns();updatePets()}catch(e){}}
 function connect(){
@@ -441,6 +446,16 @@ $('#askBtn').onclick=guard(async()=>{
   }
   try{await navigator.clipboard.writeText(text)}catch(e){prompt('이 글을 복사해 붙여 넣으세요',text)}
   toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
+});
+$('#fixBtn').onclick=guard(async()=>{                    // 🩹 고쳐 달라기(showFix 가 보이게 한다)
+  const btn=$('#fixBtn'),id=sel;btn.disabled=true;
+  try{
+    try{await api('/api/fix',{id,send:true});toast('고쳐 달라고 보냈어요 — 대화에서 진행을 볼 수 있어요');window.open(CHAT_URL,'_blank');return}
+    catch(e){if(/없는 실행|실패한 실행만|내 자동화/.test(e.message))throw e}   // 대화가 꺼졌거나 못 보냄 → 아래에서 글만 복사
+    const {text}=await api('/api/fix',{id,send:false});
+    try{await navigator.clipboard.writeText(text)}catch(e){prompt('이 글을 복사해 붙여 넣으세요',text)}
+    toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
+  }finally{btn.disabled=false}
 });
 $('#pickBtn').onclick=guard(async()=>{const r=await api('/api/pick',{});select(r.run)});
 $('#inspBtn').onclick=guard(async()=>{const r=await api('/api/inspect',{title:$('#inspTitle').value});select(r.run)});

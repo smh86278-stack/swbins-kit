@@ -60,6 +60,8 @@ HUB_API = [
     ('POST', '/api/schedule', '{"id", "schedule": [...]} 예약 시각 바꾸기 · {"id", "reset": true} 되돌리기'),
     ('POST', '/api/service', '{"id", "action": "start|stop|restart|run"}'),
     ('POST', '/api/ask', '{"text"} 「말로 부탁하기」 — 디스패치 대화(8620)에 쓰기 지시로 바로 보낸다(대화가 켜져 있을 때)'),
+    ('POST', '/api/fix', '{"id", "send"} 🩹 고쳐 달라기 — 실패한 내 자동화(macros.local) 실행의 이름·파일·로그 끝 40줄로 부탁 글을 만든다. '
+                         'send 면 /api/ask 처럼 대화로 보내고, 아니면 글만 돌려준다'),
 ]
 
 

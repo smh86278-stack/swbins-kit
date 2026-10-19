@@ -85,6 +85,34 @@ class AskChat(unittest.TestCase):
             macrohub.ask_chat('   ')
         self.assertEqual(FakeChat.sent, [])
 
+    def _run(self, macro, status='fail', lines=()):
+        r = macrohub.Run(macro, '주문 확인', {'kind': 'schedule'})
+        r.status, r.code = status, 1
+        r.lines.extend(lines)
+        macrohub.runs_by_id[r.id] = r
+        self.addCleanup(macrohub.runs_by_id.pop, r.id, None)
+        return r
+
+    def test_fix_text_for_failed_own_macro(self):
+        """🩹 고쳐 달라기 — 실패한 내 자동화의 이름·파일·로그 끝을 담아 대화로 보낸다. 성공한 것·키트 예제는 거절."""
+        macros = {'local/order': {'id': 'local/order', 'name': '주문 확인', 'path': r'C:\kit\macros.local\order.py', 'local': True},
+                  'example_web': {'id': 'example_web', 'name': '예제', 'path': 'x.py', 'local': False}}
+        old = macrohub.find_macro
+        macrohub.find_macro = macros.get
+        self.addCleanup(setattr, macrohub, 'find_macro', old)
+        lines = ['줄 %d' % i for i in range(60)] + ["TimeoutError: locator('#order-btn') 를 찾지 못함"]
+        r = self._run('local/order', lines=lines)
+        text = macrohub.fix_text(r.id)
+        self.assertIn(r'C:\kit\macros.local\order.py', text)
+        self.assertIn("locator('#order-btn')", text)
+        self.assertNotIn('줄 5\n', text)                            # 로그는 끝 40줄만
+        self.assertIn('로그 끝 40줄', text)
+        macrohub.ask_chat(text)
+        self.assertTrue(FakeChat.sent[0]['text'].startswith('자동화 허브의 자동화가 실패했어'))
+        for bad in (self._run('local/order', status='ok').id, self._run('example_web').id, 12345):
+            with self.assertRaises(ValueError):
+                macrohub.fix_text(bad)
+
     def test_chat_off(self):
         url = macrohub.CHAT_URL
         macrohub.CHAT_URL = 'http://127.0.0.1:9'          # 아무도 안 듣는 포트

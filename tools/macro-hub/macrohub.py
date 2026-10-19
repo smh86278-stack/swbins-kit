@@ -849,6 +849,35 @@ def ask_chat(text):
     return {'ok': True, 'subject': res.get('subject', '')}
 
 
+FIX_TAIL = 40      # 🩹 고쳐 달라기에 붙일 로그 끝 줄 수
+
+
+def fix_text(run_id):
+    """🩹 고쳐 달라기 — 실패한 실행 하나를 Claude 에게 넘길 부탁 글(자동화 이름·파일·결과·로그 끝).
+    녹화로 만든 자동화는 사이트 화면이 바뀌면 요소를 못 찾아 깨진다 — 그 실패를 그대로 넘겨 고치게 한다.
+    내 자동화(macros.local)만 — 키트가 준 예제는 업데이트로 덮이니 고치지 않는다."""
+    try:
+        r = runs_by_id.get(int(run_id or 0))
+    except (TypeError, ValueError):
+        r = None
+    if not r:
+        raise ValueError('없는 실행입니다')
+    if r.status not in ('fail', 'timeout'):
+        raise ValueError('실패한 실행만 고쳐 달랄 수 있습니다')
+    m = find_macro(r.macro)
+    if not m or not m.get('local'):
+        raise ValueError('내 자동화(내 자동화 폴더의 파일)만 고쳐 달랄 수 있습니다')
+    tail = [str(x) for x in list(r.lines)[-FIX_TAIL:]]
+    when = time.strftime('%Y-%m-%d %H:%M', time.localtime(r.started))
+    return ('자동화 허브의 자동화가 실패했어 — 원인을 찾아 고쳐줘.\n'
+            '자동화: %s\n파일: %s\n결과: %s (%s 실행%s)\n'
+            '로그 끝 %d줄:\n%s\n'
+            '(사이트 화면이 바뀌어 요소를 못 찾은 거면 그 화면을 열어 보고 선택자를 고쳐 줘. 고친 뒤 한 번 돌려 보고 결과를 알려 줘. '
+            '이 파일 말고는 고치지 말고, 비밀번호가 필요하면 secret 으로 — 값은 내가 넣을게)'
+            % (m['name'], m['path'], '시간 초과' if r.status == 'timeout' else '오류', when,
+               ', 종료 코드 %s' % r.code if r.code not in (None, 0) else '', len(tail), '\n'.join(tail) or '(로그 없음)'))
+
+
 def record_web(url, name):
     stem = safe_name(name)
     if not stem or not url:
@@ -1172,6 +1201,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, ask_chat(body.get('text', '')))
             except Exception as e:
                 return self._send(502, {'error': str(e)})
+        if path == '/api/fix':                        # 🩹 고쳐 달라기 {"id", "send"} — send 면 대화로 보내고, 아니면 부탁 글만
+            try:
+                text = fix_text(body.get('id'))
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            if not body.get('send'):
+                return self._send(200, {'text': text})
+            try:
+                return self._send(200, dict(ask_chat(text), text=text))
+            except Exception as e:
+                return self._send(502, {'error': str(e), 'text': text})
         if path in ('/api/pick', '/api/inspect'):
             tool = 'pick' if path == '/api/pick' else 'inspect'
             title = '요소 찍기' if tool == 'pick' else '창·컨트롤 구조 보기'
