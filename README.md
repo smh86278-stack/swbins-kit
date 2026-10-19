@@ -7,7 +7,7 @@
 
 Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 
-**도움말·개발자 안내**: <https://smh86278-stack.github.io/swbins-kit/docs/> (저장소의 [`docs/index.html`](docs/index.html) — 코드에서 만든다, `python docs/build_docs.py`) — 기능별 설정 견본, 알림 웹훅 받는 쪽(JSON·서명 검증), 자동화 만들기(META·ctx), 허브 API.
+**도움말·개발자 안내**: 저장소의 [`docs/index.html`](docs/index.html) — 받은 뒤 브라우저로 연다(코드에서 만든다, `python docs/build_docs.py`) — 기능별 설정 견본, 알림 웹훅 받는 쪽(JSON·서명 검증), 자동화 만들기(META·ctx), 허브 API.
 코드에서 만든다(`python docs/build_docs.py`, 시험 `tests/test_docs.py` 가 어긋나면 알려 줌).
 
 ## 기능
