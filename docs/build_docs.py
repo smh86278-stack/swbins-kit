@@ -34,8 +34,6 @@ SECTIONS = [
     ('backups', '폴더 백업', 'tools/macro-hub/macros/job_backup.py'),
     ('cred_watch', '로그인·키 만료 예고', 'tools/macro-hub/macros/job_cred_watch.py'),
     ('morning_brief', '아침 브리핑', 'tools/macro-hub/macros/job_morning_brief.py'),
-    ('market_notice', '마켓 장애 공지 감시', 'tools/macro-hub/macros/job_market_notice.py'),
-    ('category_watch', '카테고리·정보고시 변경 감시', 'tools/macro-hub/macros/job_category_watch.py'),
     ('rate_limits', 'API 호출 한도 조절 · 미터기', 'tools/macro-hub/ratelimit.py'),
     ('links', '바로가기', None),
     ('dispatch', '디스패치(메일 → Claude Code, 고급)', 'mail-gateway.py'),
