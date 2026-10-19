@@ -246,9 +246,13 @@ function staleToken(r,j){  // 허브가 다시 뜨면 토큰이 새로 생긴다
   if(r.status!==403||j.error!=='forbidden')return false;
   let last=0;try{last=+sessionStorage.getItem('hub.tokenReload')||0}catch(e){}
   if(Date.now()-last<15000)return false;
-  try{sessionStorage.setItem('hub.tokenReload',String(Date.now()))}catch(e){}
+  try{sessionStorage.setItem('hub.tokenReload',String(Date.now()));sessionStorage.setItem('hub.tokenReloadMsg','1')}catch(e){}
   location.reload();return true;
 }
+// 위에서 새로 고친 직후 — 누른 것이 반영되지 않았다고 알린다(조용히 사라지면 '클릭이 안 된다'로 보인다)
+setTimeout(()=>{let f=null;try{f=sessionStorage.getItem('hub.tokenReloadMsg');sessionStorage.removeItem('hub.tokenReloadMsg')}catch(e){}
+  if(!f)return;toast('허브가 다시 켜져서 화면을 새로 고쳤습니다 — 방금 누른 것은 반영되지 않았으니 한 번 더 눌러 주세요');
+  clearTimeout(toast.t);toast.t=setTimeout(()=>document.getElementById('toast').classList.remove('show'),8000)},300);
 async function api(path,body){
   const opt=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Hub-Token':TOKEN},body:JSON.stringify(body)};
   const r=await fetch(path,opt);let j={};try{j=await r.json()}catch(e){}
