@@ -172,6 +172,68 @@ class HideUnused(unittest.TestCase):
         self.assertEqual(macrohub.hidden_ids(), set())
 
 
+class DeleteMacro(unittest.TestCase):
+    """내 자동화 지우기 — macros.local 의 꺼진 것만, 파일은 data.local\\deleted 로 옮기고 되살릴 수 있다."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.local = os.path.join(tmp, 'macros.local')
+        os.makedirs(self.local)
+        self.path = os.path.join(self.local, 'my_job.py')
+        with open(self.path, 'w', encoding='utf-8') as f:
+            f.write('x = 1\n')
+        self.log = []
+        self.running = set()
+        macros = {'local/my_job': {'id': 'local/my_job', 'name': 'my', 'path': self.path, 'local': True},
+                  'local/on_job': {'id': 'local/on_job', 'name': 'on', 'path': self.path, 'local': True},
+                  'job_example': {'id': 'job_example', 'name': 'ex', 'path': self.path, 'local': False}}
+        state = {'enabled': {'local/on_job': True, 'local/my_job': False}, 'hidden': ['local/my_job'],
+                 'schedule': {'local/my_job': [{'type': 'schedule', 'at': '09:00'}]}}
+        for name, val in (('state', state), ('save_state', lambda: None), ('broadcast', lambda *a: None),
+                          ('audit', lambda action, target='', detail='': self.log.append((action, target))),
+                          ('find_macro', macros.get), ('running_run', lambda mid: mid in self.running),
+                          ('DIR_LOCAL', self.local), ('DIR_DELETED', os.path.join(tmp, 'deleted'))):
+            p = mock.patch.object(macrohub, name, val)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_delete_then_restore(self):
+        fname, err = macrohub.delete_macro('local/my_job')
+        self.assertIsNone(err)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertTrue(os.path.exists(os.path.join(macrohub.DIR_DELETED, fname)))
+        self.assertNotIn('local/my_job', macrohub.state['enabled'])        # 켜짐·숨김·예약 기록도 같이 지운다
+        self.assertEqual(macrohub.state['hidden'], [])
+        self.assertEqual(macrohub.state['schedule'], {})
+        self.assertEqual([d['name'] for d in macrohub.deleted_macros()], ['my_job'])
+        mid, err = macrohub.restore_macro(fname)
+        self.assertEqual((mid, err), ('local/my_job', None))
+        self.assertTrue(os.path.exists(self.path))
+        self.assertEqual(macrohub.deleted_macros(), [])
+        self.assertEqual([a for a, _ in self.log], ['자동화 지움', '자동화 되살림'])
+
+    def test_refuses(self):
+        self.assertIn('예제', macrohub.delete_macro('job_example')[1])
+        self.assertIn('켜져 있는', macrohub.delete_macro('local/on_job')[1])
+        self.running.add('local/my_job')
+        self.assertIn('실행 중', macrohub.delete_macro('local/my_job')[1])
+        self.assertEqual(macrohub.delete_macro('nope')[1], '없는 자동화입니다')
+        self.assertTrue(os.path.exists(self.path))
+
+    def test_restore_only_listed_and_no_overwrite(self):
+        self.assertEqual(macrohub.restore_macro('..\\..\\x.py')[1], '지운 목록에 없습니다')   # 경로 조작은 목록에 없다
+        fname, _ = macrohub.delete_macro('local/my_job')
+        with open(self.path, 'w', encoding='utf-8') as f:                                    # 그 사이 같은 이름을 새로 만들었다
+            f.write('y = 2\n')
+        self.assertIn('이미 있습니다', macrohub.restore_macro(fname)[1])
+        with open(self.path, encoding='utf-8') as f:
+            self.assertEqual(f.read(), 'y = 2\n')
+
+
 class AgentDismiss(unittest.TestCase):
     """/ops 에이전트 — 끝난 작업 「치우기」·「치운 것 되돌리기」(상태 파일은 건드리지 않고 목록 파일에만)."""
 

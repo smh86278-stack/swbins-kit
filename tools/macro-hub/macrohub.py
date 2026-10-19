@@ -420,6 +420,72 @@ def set_hidden(mid, on):
     return None
 
 
+DIR_DELETED = os.path.join(HERE, 'data.local', 'deleted')   # 지운 내 자동화 — 되살릴 수 있게 여기로 옮긴다
+
+
+def delete_macro(mid):
+    """내 자동화(macros.local) 지우기 — 파일을 data.local\\deleted\\<이름>-<시각>.py 로 옮기고 켜짐·숨김·예약 기록을 지운다.
+    키트 예제·꺼지지 않은 것·도는 중인 것은 지우지 않는다. 돌려주는 값: (옮긴 파일 이름, 오류 문구)"""
+    m = find_macro(mid)
+    if not m:
+        return None, '없는 자동화입니다'
+    if not m.get('local'):
+        return None, '내 자동화만 지울 수 있습니다 — 예제는 숨기기를 쓰세요'
+    if state['enabled'].get(mid):
+        return None, '켜져 있는 것은 지울 수 없습니다 — 먼저 끄세요'
+    if running_run(mid):
+        return None, '실행 중에는 지울 수 없습니다'
+    stem = os.path.splitext(os.path.basename(m['path']))[0]
+    fname = '%s-%s.py' % (stem, time.strftime('%Y%m%d-%H%M%S'))
+    os.makedirs(DIR_DELETED, exist_ok=True)
+    try:
+        os.replace(m['path'], os.path.join(DIR_DELETED, fname))
+    except OSError as e:
+        return None, '지우지 못했습니다: %s' % e
+    state['enabled'].pop(mid, None)
+    (state.get('schedule') or {}).pop(mid, None)
+    if mid in hidden_ids():
+        state['hidden'] = sorted(hidden_ids() - {mid})
+    save_state()
+    audit('자동화 지움', mid, '「%s」 → data.local\\deleted\\%s' % (m['name'], fname))   # 파일을 옮긴 뒤라 이름을 못 찾으니 여기 적는다
+    broadcast({'t': 'macros'})
+    return fname, None
+
+
+def deleted_macros():
+    """지운 내 자동화 목록 — 새것 먼저 [{"file", "name", "when"}]"""
+    try:
+        names = [n for n in os.listdir(DIR_DELETED) if n.endswith('.py')]
+    except OSError:
+        return []
+    out = []
+    for n in names:
+        mt = re.match(r'^(.*)-(\d{8}-\d{6})\.py$', n)
+        meta = runner.read_meta(os.path.join(DIR_DELETED, n)) or {}
+        out.append({'file': n, 'name': mt.group(1) if mt else n[:-3], 'title': meta.get('name') or '',
+                    'when': time.strftime('%Y-%m-%d %H:%M', time.strptime(mt.group(2), '%Y%m%d-%H%M%S')) if mt else ''})
+    return sorted(out, key=lambda d: d['file'][-18:], reverse=True)
+
+
+def restore_macro(fname):
+    """지운 자동화 되살리기 — 원래 이름으로 macros.local 에 돌려놓는다(꺼진 채). 돌려주는 값: (자동화 id, 오류 문구)"""
+    item = next((d for d in deleted_macros() if d['file'] == fname), None)   # 목록에 있는 이름만 — 경로 조작 막기
+    if not item:
+        return None, '지운 목록에 없습니다'
+    dest = os.path.join(DIR_LOCAL, item['name'] + '.py')
+    if os.path.exists(dest):
+        return None, '같은 이름의 자동화가 이미 있습니다 — 그것을 먼저 지우거나 이름을 바꾸세요'
+    os.makedirs(DIR_LOCAL, exist_ok=True)
+    try:
+        os.replace(os.path.join(DIR_DELETED, fname), dest)
+    except OSError as e:
+        return None, '되살리지 못했습니다: %s' % e
+    mid = 'local/' + item['name']
+    audit('자동화 되살림', mid, '← data.local\\deleted\\' + fname)
+    broadcast({'t': 'macros'})
+    return mid, None
+
+
 def service_action(mid, action):
     """운영 화면·트레이의 시작/중지/재시작/지금 실행. 돌려주는 값: (ok, 안내 문구)"""
     m = find_macro(mid)
@@ -1094,6 +1160,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(204, b'', 'image/x-icon')
         if u.path == '/api/macros':
             return self._send(200, [macro_view(m) for m in discover()])
+        if u.path == '/api/deleted':                  # 지운 내 자동화(되살리기용)
+            return self._send(200, deleted_macros())
         if u.path == '/api/runs':
             with lock:
                 items = [r.summary() for r in runs if not r.tool][-100:]
@@ -1177,6 +1245,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/hide':                       # 안 쓰는 것 숨기기 {"id", "hidden": true|false}
             err = set_hidden(str(body.get('id', '')), bool(body.get('hidden')))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'hidden': sorted(hidden_ids())})
+        if path == '/api/delete':                     # 내 자동화 지우기 {"id"} — data.local\deleted 로 옮긴다
+            fname, err = delete_macro(str(body.get('id', '')))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'file': fname})
+        if path == '/api/undelete':                   # 지운 자동화 되살리기 {"file"}
+            mid, err = restore_macro(str(body.get('file', '')))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': mid})
         if path == '/api/ops/agents/dismiss':         # 끝난 백그라운드 에이전트 치우기 {"id"} · 되돌리기 {"undo": true}
             import ops
             try:

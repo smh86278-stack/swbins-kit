@@ -79,6 +79,9 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .card.dim,.tool.dim{opacity:.55}
 .hidebtn{border:0!important;background:transparent!important;box-shadow:none!important;color:var(--muted);padding:0 4px!important;font-size:11.5px;font-weight:600}
 .hidebtn:hover{color:var(--accent)}
+.hidebtn.del:hover{color:var(--bad,#d9534f)}
+.delrow{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:12.5px;color:var(--muted)}
+.delrow .grow{flex:1}
 .tool .lbl .hidebtn{float:right}
 .hidebar[hidden]{display:none}
 .hidebar{display:block;width:100%;margin-top:6px;border:1px dashed var(--line)!important;background:transparent!important;box-shadow:none!important;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
@@ -233,7 +236,7 @@ const TOKEN='__TOKEN__';
 if(new URLSearchParams(location.search).get('view')==='make')document.body.classList.add('view-make');
 HubMode.mount('#modeSw',TOKEN);
 const $=s=>document.querySelector(s);
-let macros=[],runs=[],sel=null,toolRuns=new Map(),paramVals={};
+let macros=[],deleted=[],runs=[],sel=null,toolRuns=new Map(),paramVals={};
 let firstDraw=true;const seenRuns=new Set();
 const STATUS={running:'실행 중',ok:'성공',fail:'실패',stopped:'중지됨',timeout:'시간 초과'};
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -278,7 +281,25 @@ function drawMacros(){
     box.append(hiddenBar(hid.length,'macros',drawMacros));
     if(showHidden.macros)hid.forEach((m,idx)=>box.append(macroCard(m,idx,true)));
   }
+  if(deleted.length){
+    const b=el('button','hidebar',showHidden.deleted?'▾ 지운 것 접기':'▸ 🗑 지운 것 '+deleted.length+'개 (되살리기)');
+    b.onclick=()=>{toggleHidden('deleted');drawMacros()};box.append(b);
+    if(showHidden.deleted)for(const d of deleted){
+      const r=el('div','delrow'),nm=d.title||d.name;r.append(el('span','grow',nm),el('span','',d.when));
+      const u=el('button','hidebtn','되살리기');u.title='내 자동화 폴더로 돌려놓습니다(꺼진 채)';
+      u.onclick=async()=>{try{await api('/api/undelete',{file:d.file});toast(nm+' — 되살렸습니다 (꺼진 채)')}catch(e){toast(e.message)}};
+      r.append(u);box.append(r);
+    }
+  }
   firstDraw=false;
+}
+// 내 자동화 지우기 — 바로 지우지 않고 data.local\deleted 로 옮긴다(목록 아래 「지운 것」에서 되살리기)
+function delBtn(m){
+  const b=el('button','hidebtn del','지우기');b.title='내 자동화를 지웁니다 — 아래 「지운 것」에서 되살릴 수 있습니다';
+  b.onclick=async e=>{e.stopPropagation();
+    if(!confirm('「'+m.name+'」을(를) 지울까요?\n파일은 data.local\\deleted 로 옮겨져, 목록 아래 「지운 것」에서 되살릴 수 있습니다.'))return;
+    try{await api('/api/delete',{id:m.id});toast(m.name+' — 지웠습니다 (아래 「지운 것」에서 되살리기)')}catch(err){toast(err.message)}};
+  return b;
 }
 function macroCard(m,idx,dim){
     const c=el('div','card'+(firstDraw?' rise':'')+(m.running?' live':'')+(dim?' dim':''));c.style.setProperty('--i',idx);
@@ -313,6 +334,7 @@ function macroCard(m,idx,dim){
     }
     if(dim)act.append(hideBtn(m.id,m.name,false));
     else if(!m.enabled&&!m.running)act.append(hideBtn(m.id,m.name,true));
+    if(m.local&&!m.enabled&&!m.running)act.append(delBtn(m));
     act.classList.add('act');top.append(act);return c;
 }
 /* 만들기 · 녹화 · 도구 칸 — 안 쓰는 줄 숨기기 */
@@ -400,7 +422,7 @@ function upsertRun(r){
 // 🩹 고쳐 달라기 — 실패한 내 자동화(local/…)에만. 녹화한 자동화가 사이트 변경으로 깨지면 로그째 Claude 에게 넘긴다.
 // 대화가 켜져 있으면 허브가 바로 보내고(/api/fix send), 꺼져 있으면 부탁 글만 복사한다(말로 부탁하기와 같음)
 function showFix(r){$('#fixBtn').hidden=!((r.status==='fail'||r.status==='timeout')&&String(r.macro).startsWith('local/'))}
-async function loadMacros(){try{macros=await api('/api/macros');drawMacros();updatePets()}catch(e){}}
+async function loadMacros(){try{macros=await api('/api/macros');try{deleted=await api('/api/deleted')}catch(e){deleted=[]}drawMacros();updatePets()}catch(e){}}
 async function loadRuns(){try{runs=await api('/api/runs');runs.forEach(r=>seenRuns.add(r.id));drawRuns();updatePets()}catch(e){}}
 function connect(){
   const es=new EventSource('/events');

@@ -197,6 +197,11 @@ def run(ctx):
 지우지도 끄지도 않고 목록에서만 접는다 — 목록 아래 「▸ 숨긴 것 N개 보기」를 펼쳐 「다시 보이기」. **켜져 있는 것은 숨길 수 없다**(먼저 끈다).
 숨긴 id 는 `state.local.json` 의 `hidden`(도구는 `tool:new`·`tool:record`·`tool:desktop`), 숨김·다시 보임은 📜 변경 이력에 남는다. `GET /api/hidden` · `POST /api/hide {id, hidden}`.
 
+**내 자동화 지우기** — 허브 첫 화면의 내 자동화(`macros.local`) 카드에 「지우기」. 키트 예제는 지울 수 없고(숨기기를 쓴다), **꺼져 있고 돌고 있지 않을 때만** 된다.
+바로 지우지 않고 파일을 `data.local\deleted\<이름>-<시각>.py` 로 옮기며 켜짐·숨김·예약 시각 기록도 지운다.
+목록 아래 「▸ 🗑 지운 것 N개」에서 「되살리기」 — 원래 이름으로 꺼진 채 돌아온다(같은 이름이 이미 있으면 거절).
+지움·되살림은 📜 변경 이력에 남는다. `GET /api/deleted` · `POST /api/delete {id}` · `POST /api/undelete {file}`.
+
 API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,settings,agents}` · `POST /api/service`.
 **허브를 `127.0.0.1` 밖으로 열지 말 것** — 프로그램을 띄우는 화면이다.
 
