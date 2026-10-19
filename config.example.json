@@ -242,5 +242,12 @@
 
     "_weekly_report_설명": "주간 업무 보고 초안(허브 예약 작업 job_weekly_report) — days·at 에 이번 주(월요일~오늘)를 모아 claude CLI(engine claude) 또는 ollama(engine ollama, model)로 초안을 쓰고 wiki_dir\\reports\\YYYYMMDD_주간보고.md 로 저장한 뒤 to 에게 메일로 보낸다(비면 mail.user — 내가 먼저 보고 고쳐 보내게). LLM 이 실패하면 모은 원자료를 대신 보낸다. 메일 설정이 안 돼 있으면 파일만 남긴다. days 표기는 다른 예약과 같다('fri' · 'mon-fri' · 'mon,thu'). prompt_file 로 프롬프트(견본 prompt_weekly.md)를 바꿀 수 있다. 제목 자리표시 {since} {until} {company}.",
     "weekly_report": { "enabled": false, "days": "fri", "at": "16:00", "to": [], "engine": "claude", "model": "", "prompt_file": "", "subject": "[주간 보고 초안] {since} ~ {until}" }
+  },
+  "migrate": {
+    "_설명": "PC 를 바꿀 때 tools\\pc-migrate\\pack.ps1 이 암호 걸린 .7z 하나로 묶을 것. Claude Code 대화 기록과 이 키트의 설정(config.local.json·내 자동화)은 따로 적지 않아도 담는다. repos 는 clone 으로 안 오는 작업물(커밋 안 한 파일·.env 같은 제외 파일·수정분·원격에 없는 브랜치)을 챙길 git 저장소, env_vars 는 값을 옮길 사용자 환경변수 이름, extra_paths 는 그 밖에 챙길 파일·폴더, claude_projects 는 옮길 Claude Code 대화 폴더(비우면 임시 폴더를 뺀 전부). 경로에 %USERPROFILE% 같은 환경변수를 쓸 수 있다. 새 PC 에서는 풀린 폴더의 restore.ps1 을 실행한다(자세히는 tools\\pc-migrate\\README.md).",
+    "repos": ["%USERPROFILE%\\work\\my-app"],
+    "env_vars": ["JIRA_TOKEN", "GITLAB_TOKEN"],
+    "extra_paths": ["%USERPROFILE%\\.ssh"],
+    "claude_projects": []
   }
 }

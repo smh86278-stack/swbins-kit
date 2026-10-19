@@ -28,6 +28,7 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
 | 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
 | 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
+| 🚚 PC 이전 | PC 를 바꿀 때 Claude Code 대화 기록·키트 설정·저장소의 커밋 안 한 작업물·환경변수 값을 암호 걸린 `.7z` 하나로 묶고 새 PC 에서 풀어 넣는다 — [tools\pc-migrate\README.md](tools/pc-migrate/README.md) | `migrate` |
 
 운영 화면 <http://127.0.0.1:8630/ops> 에서 기능마다 켜고 끄고, 시각을 바꾸고, 「📊 기능 상태」 탭에서 마지막 결과를 본다.
 기능은 **처음엔 모두 꺼져 있다** — 설정에 대상을 적은 뒤 켠다.
@@ -208,6 +209,7 @@ tools\macro-hub\         자동화 허브 — 트레이 앱 · 웹 화면 · 예
     kit.py               공통 바탕 — 설정 · 메일 · DPAPI · 예약 시각 판정 · 기능 상태 파일
     macros\job_*.py      기능 (정기 메일 · 폴더 정리 · 감시 · PC 점검 · 백업)
     macros.local\        내가 만든 자동화 (git 제외)
+tools\pc-migrate\        PC 이전 묶음 — pack.ps1(지금 PC) · restore.ps1(새 PC) (migrate)
 tools\proc-live\         허브의 내부 모듈(프로세스 스냅샷)
 tests\                   python -m unittest discover -s tests · 커밋 전 tests\verify.ps1
 ```

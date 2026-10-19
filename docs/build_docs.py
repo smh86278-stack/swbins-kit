@@ -39,6 +39,7 @@ SECTIONS = [
     ('dispatch', '디스패치(메일 → Claude Code, 고급)', 'mail-gateway.py'),
     ('jira', 'Jira 새 이슈 감시(고급)', 'jira-watch.py'),
     ('ai_share', 'AI 공유 위키 · 주간 보고 초안', 'tools/ai-share-agent/agent.py'),
+    ('migrate', 'PC 이전 묶음', None),
 ]
 FIXED = {
     'company': '회사 이름 — 알림 메일 제목 앞에 [이름] 으로 붙는다. 비워도 된다.',
