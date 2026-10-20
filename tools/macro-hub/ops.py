@@ -325,6 +325,10 @@ def agent_board():
         s = read_json(f)
         if not isinstance(s, dict) or _empty(s.get('sessionId')):
             continue
+        # 백그라운드 에이전트도 세션 파일을 남긴다(kind 'bg', jobId) — 잡 목록에 이미 있으니 두 번 세지 않는다
+        if s.get('kind') == 'bg' and not _empty(s.get('jobId')) \
+                and os.path.isdir(root + '\\jobs\\' + str(s['jobId'])):
+            continue
         items.append({
             'id': str(s['pid']) if s.get('pid') is not None else os.path.basename(f)[:-5],
             'kind': 'interactive',
