@@ -2,9 +2,15 @@
 """자동화 한 개를 실행하는 자식 프로세스 — macrohub.py 가 띄운다.
 
     .venv\\Scripts\\python.exe runner.py <자동화.py>
+    .venv\\Scripts\\python.exe runner.py --test <자동화.py> [이름=값 ...]     시험 실행 — AUTHORING.md
 
 환경변수 MACROHUB_CTX(JSON): {"params": {...}, "trigger": {...}, "macro": "id"}
 표준출력은 그대로 허브 화면의 실시간 로그가 된다. 종료 코드 0 = 성공.
+
+시험 실행(--test): 허브 없이 이 파일 하나를 돌려 본다 — Claude 가 자동화를 만들거나 고친 뒤 스스로 확인하는 길.
+허브와 같은 자동화 id(내 자동화면 local/<이름>)라 로그인 프로필·데이터 폴더도 같다. params 는 META 기본값 위에 이름=값.
+ctx.dry_run 이 참이라 ctx.for_real('메일 보내기') 로 감싼 되돌릴 수 없는 동작은 건너뛴다. 제한 시간(META timeout,
+최대 600초)이 지나면 멈춘다. 마지막 줄이 '🧪 시험 결과: 성공|실패' 이고 종료 코드도 같다.
 
 자동화 종류(META["kind"])
   ctx      (기본) 모듈에 run(ctx) 가 있다. ctx 로 브라우저·창·비밀값·로그를 쓴다.
@@ -57,12 +63,22 @@ class Ctx:
         self.params = raw.get('params') or {}
         self.trigger = raw.get('trigger') or {'kind': 'manual'}
         self.meta = meta
+        self.dry_run = bool(raw.get('dry_run'))   # 시험 실행(--test) — for_real() 로 감싼 동작을 건너뛴다
         self._pw = None
         self._browser_ctx = None
 
     # --- 기본
     def log(self, *parts):
         say(' '.join(str(p) for p in parts))
+
+    def for_real(self, what):
+        """되돌릴 수 없는 동작(메일 보내기·제출·삭제·결제 등) 앞에 — 평소엔 True, 시험 실행이면 로그만 남기고 False.
+            if ctx.for_real('주문 확정 메일 보내기'):
+                send(...)"""
+        if self.dry_run:
+            say('🧪 시험이라 건너뜀: %s' % what)
+            return False
+        return True
 
     def sleep(self, sec):
         time.sleep(sec)
@@ -208,13 +224,53 @@ def read_meta(path):
     return {}
 
 
+TEST_TIMEOUT_MAX = 600
+
+
+def _value(text):
+    """이름=값 의 값 — 숫자·true/false·JSON 이면 그 값, 아니면 글자 그대로."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def test_ctx(path, pairs, meta):
+    """--test 의 MACROHUB_CTX — 허브와 같은 id(내 자동화 폴더면 local/<이름>), META params 기본값 위에 이름=값."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    local = os.path.normcase(os.path.dirname(path)) == os.path.normcase(os.path.join(HERE, 'macros.local'))
+    params = dict(meta.get('params') or {})
+    for p in pairs:
+        if '=' not in p:
+            raise SystemExit('시험 인자는 이름=값 으로 주세요: %s' % p)
+        k, v = p.split('=', 1)
+        params[k.strip()] = _value(v.strip())
+    return {'macro': ('local/' if local else '') + stem, 'params': params, 'trigger': {'kind': 'test'}, 'dry_run': True}
+
+
 def main():
-    path = os.path.abspath(sys.argv[1])
-    raw = json.loads(os.environ.get('MACROHUB_CTX') or '{}')
+    test = len(sys.argv) > 1 and sys.argv[1] == '--test'
+    args = sys.argv[2:] if test else sys.argv[1:]
+    if not args:
+        raise SystemExit('사용법: runner.py [--test] <자동화.py> [이름=값 ...]')
+    path = os.path.abspath(args[0])
     meta = read_meta(path)
+    raw = test_ctx(path, args[1:], meta) if test else json.loads(os.environ.get('MACROHUB_CTX') or '{}')
     ctx = Ctx(raw, meta)
     started = time.time()
     code = 0
+    if test:
+        import threading
+        limit = min(int(meta.get('timeout') or 300), TEST_TIMEOUT_MAX)
+
+        def _too_long():
+            say('✖ 시험 시간 초과 (%d초) — 기다리는 요소·창이 안 나타났거나 끝나지 않는 반복일 수 있습니다' % limit)
+            say('🧪 시험 결과: 실패')
+            sys.stdout.flush()
+            os._exit(1)
+        t = threading.Timer(limit, _too_long)
+        t.daemon = True
+        t.start()
     try:
         say('▶ %s 시작 (%s)' % (meta.get('name') or os.path.basename(path), ctx.trigger.get('kind', 'manual')))
         ns = runpy.run_path(path, run_name='macro')
@@ -231,6 +287,8 @@ def main():
         code = 1
     finally:
         ctx.close()
+    if test:
+        say('🧪 시험 결과: %s (%.1f초)' % ('성공' if code == 0 else '실패', time.time() - started))
     sys.exit(code)
 
 

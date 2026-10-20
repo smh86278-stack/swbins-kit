@@ -239,6 +239,9 @@ def load_cfg() -> dict:
     cfg["default_workdir"] = kit.expand(cfg.get("default_workdir") or DEFAULT_CFG["default_workdir"])
     keys = cfg.get("workdir_keys")
     cfg["workdir_keys"] = {str(k): kit.expand(v) for k, v in keys.items() if v} if isinstance(keys, dict) else {}
+    # '@hub' — 허브 폴더(자동화 파일·AUTHORING.md·runner.py 가 있는 곳). 허브 「말로 부탁하기」·「🩹 고쳐 달라기」가 이 키로 보낸다.
+    # 설정에 없으면 기본으로 둔다 — 없을 땐 기본 폴더(문서)에서 일해 자동화 파일을 엉뚱한 곳에 만들었다(2026-10-20)
+    cfg["workdir_keys"].setdefault("hub", kit.HERE)
     cfg["folders"] = list(cfg.get("folders") or ["INBOX"])
     cfg["allowed_senders"] = [str(a).strip() for a in (cfg.get("allowed_senders") or []) if str(a).strip()]
     cfg["tag"] = cfg.get("tag") or (cfg.get("tags") or ["#c"])[0]   # 회신·안내 문구에 쓰는 대표 태그

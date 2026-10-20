@@ -1025,7 +1025,8 @@ class Config(unittest.TestCase):
         self.assertFalse(cfg["enabled"])
         self.assertEqual(cfg["folders"], ["INBOX"])
         self.assertEqual(cfg["allowed_senders"], [])
-        self.assertEqual(cfg["workdir_keys"], {})
+        # 허브 폴더 '@hub' 는 설정이 없어도 기본으로(허브 「말로 부탁하기」가 그 키로 보낸다, 2026-10-20)
+        self.assertEqual(cfg["workdir_keys"], {"hub": mg.kit.HERE})
         self.assertEqual(cfg["reply_mode"], "smtp")
         self.assertEqual(cfg["imap_host"], "")                    # 회사 서버를 기본값으로 두지 않는다
         self.assertEqual(cfg["tag"], "#c")
@@ -1046,7 +1047,7 @@ class Config(unittest.TestCase):
         self.assertEqual(cfg["imap_host"], "imap.example.com")
         self.assertEqual(cfg["allowed_senders"], ["me@example.com"])
         self.assertEqual(cfg["default_workdir"], os.path.join(self.tmp, "work"))
-        self.assertEqual(cfg["workdir_keys"], {"docs": os.path.join(self.tmp, "docs")})
+        self.assertEqual(cfg["workdir_keys"], {"docs": os.path.join(self.tmp, "docs"), "hub": mg.kit.HERE})
         self.assertEqual(cfg["folders"], ["INBOX", "Sent-to-self"])
         self.assertEqual((cfg["reply_mode"], cfg["tag"]), ("append", "!a"))
 

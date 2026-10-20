@@ -199,7 +199,7 @@ pre#log .ln{animation:fadein .35s ease both}
         <div class="row"><select id="askWhen" class="grow">
             <option value="">언제 — 내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select>
           <button id="askBtn" class="pri">대화로 부탁하기</button></div>
-        <small class="mk-note" id="askOn">누르면 대화로 바로 보내지고, 대화 창에서 진행을 볼 수 있어요. 다 되면 🏠 허브 목록에 나타나요</small>
+        <small class="mk-note" id="askOn">누르면 대화로 바로 보내져요. Claude 가 만든 뒤 <b>스스로 시험해 보고, 안 되면 고쳐서</b> 결과를 대화로 알려 줘요(메일 보내기·제출 같은 건 시험 때 건너뜀). 다 되면 🏠 허브 목록에 나타나요</small>
         <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있어요. 지금은 이 PC 의 Claude Code 에 같은 말로 부탁하면 됩니다 — 위 단추로 부탁 글만 복사할 수 있어요.</div>
       </div>
       <details class="mk-adv">
@@ -482,16 +482,16 @@ if(document.body.classList.contains('view-make')){checkChat();setInterval(checkC
 $('#askBtn').onclick=guard(async()=>{
   const what=$('#askWhat').value.trim();if(!what)throw new Error('무엇을 해 줄지 적어 주세요');
   const when=$('#askWhen').value,btn=$('#askBtn');
-  // 한 칸에 여러 가지 일을 적을 수 있다 — 일마다 자동화를 따로(허브 목록에 따로 보이게). 한 일 안의 조건은 하나로 둔다
-  const text='자동화 허브에 자동화 만들어줘 — '+what+(when?'\n언제: '+when+' 자동 실행':'')+'\n(여러 가지 일을 적었으면 일마다 자동화를 따로 만들어 줘 — 한 일 안의 조건 분기는 하나로)'+'\n(비밀번호가 필요하면 secret 으로, 값은 내가 넣을게)';
+  // 부탁 글은 허브가 만든다(ask_prompt) — 작성 안내서(AUTHORING.md)·시험 실행 명령을 넣어 '만들기 → 시험 → 고치기' 로 돌게
   if(chatUp){
     btn.disabled=true;btn.textContent='보내는 중…';
-    try{await api('/api/ask',{text})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
+    try{await api('/api/ask',{what,when,send:true})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
     $('#askWhat').value='';$('#askWhen').value='';
     toast('부탁을 보냈어요 — 대화에서 진행을 볼 수 있어요');
     window.open(CHAT_URL,'_blank');
     return;
   }
+  const {text}=await api('/api/ask',{what,when});
   try{await navigator.clipboard.writeText(text)}catch(e){prompt('이 글을 복사해 붙여 넣으세요',text)}
   toast('부탁 글을 복사했어요 — Claude Code 에 Ctrl+V 로 붙여 넣으세요');
 });

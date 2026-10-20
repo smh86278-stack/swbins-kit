@@ -884,6 +884,34 @@ rec = {'proc': None}
 CHAT_URL = 'http://127.0.0.1:%d' % int(os.environ.get('DISPATCH_CHAT_PORT') or 8620)   # 디스패치 대화(tools\dispatch-chat) — 같은 환경변수로 포트를 바꾼다
 
 
+AUTHORING = os.path.join(HERE, 'AUTHORING.md')   # Claude 가 자동화를 만들고·시험하고·고칠 때 따르는 안내서
+
+
+def test_python():
+    """시험 실행(runner.py --test)에 쓸 파이썬 — 허브를 돌리는 그 파이썬(트레이는 pythonw 라 콘솔판 python 으로)."""
+    exe = sys.executable or 'python'
+    con = os.path.join(os.path.dirname(exe), 'python.exe')
+    return con if os.path.basename(exe).lower() == 'pythonw.exe' and os.path.isfile(con) else exe
+
+
+def build_steps():
+    """말로 부탁하기·고쳐 달라기 공통 — 안내서·시험 명령·'만들기 → 시험 → 고치기(최대 3번) → 쉬운 말 보고'."""
+    return ('먼저 %s 를 읽고 그 순서대로 해 줘 — 만들기 → 시험 실행으로 확인 → 실패하면 고쳐서 다시(최대 3번) → 쉬운 말로 보고.\n'
+            '시험 실행: cd "%s" 한 뒤 "%s" runner.py --test macros.local\\<파일>.py\n'
+            '(되돌릴 수 없는 동작 — 메일 보내기·제출·삭제 — 은 ctx.for_real(...) 로 감싸 시험 때는 건너뛰게. 비밀번호는 ctx.secret 으로, 값은 내가 넣을게)'
+            % (AUTHORING, HERE, test_python()))
+
+
+def ask_prompt(what, when=''):
+    """🛠 「말로 부탁하기」 부탁 글 — 화면이 아니라 허브가 만든다(안내서·시험 파이썬 경로를 정확히 넣으려고)."""
+    what = (what or '').strip()
+    if not what:
+        raise ValueError('무엇을 해 줄지 적어 주세요')
+    return ('자동화 허브에 자동화 만들어줘 — %s%s\n'
+            '(여러 가지 일을 적었으면 일마다 자동화를 따로 만들어 줘 — 한 일 안의 조건 분기는 하나로)\n%s'
+            % (what, ('\n언제: %s 자동 실행' % when.strip()) if (when or '').strip() else '', build_steps()))
+
+
 def ask_chat(text):
     """🛠 만들기 「말로 부탁하기」 — 부탁 글을 디스패치 대화로 바로 보낸다(쓰기 지시, 작업 폴더 hub 가 있으면 거기).
     대화 앱 POST 는 시작할 때마다 새로 만드는 토큰을 화면(GET /)에만 심어 둔다 — 같은 PC 의 허브가 그 화면을 읽어 토큰을 얻는다.
@@ -942,10 +970,11 @@ def fix_text(run_id):
     return ('자동화 허브의 자동화가 실패했어 — 원인을 찾아 고쳐줘.\n'
             '자동화: %s\n파일: %s\n결과: %s (%s 실행%s)\n'
             '로그 끝 %d줄:\n%s\n'
-            '(사이트 화면이 바뀌어 요소를 못 찾은 거면 그 화면을 열어 보고 선택자를 고쳐 줘. 고친 뒤 한 번 돌려 보고 결과를 알려 줘. '
-            '이 파일 말고는 고치지 말고, 비밀번호가 필요하면 secret 으로 — 값은 내가 넣을게)'
+            '(사이트 화면이 바뀌어 요소를 못 찾은 거면 그 화면을 열어 보고 선택자를 고쳐 줘. 이 파일 말고는 고치지 마. '
+            '로그인 만료·네트워크처럼 코드 밖 문제면 고치지 말고 그렇다고 알려 줘)\n%s'
             % (m['name'], m['path'], '시간 초과' if r.status == 'timeout' else '오류', when,
-               ', 종료 코드 %s' % r.code if r.code not in (None, 0) else '', len(tail), '\n'.join(tail) or '(로그 없음)'))
+               ', 종료 코드 %s' % r.code if r.code not in (None, 0) else '', len(tail), '\n'.join(tail) or '(로그 없음)',
+               build_steps()))
 
 
 def record_web(url, name):
@@ -1289,11 +1318,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/record/web':
             err = record_web(body.get('url', '').strip(), body.get('name', ''))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True})
-        if path == '/api/ask':                        # 🛠 만들기 「말로 부탁하기」 — 디스패치 대화(8620)로 바로 보낸다 {"text"}
+        if path == '/api/ask':                        # 🛠 만들기 「말로 부탁하기」 {"what", "when", "send"} — send 면 디스패치 대화(8620)로, 아니면 부탁 글만
             try:
-                return self._send(200, ask_chat(body.get('text', '')))
+                text = ask_prompt(body.get('what'), body.get('when')) if 'what' in body else str(body.get('text') or '')
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            if 'what' in body and not body.get('send'):
+                return self._send(200, {'text': text})
+            try:
+                return self._send(200, dict(ask_chat(text), text=text))
             except Exception as e:
-                return self._send(502, {'error': str(e)})
+                return self._send(502, {'error': str(e), 'text': text})
         if path == '/api/fix':                        # 🩹 고쳐 달라기 {"id", "send"} — send 면 대화로 보내고, 아니면 부탁 글만
             try:
                 text = fix_text(body.get('id'))

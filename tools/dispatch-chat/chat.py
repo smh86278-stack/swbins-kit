@@ -306,7 +306,9 @@ def read_kit_cfg():
     home_raw = d.get("default_workdir") or KIT_DEFAULT_WORKDIR
     norm = lambda p: os.path.normcase(expand(p)).rstrip("\\/")
     home, seen, keys = norm(home_raw), set(), []
-    for k, p in (d.get("workdir_keys") if isinstance(d.get("workdir_keys"), dict) else {}).items():
+    wk = dict(d.get("workdir_keys") if isinstance(d.get("workdir_keys"), dict) else {})
+    wk.setdefault("hub", os.path.join(REPO_ROOT, "tools", "macro-hub"))   # 게이트웨이 load_cfg 와 같게 — 허브 폴더 '@hub' 는 기본으로
+    for k, p in wk.items():
         if not p:
             continue
         if norm(p) == home:

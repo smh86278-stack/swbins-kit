@@ -160,7 +160,7 @@ class Config(unittest.TestCase):
         self.assertEqual(src, "kit")
         self.assertEqual((cfg["user"], cfg["imap_host"], cfg["password_enc"]), ("me@example.com", "imap.example.com", "x"))
         self.assertEqual(cfg["folders"], ["INBOX", "Sent-to-self"])
-        self.assertEqual(cfg["workdir_keys"], ["docs"])
+        self.assertEqual(cfg["workdir_keys"], ["docs", "hub"])       # 허브 폴더는 기본으로
         # 키트의 범용 이름 → 이 앱의 이슈 칸. 명령이 없으면 게이트웨이 기본값(/issue)
         self.assertEqual((cfg["jira_prefix"], cfg["issue_command"], cfg["send_mode"]), ("PROJ-", "/issue", "append"))
         # 기본 폴더 — 게이트웨이와 같은 기본값(%USERPROFILE%\Documents)을 풀어서
@@ -183,7 +183,7 @@ class Config(unittest.TestCase):
                            "issue_prefix": "PROJ-", "issue_command": "/task", "keyed_senders": {"p@example.com": "w"}})
         cfg, src = chat.load_cfg()
         self.assertEqual(src, "kit")
-        self.assertEqual(cfg["workdir_keys"], ["web"])                       # 기본 폴더와 같은 키는 칩에서 빼고
+        self.assertEqual(cfg["workdir_keys"], ["web", "hub"])                       # 기본 폴더와 같은 키는 칩에서 빼고
         self.assertEqual(chat.default_folder(cfg, False), ("home", main))    # 기본 폴더 칩에 그 이름
         self.assertEqual(chat.compose(cfg, {"jira": "5"}, [])[0], "#cw /task PROJ-5")
         r = chat_runner.Runner(chat, root=os.path.join(self.tmp, "runner"))
