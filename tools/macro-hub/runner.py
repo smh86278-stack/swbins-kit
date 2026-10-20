@@ -133,9 +133,12 @@ class Ctx:
             safe = re.sub(r'[^\w\-]+', '_', self.macro or 'default')
             profile = os.path.join(HERE, 'profiles', safe)
             os.makedirs(profile, exist_ok=True)
+            headless = bool(self.meta.get('headless', False))
+            # 창이 보이면 창 크기를 그대로 쓰고(no_viewport), headless 면 화면 크기를 정해 준다 —
+            # headless 에 no_viewport 를 주면 화면 크기가 없어 모든 요소가 '안 보임'이 된다(wait_for_selector 가 늘 시간 초과).
+            size = {'no_viewport': True} if not headless else {'viewport': {'width': 1280, 'height': 900}}
             self._browser_ctx = self._pw.chromium.launch_persistent_context(
-                profile, channel=self.meta.get('channel', 'chrome'),
-                headless=bool(self.meta.get('headless', False)), no_viewport=True)
+                profile, channel=self.meta.get('channel', 'chrome'), headless=headless, **size)
             self._browser_ctx.set_default_timeout(int(self.meta.get('web_timeout', 30)) * 1000)
         pages = self._browser_ctx.pages
         return pages[0] if pages else self._browser_ctx.new_page()
