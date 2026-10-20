@@ -570,10 +570,12 @@ def new_job(prompt, workdir, label, msg_id, subject, sender, mode="read", cfg=No
         tools = cfg.get("write_tools")
         if tools:
             job["allowed_tools"] = list(tools)
-        # 이슈 처리 명령('#cw /issue PROJ-123' — 폰 디스패치 페이지·대화 앱의 '이슈' 칸)은 issue_tools ·
+        # 이슈 처리 명령('#cw /issue PROJ-123' — 폰 디스패치 페이지·대화 앱의 '이슈' 칸, 또는 본문 어느 줄이든)은 issue_tools ·
         # issue_disallowed_tools 로 돈다(이슈 조회 도구가 필요하고, 무인 실행이라 밖으로 내보내는 명령은 막아 둘 수 있다).
         # issue_prefix 가 비어 있으면 이 기능은 꺼져 있고 평범한 쓰기 지시로 돈다.
-        if is_issue_prompt(prompt, cfg):
+        ip = issue_prompt(prompt, cfg) if not resume_id else None
+        if ip:
+            job["prompt"] = ip
             if cfg.get("issue_tools"):
                 job["allowed_tools"] = list(cfg["issue_tools"])
             if cfg.get("issue_disallowed_tools") and not disallowed_tools:
@@ -827,6 +829,7 @@ def is_progress_ask(said: str) -> bool:
 GRANT_CEILING = ("Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash")
 GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash"}   # 고르면 대화가 수정 모드가 된다
 GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
+GRANT_EXTRA = "🔓 막힌 권한 허용하고 이어서 하기"   # Claude 가 먼저 물었을 때 그 선택지 끝에 붙이는 한 줄(grant_pick)
 _SAFE_RULE = re.compile(r"^[^\"'`\r\n()&|^%<>;$\\]{1,200}$")   # (cmd.exe·셸이 해석하는 & | ^ % < > ; $ \ 도 없음)       # 워커 ToolPattern 이 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음)
 
 
@@ -946,13 +949,25 @@ def early_stops() -> dict:
 
 
 
-def is_issue_prompt(prompt, cfg) -> bool:
-    """'/issue PROJ-123' 처럼 이슈 처리 명령 하나뿐인 지시인가. issue_prefix 가 비어 있으면 늘 False(기능 꺼짐)."""
+def issue_prompt(prompt, cfg):
+    """지시문 어느 줄이든 '/issue PROJ-123' 처럼 이슈 처리 명령으로 시작하면 '/issue 키' (+ 빈 줄 + 나머지 말)로 맞춘 지시문,
+    아니면 None. 제목이든 본문이든, 같은 줄·다른 줄의 나머지 말은 덧붙인 요청이다. 키는 대문자로.
+    issue_prefix 가 비어 있으면 늘 None(기능 꺼짐)."""
     cfg = cfg or {}
     cmd = str(cfg.get("issue_command") or "").strip()
     if not str(cfg.get("issue_prefix") or "").strip() or not cmd:
-        return False
-    return re.match(r"^%s\s+%s\s*$" % (re.escape(cmd), ISSUE_KEY_RE), prompt or "") is not None
+        return None
+    prompt = prompt or ""
+    # 키 모양은 ISSUE_KEY_RE 와 같고 소문자도 받는다(아래에서 대문자로)
+    m = re.search(r"^[ \t]*%s[ \t]+([A-Za-z][A-Za-z0-9_]*-\d+)\b(.*)$" % re.escape(cmd), prompt, re.M)
+    if not m:
+        return None
+    rest = "\n".join(p for p in (prompt[:m.start()].strip(), m.group(2).strip(), prompt[m.end():].strip()) if p)
+    return "%s %s" % (cmd, m.group(1).upper()) + ("\n\n" + rest if rest else "")
+
+
+def is_issue_prompt(prompt, cfg) -> bool:
+    return issue_prompt(prompt, cfg) is not None
 
 
 def iter_jobs():
@@ -1040,11 +1055,13 @@ def reply_text(body: str) -> str:
     return "\n".join(l for l in body.splitlines() if not l.lstrip().startswith(">")).strip()
 
 
-def parse_answer(text: str, ask):
-    """번호 답('1,3' · '2번' · '1 3' · '4 이건 이렇게')을 선택지 내용으로 푼다. 번호 답이 아니면 None."""
+def answer_picks(text: str, ask):
+    """번호 답을 (고른 번호들, 첫 줄 번호 뒤의 말, 나머지 줄)로. 번호 답이 아니거나 없는 번호면 None."""
     if not ask or not text:
         return None
     lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        return None
     first, more = lines[0], lines[1:]
     if re.fullmatch(r"[1-9](\s+[1-9])+", first):          # '1 3'
         nums, rest = first.split(), ""
@@ -1060,6 +1077,15 @@ def parse_answer(text: str, ask):
             return None
         if i not in picked:
             picked.append(i)
+    return picked, rest, more
+
+
+def parse_answer(text: str, ask):
+    """번호 답('1,3' · '2번' · '1 3' · '4 이건 이렇게')을 선택지 내용으로 푼다. 번호 답이 아니면 None."""
+    got = answer_picks(text, ask)
+    if not got:
+        return None
+    picked, rest, more = got
     out = "사용자 답(번호 선택): " + " / ".join("☑ %d. %s" % (i, ask["options"][i - 1]) for i in picked)
     if not ask.get("multi") and len(picked) > 1:
         out += "\n(한 개만 고르는 질문이었지만 여러 개를 골랐다)"
@@ -1088,11 +1114,12 @@ def reply_subject(job: dict) -> str:
 
 def mailto(cfg: dict, job: dict, body: str) -> str:
     """'한 번에 답장' 링크 — 누르면 제목(태그·스레드 표식)과 본문이 채워진 메일 작성 화면이 열린다.
-    폰(개인 주소, keyed_senders)이 보낸 지시면 제목 끝에 그 암호 단어를 붙여 폰 메일 앱에서 단추만 눌러도 받아지게 한다."""
+    폰(개인 주소, keyed_senders)이 보낸 지시면 본문 마지막 줄에 그 암호 단어를 붙여 폰 메일 앱에서 단추만 눌러도 받아지게 한다.
+    제목에 붙이면 스팸 장비가 의심 점수를 올린다 — 본문으로 옮김."""
     subject = reply_subject(job)
     word = word_for_reply(cfg, job.get("mail_from"))     # require_word_all 이면 회사 주소도 회사 단어
     if word:
-        subject += " [k:%s]" % word
+        body = (body or "").rstrip() + "\n\n[k:%s]" % word
     return "mailto:%s?subject=%s&body=%s" % (cfg.get("user") or "", quote(subject), quote(body))
 
 
@@ -1722,7 +1749,12 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         said = "멈춤"
                     prompt = (parse_answer(said, prev.get("ask")) or said or prompt)[: int(cfg["max_prompt_chars"])]
                     # 권한 질문(grant_ask)에 대한 답 — 허용이면 그 규칙을 더한 도구 목록으로, 수정 도구가 끼면 수정 모드로(폴더 정책도 그 기준으로 본다)
-                    decision = grant_answer(said) if prev.get("grant") else None
+                    if prev.get("grant") and prev.get("grant_pick"):
+                        # Claude 질문 끝에 붙인 '🔓 허용' 줄 — 그 번호를 골랐을 때만 허용(다른 번호는 평소 답)
+                        picks = answer_picks(said, prev.get("ask"))
+                        decision = "allow" if picks and prev["grant_pick"] in picks[0] else None
+                    else:
+                        decision = grant_answer(said) if prev.get("grant") else None
                     if decision == "allow":
                         tools = list(prev.get("tools_used") or prev.get("allowed_tools") or [])
                         tools += [r for r in prev["grant"] if r not in tools]
@@ -1731,6 +1763,10 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                             mode = "write"
                         prompt = ("사용자가 디스패치 대화에서 권한을 허용했다: %s. 아까 권한이 없어 못 한 일을 이어서 끝내라."
                                   % ", ".join(prev["grant"]))
+                        if prev.get("grant_pick"):
+                            other = parse_answer(said, prev.get("ask"))   # 다른 번호도 같이 골랐으면 그 답도 넘긴다
+                            if other and len(picks[0]) > 1:
+                                prompt += "\n" + other
                     elif decision == "deny":
                         prompt = "사용자가 권한을 허용하지 않았다. 그 일은 하지 말고, 권한 없이 할 수 있는 데까지만 정리해 답하라."
 
@@ -1819,8 +1855,8 @@ def reply_parts(job: dict):
     body, ask = parse_choices(job.get("result") or "")
     if job["status"] != "done":
         ask = None
-    if not ask and job.get("grant"):
-        ask = job.get("ask")                               # 권한 질문(send_replies 가 grant_ask 로 붙였다)
+    if job.get("grant") and job.get("ask"):
+        ask = job["ask"]                                   # 권한 질문, 또는 Claude 질문 끝에 '🔓 허용' 을 붙인 것(send_replies)
     text = format_reply(dict(job, result=body), footer=False)
     return ask, text, reply_footer(job)
 
@@ -2405,12 +2441,16 @@ def send_replies(cfg: dict, password: str) -> int:
                 ensure_thread(job, cfg)
                 # 번호 답을 풀 수 있게 이번 질문(선택지)을 잡에 남긴다 — 다음 답장이 이 잡을 이어받는다
                 job["ask"] = parse_choices(job.get("result") or "")[1] if job.get("status") == "done" else None
-                # Claude 가 따로 묻지 않았는데 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask)
+                # 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask). Claude 가 먼저 물었으면 그 선택지 끝에
+                # '🔓 막힌 권한 허용…' 한 줄을 붙인다 — 예전엔 Claude 질문만 남아, 그 안의 '권한 허용' 을 골라도 권한이 그대로였다
                 job.pop("grant", None)
-                if not job["ask"]:
-                    ask, grant = grant_ask(job)
-                    if grant:
-                        job["ask"], job["grant"] = ask, grant
+                job.pop("grant_pick", None)
+                ask, grant = grant_ask(job)
+                if grant and not job["ask"]:
+                    job["ask"], job["grant"] = ask, grant
+                elif grant and len(job["ask"]["options"]) < 9:
+                    job["ask"]["options"].append("%s (%s)" % (GRANT_EXTRA, ", ".join(grant)[:120]))
+                    job["grant"], job["grant_pick"] = grant, len(job["ask"]["options"])
                 msg, rmid = build_reply_message(cfg, job)
                 # 회사 모드 폴더의 일이면 폰엔 내용 없는 알림만(결과·선택지 글자는 회사 메일함에만)
                 company = is_company_job(cfg, job) and not job.get("policy_denied")   # 정책 거절 이유는 폰에도 그대로

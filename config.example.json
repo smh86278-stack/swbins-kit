@@ -152,7 +152,7 @@
     "junk_folders": [],
     "_gmail_설명": "Gmail 직접 읽기 — 회사 스팸 장비가 외부 Gmail(API) 로 보낸 새 지시를 몇 분씩 붙잡는 경우, 폰 페이지가 지시를 '나에게' 보내고 PC 가 Gmail 받은편지함을 바로 읽는다(그 주소 자신이 보낸 메일 + 암호 단어만). 받은 지시는 대화 앱이 보도록 회사 INBOX 에 사본을 넣는다. 손으로 채우지 말고 'python mail-gateway.py --setup-gmail' 로 — Google 계정의 2단계 인증을 켜고 만든 '앱 비밀번호'를 넣으면 {\"user\", \"password_enc\"} 가 들어간다. 그 Gmail 주소는 keyed_senders 에도 있어야 한다.",
     "gmail": {},
-    "_issue_설명": "이슈 처리 칸 — issue_prefix(예: \"PROJ-\")를 넣어야 켜진다. '#cw <issue_command> PROJ-123' 메일은 issue_tools · issue_disallowed_tools 로 돈다(비면 write_tools). issue_command 는 그 이슈를 처리할 Claude Code 스킬(슬래시 명령) 이름. issue_tools 에 MCP 도구를 넣었다면 extra_tools 에도 넣는다.",
+    "_issue_설명": "이슈 처리 칸 — issue_prefix(예: \"PROJ-\")를 넣어야 켜진다. '#cw <issue_command> PROJ-123' 메일(그 줄이 제목이든 본문 어느 줄이든 — 나머지 말은 덧붙인 요청)은 issue_tools · issue_disallowed_tools 로 돈다(비면 write_tools). issue_command 는 그 이슈를 처리할 Claude Code 스킬(슬래시 명령) 이름. issue_tools 에 MCP 도구를 넣었다면 extra_tools 에도 넣는다.",
     "issue_prefix": "",
     "issue_command": "/issue",
     "issue_tools": [],

@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import chat  # noqa: E402
 import chat_runner as runner  # noqa: E402
 import jira_watch as jw  # noqa: E402
-from test_chat_runner import FAKE_CLAUDE, FakeIMAP, ME  # noqa: E402
+from test_chat_runner import FAKE_CLAUDE, FakeIMAP, ME, add, mail  # noqa: E402
 
 URL = "https://jira.example.com"
 
@@ -215,9 +215,13 @@ class JiraWatchTest(unittest.TestCase):
         r = self.poll()
         self.assertEqual(r["queued"], ["PROJ-21"])
         j = self.r.iter_jobs()[0]
-        self.assertEqual((j["status"], j["mode"], j["prompt"], j["workdir"]), ("queued", "write", "/jira PROJ-21", self.work))
-        self.assertEqual(j["allowed_tools"], runner.JIRA_TOOLS)
-        self.assertEqual(j["disallowed_tools"], runner.JIRA_DENY)
+        self.assertEqual((j["status"], j["mode"], j["prompt"].split("\n")[0], j["workdir"]), ("queued", "write", "/jira PROJ-21", self.work))
+        # 자리비움 — 분석·수정안까지만: 파일 도구 없이·git 바꾸기 막고, 사람이 답하면 평소 권한(after_*)으로
+        self.assertIn(jw.AWAY_NOTE, j["prompt"])
+        self.assertEqual(j["allowed_tools"], [t for t in runner.JIRA_TOOLS if t not in ("Write", "Edit")])
+        self.assertEqual(j["disallowed_tools"], runner.JIRA_DENY + jw.AWAY_DENY)
+        self.assertIn("Bash(git push:*)", j["disallowed_tools"])
+        self.assertEqual((j["after_tools"], j["after_disallowed"]), (runner.JIRA_TOOLS, runner.JIRA_DENY))
         self.assertTrue(j["mail_subject"].startswith("#cw [Jira 자동화] PROJ-21"))
         # 실행 → 회신(접수 신호·확인 없이). 답장으로 이어 말하면 같은 대화로 이어진다
         while self.r.run_next():
@@ -233,6 +237,12 @@ class JiraWatchTest(unittest.TestCase):
             call = json.loads(f.readline())
         self.assertIn("--disallowedTools", call["args"])
         self.assertEqual(os.path.normcase(call["cwd"]), os.path.normcase(self.work))
+        # 돌아온 사람이 답하면 — 그때부터 평소 Jira 권한(파일 도구 · git 허용)으로 이어 간다
+        add(self.box, mail(subj, "1 적용해 줘", reply_to=email.message_from_bytes(raw)["Message-ID"])[0])
+        self.r.cycle()
+        (nxt,) = [x for x in self.r.iter_jobs() if x.get("resume_id")]
+        self.assertEqual((nxt["allowed_tools"], nxt["disallowed_tools"]), (runner.JIRA_TOOLS, runner.JIRA_DENY))
+        self.assertFalse(nxt.get("away"))
 
     def test_cost_limit_stops_queueing(self):
         """하루 비용 한도에 닿으면 자리비움이어도 넣지 않고 처리됨으로만 + 이유 알림 — 이 PC 의 작업 큐·설정으로 센다."""

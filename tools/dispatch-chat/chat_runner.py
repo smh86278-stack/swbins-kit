@@ -65,14 +65,18 @@ BROWSER_CDP = "http://127.0.0.1:9333"   # 로그인 창(이 포트로 연다)이
 # 거부 목록은 밖으로 내보내는 명령(앞부분 일치라 python -c 같은 우회까지 막지는 못한다). rtk 훅이 'rtk <명령>' 으로 바꿔 쓰므로 둘 다.
 # 스킬이 curl 로 Jira REST 를 부르면 설정 run_jira_allow_net 으로 거부 목록을 뺀다.
 # Skill·Agent — 스킬이 다음 스킬로 이어 가거나 하위 에이전트에 조사를 맡길 수 있게
-JIRA_PROMPT_RE = re.compile(r"^/jira\s+([A-Z][A-Z0-9_]*-\d+)\s*$")   # 키트 게이트웨이 ISSUE_KEY_RE·입력칸과 같은 이슈 키 모양
+# 지시문 어느 줄이든 '/jira 키'(또는 이슈 명령)로 시작하면 — 제목이든 본문이든. 같은 줄·다른 줄의 나머지 말은 덧붙인 요청으로 넘긴다.
+# 키 모양은 키트 게이트웨이 ISSUE_KEY_RE·입력칸과 같게, 소문자로 와도 대문자로 맞춘다
+ISSUE_LINE = r"^[ \t]*%s[ \t]+([A-Za-z][A-Za-z0-9_]*-\d+)\b(.*)$"
+JIRA_PROMPT_RE = re.compile(ISSUE_LINE % "/jira", re.M)
 SKILL_RE = re.compile(r"^[A-Za-z0-9][\w.-]{0,63}$")
 JIRA_TOOLS = ["Read", "Write", "Bash", "Glob", "Grep", "Edit", "Skill", "Agent",
               "mcp__jira__jira_get_issue", "mcp__jira__jira_search", "mcp__jira__jira_get_transitions"]
 JIRA_DENY = ["Bash(%s%s:*)" % (p, c) for c in ("curl", "wget", "Invoke-WebRequest", "Invoke-RestMethod", "iwr", "irm",
                                                "nc", "ncat", "ssh", "scp", "sftp", "ftp", "telnet") for p in ("", "rtk ")] \
     + ["Bash(rtk proxy:*)"]
-JIRA_MCP_ARGS = ["mcp-atlassian@0.23.1", "--transport", "stdio", "--read-only"]
+# 읽기 전용(--read-only)을 뺐다 — 쓰기 도구는 allowedTools 에 없으면 dontAsk 로 막히고, '🔓 허용'(JIRA_WRITE)으로만 열린다(2026-10-20)
+JIRA_MCP_ARGS = ["mcp-atlassian@0.23.1", "--transport", "stdio"]
 JIRA_NO_SKILL = ("Jira 이슈 %s 를 처리해 줘. mcp__jira__jira_get_issue 로 이슈(설명·댓글)를 읽고 무엇을 해야 하는지 정리한 뒤, "
                  "이 폴더의 코드에서 고칠 곳을 찾아. 고치기 전에 방향을 choices 로 물어봐.")   # 작업 폴더에 jira 스킬이 없을 때
 TOOL_RE = re.compile(r"^[A-Za-z0-9_]+(\([^\"'`\r\n]*\))?$")      # 명령줄에 붙이기 전에 거른다(워커 Test-JobInputs 와 같은 규칙)
@@ -112,10 +116,14 @@ CONFIRM_NO = {"2", "취소", "no", "n", "아니오", "아니요", "x", "stop", "
 # 권한 요청 — claude -p 는 dontAsk 라 허용 목록 밖 도구를 묻지 않고 거부한다(결과의 permission_denials).
 # 그 거부를 선택지 질문으로 바꿔 '허용하고 이어서 하기'를 고르면 그 권한만 더해 같은 세션을 이어 간다(게이트웨이 mail-gateway.py 와 같은 흐름).
 # 상한은 이 실행기가 쓰는 쓰기 도구 + 전용 브라우저 — 여기 없는 도구는 묻지도 않는다.
-# (게이트웨이 GRANT_CEILING 은 인박스 워커 상한 7개라 더 좁다 — 이 실행기는 쓰기 지시에 Skill·WebFetch·WebSearch·브라우저까지 쓴다)
-GRANT_CEILING = tuple(WRITE_TOOLS) + (BROWSER_TOOL,)
-GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash", "Skill", "WebFetch", "WebSearch", BROWSER_TOOL}   # 고르면 대화가 수정 모드가 된다
+# (게이트웨이 GRANT_CEILING 은 인박스 워커 상한이라 더 좁다 — 이 실행기는 쓰기 지시에 Skill·WebFetch·WebSearch·브라우저까지 쓴다)
+# Jira 쓰기 — 처음엔 어느 작업에도 없고, 막혔을 때 '🔓 허용' 을 골라야 그 대화에서만 열린다(댓글·필드·상태만, 게이트웨이와 같게)
+JIRA_WRITE = {"mcp__jira__jira_add_comment": "Jira 댓글 달기", "mcp__jira__jira_update_issue": "Jira 필드 바꾸기",
+              "mcp__jira__jira_transition_issue": "Jira 상태 바꾸기"}
+GRANT_CEILING = tuple(WRITE_TOOLS) + (BROWSER_TOOL,) + tuple(JIRA_WRITE)
+GRANT_WRITE = {"Edit", "Write", "NotebookEdit", "Bash", "Skill", "WebFetch", "WebSearch", BROWSER_TOOL} | set(JIRA_WRITE)   # 고르면 대화가 수정 모드가 된다
 GRANT_OPTIONS = ["허용하고 이어서 하기", "허용하지 않음"]
+GRANT_EXTRA = "🔓 막힌 권한 허용하고 이어서 하기"   # Claude 가 먼저 물었을 때 그 선택지 끝에 붙이는 한 줄(grant_pick)
 _SAFE_RULE = re.compile(r"^[^\"'`\r\n()&|^%<>;$\\]{1,200}$")   # TOOL_RE 가 받는 괄호 속 글자(따옴표·줄바꿈·괄호 없음,
 #                                                         cmd.exe·셸이 해석하는 & | ^ % < > ; $ \ 도 없음 — 2026-10-19 보안 점검)
 
@@ -146,6 +154,9 @@ def grant_rules(denials):
             path = str(inp.get("file_path") or inp.get("notebook_path") or "")
             rule, desc = name, {"Write": "파일 만들기·덮어쓰기", "Edit": "파일 고치기", "NotebookEdit": "노트북 고치기"}[name] + (
                 " (예: %s)" % path if path else "")
+        elif name in JIRA_WRITE:
+            key = str(inp.get("issue_key") or "")
+            rule, desc = name, JIRA_WRITE[name] + (" (%s)" % key if re.fullmatch(r"[A-Z][A-Z0-9_]*-\d+", key) else "")
         else:
             rule, desc = name, name
         if grant_base(rule) not in GRANT_CEILING or rule in seen:
@@ -196,15 +207,17 @@ def split_subject_key(subject):
 
 
 def jira_key_of(prompt, cfg):
-    """'/jira 키' — 또는 설정의 이슈 명령(issue_command, 예: '/issue')으로 온 이슈 처리 지시면 그 키, 아니면 None."""
-    mj = JIRA_PROMPT_RE.match(prompt or "")
-    if mj:
-        return mj.group(1)
+    """'/jira 키' — 또는 설정의 이슈 명령(issue_command, 예: '/issue')으로 시작하는 줄이 있는 이슈 처리 지시면
+    (대문자 키, 나머지 말), 아니면 None. 나머지 말은 그 줄 앞뒤·같은 줄 뒤의 말을 합친 것(덧붙인 요청)."""
+    prompt = prompt or ""
+    m = JIRA_PROMPT_RE.search(prompt)
     cmd = str(cfg.get("issue_command") or "").strip()
-    if cmd and cmd != "/jira" and re.fullmatch(r"/[\w.-]{1,64}", cmd):
-        m = re.match(r"^%s\s+([A-Z][A-Z0-9_]*-\d+)\s*$" % re.escape(cmd), prompt or "")
-        return m.group(1) if m else None
-    return None
+    if not m and cmd and cmd != "/jira" and re.fullmatch(r"/[\w.-]{1,64}", cmd):
+        m = re.search(ISSUE_LINE % re.escape(cmd), prompt, re.M)
+    if not m:
+        return None
+    rest = "\n".join(p for p in (prompt[:m.start()].strip(), m.group(2).strip(), prompt[m.end():].strip()) if p)
+    return m.group(1).upper(), rest
 
 
 def thread_of(subject):
@@ -235,8 +248,8 @@ def parse_choices(text):
     return t[:m.start()].rstrip(), {"question": q, "multi": bool(d.get("multi")), "options": opts}
 
 
-def parse_answer(text, ask):
-    """번호 답('1,3' · '2번' · '1 3' · '4 이건 이렇게')을 선택지 내용으로 푼다. 번호 답이 아니면 None."""
+def answer_picks(text, ask):
+    """번호 답을 (고른 번호들, 첫 줄 번호 뒤의 말, 나머지 줄)로. 번호 답이 아니거나 없는 번호면 None."""
     if not ask or not text:
         return None
     lines = [l.strip() for l in text.splitlines() if l.strip()]
@@ -257,6 +270,15 @@ def parse_answer(text, ask):
             return None
         if i not in picked:
             picked.append(i)
+    return picked, rest, more
+
+
+def parse_answer(text, ask):
+    """번호 답('1,3' · '2번' · '1 3' · '4 이건 이렇게')을 선택지 내용으로 푼다. 번호 답이 아니면 None."""
+    got = answer_picks(text, ask)
+    if not got:
+        return None
+    picked, rest, more = got
     out = "사용자 답(번호 선택): " + " / ".join("☑ %d. %s" % (i, ask["options"][i - 1]) for i in picked)
     if not ask.get("multi") and len(picked) > 1:
         out += "\n(한 개만 고르는 질문이었지만 여러 개를 골랐다)"
@@ -310,11 +332,12 @@ def reply_subject(job):
 
 
 def mailto(cfg, job, body):
-    """'한 번에 답장' 링크 — 제목(태그·대화 번호)과 본문이 채워진 메일 작성 화면. 암호 단어를 쓰면 제목 끝에 붙인다."""
+    """'한 번에 답장' 링크 — 제목(태그·대화 번호)과 본문이 채워진 메일 작성 화면. 암호 단어를 쓰면 본문 마지막 줄에 붙인다
+    (제목에 붙이면 스팸으로 빠지기 쉽다)."""
     subject = reply_subject(job)
     word = str(cfg.get("key_word") or "").strip()
     if word:
-        subject += " [k:%s]" % word
+        body = (body or "").rstrip() + "\n\n[k:%s]" % word
     return "mailto:%s?subject=%s&body=%s" % (cfg.get("user") or "", quote(subject), quote(body))
 
 
@@ -356,8 +379,8 @@ def reply_body(job):
         lines = ["실행에 실패했습니다.", "", job.get("error") or ""] + (["", job["result"]] if job.get("result") else [])
     else:
         lines = [body]
-    if not ask and job.get("grant"):
-        ask = job.get("ask")                               # 권한 질문(회신 때 grant_ask 로 붙였다)
+    if job.get("grant") and job.get("ask"):
+        ask = job["ask"]                                   # 권한 질문, 또는 Claude 질문 끝에 '🔓 허용' 을 붙인 것(회신 때)
     denied = sorted({d.get("tool_name", "?") for d in (job.get("denials") or []) if isinstance(d, dict)})
     if denied and job.get("grant"):
         lines += ["", "--", "권한이 없어 막힌 도구: %s — 위에서 허용하면 그 권한만 더해 이어서 합니다" % ", ".join(denied)]
@@ -697,7 +720,9 @@ class Runner:
         if cfg.get("run_jira") and cfg.get("run_jira_token_enc") and any(t.startswith("mcp__jira__") for t in tools):
             servers["jira"] = {"type": "stdio", "command": "uvx", "args": list(JIRA_MCP_ARGS),
                                "env": {"JIRA_URL": cfg.get("run_jira_url") or "",
-                                       "JIRA_PERSONAL_TOKEN": self.C.unprotect_secret(cfg["run_jira_token_enc"])}}
+                                       "JIRA_PERSONAL_TOKEN": self.C.unprotect_secret(cfg["run_jira_token_enc"]),
+                                       # 회사 TLS 검사 장비가 있으면 uvx 가 패키지를 못 받는다 — OS 인증서 저장소를 쓰게(2026-10-20 실측)
+                                       "UV_SYSTEM_CERTS": "true"}}
         if not servers:
             return ""
         self.C.write_json(base + ".mcp.json", {"mcpServers": servers})
@@ -1136,26 +1161,38 @@ class Runner:
             thread_no = prev.get("thread") or thread_no
             mode = prev.get("mode") or mode           # 대화는 처음 권한 그대로(수정 대화에 #c 로 답해도 읽기로 떨어지지 않게)
             tools = prev.get("allowed_tools")
+            if prev.get("away"):
+                # 자리비움 잡(분석만)에 사람이 답했다 — 이제 사람이 있으니 평소 Jira 권한으로(jira_watch.queue_here 가 적어 둔 값)
+                tools, denied = prev.get("after_tools") or tools, prev.get("after_disallowed") or []
             if prev.get("workdir"):
                 workdir, label = prev["workdir"], prev.get("workdir_label") or label
             if said.strip().lower() in STOP_WORDS:
                 said = "멈춤"
             prompt = (parse_answer(said, prev.get("ask")) or said or prompt)[:MAX_PROMPT]
-            # 권한 질문(grant_ask)에 대한 답 — 허용이면 그 규칙을 더한 도구 목록으로, 수정 도구가 끼면 수정 모드로
-            decision = grant_answer(said) if prev.get("grant") else None
+            # 권한 질문(grant_ask)에 대한 답 — 허용이면 그 규칙을 더한 도구 목록으로, 수정 도구가 끼면 수정 모드로.
+            # Claude 질문 끝에 붙인 '🔓 허용' 줄(grant_pick)이면 그 번호를 골랐을 때만
+            if prev.get("grant") and prev.get("grant_pick"):
+                picks = answer_picks(said, prev.get("ask"))
+                decision = "allow" if picks and prev["grant_pick"] in picks[0] else None
+            else:
+                decision = grant_answer(said) if prev.get("grant") else None
             if decision == "allow":
                 tools = list(tools or READ_TOOLS)
                 tools += [r for r in prev["grant"] if r not in tools]
                 if any(grant_base(r) in GRANT_WRITE for r in prev["grant"]):
                     mode = "write"
                 prompt = "사용자가 디스패치 대화에서 권한을 허용했다: %s. 아까 권한이 없어 못 한 일을 이어서 끝내라." % ", ".join(prev["grant"])
+                if prev.get("grant_pick") and len(picks[0]) > 1:
+                    prompt += "\n" + (parse_answer(said, prev.get("ask")) or "")   # 다른 번호도 같이 골랐으면 그 답도 넘긴다
                 C.log("[실행] 권한 허용 ← %s: %s" % (prev.get("id"), ", ".join(prev["grant"])))
             elif decision == "deny":
                 prompt = "사용자가 권한을 허용하지 않았다. 그 일은 하지 말고, 권한 없이 할 수 있는 데까지만 정리해 답하라."
         elif mode == "write":                         # 새 쓰기 지시 — 설정에서 켠 것만 더한다(이어서 하기는 처음 도구 그대로)
-            jkey = jira_key_of(prompt, cfg)
-            if jkey and cfg.get("run_jira"):
-                prompt, workdir, label, tools, denied = self.jira_parts(cfg, jkey, workdir, label)
+            jk = jira_key_of(prompt, cfg)
+            if jk and cfg.get("run_jira"):
+                prompt, workdir, label, tools, denied = self.jira_parts(cfg, jk[0], workdir, label)
+                if jk[1]:
+                    prompt += "\n\n" + jk[1]
             elif cfg.get("run_browser"):
                 tools = WRITE_TOOLS + [BROWSER_TOOL]
         with self.lock:
@@ -1394,15 +1431,19 @@ class Runner:
                         elif st in ("done", "error") and not j.get("replied"):
                             numbered(j)
                             j["ask"] = parse_choices(j.get("result") or "")[1] if st == "done" else None
-                            # Claude 가 따로 묻지 않았는데 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask)
-                            j["grant"] = []
-                            if not j["ask"]:
-                                ask, grant = grant_ask(j)
-                                if grant:
-                                    j["ask"], j["grant"] = ask, grant
+                            # 권한 때문에 막혔으면 '허용하고 이어서 하기' 를 묻는다(grant_ask). Claude 가 먼저 물었으면 그 선택지 끝에
+                            # '🔓 막힌 권한 허용…' 한 줄을 붙인다 — 그 번호를 고르면 권한이 더해진다(게이트웨이와 같게, 2026-10-20)
+                            j["grant"], j["grant_pick"] = [], None
+                            ask, grant = grant_ask(j)
+                            if grant and not j["ask"]:
+                                j["ask"], j["grant"] = ask, grant
+                            elif grant and len(j["ask"]["options"]) < 9:
+                                j["ask"]["options"].append("%s (%s)" % (GRANT_EXTRA, ", ".join(grant)[:120]))
+                                j["grant"], j["grant_pick"] = grant, len(j["ask"]["options"])
                             msg, mid = self.reply_message(cfg, j)
                             put(msg)
-                            self.update_job(j["id"], ask=j["ask"], grant=j["grant"], replied=True, reply_msgid=mid)
+                            self.update_job(j["id"], ask=j["ask"], grant=j["grant"], grant_pick=j["grant_pick"],
+                                            replied=True, reply_msgid=mid)
                             n += 1
                             C.log("[실행] 회신 %s (%s)" % (j["id"], st))
                     except Exception as e:

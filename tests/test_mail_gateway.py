@@ -238,7 +238,9 @@ class StripReplyPrefix(unittest.TestCase):
         cfg = {"user": "me@company.test", "keyed_senders": {"me@icloud.test": "abc123"}}
         phone = {"mail_subject": "#c [T3] 확인", "mail_from": "me@icloud.test"}
         corp = {"mail_subject": "#c [T3] 확인", "mail_from": "me@company.test"}
-        self.assertIn(mg.quote(" [k:abc123]"), mg.mailto(cfg, phone, "1"))
+        link = mg.mailto(cfg, phone, "1")
+        self.assertIn("body=" + mg.quote("1\n\n[k:abc123]"), link)          # 제목이 아니라 본문 마지막 줄(스팸 판정 피하기)
+        self.assertNotIn("k%3A", link.split("&body=")[0])
         self.assertNotIn("k%3A", mg.mailto(cfg, corp, "1"))
 
 
@@ -912,6 +914,15 @@ class ChatFlow(unittest.TestCase):
         self.assertEqual(job["disallowed_tools"], ["Bash(curl:*)"])
         self.assertEqual(job["status"], "awaiting_confirm")      # 쓰기 지시라 확인은 그대로 받는다
 
+    def test_issue_line_in_body(self):
+        # 이슈 명령이 본문에 있어도 이슈 처리 — 제목·나머지 말은 덧붙인 요청으로, 키는 대문자로
+        self.cfg.update(issue_prefix="PROJ-", issue_command="/issue", issue_tools=["Read", "mcp__tracker__get_issue"])
+        self._mail("1", "#cw 이거 봐줘", "/issue proj-2 급함", "<m1@x>")
+        mg.poll_once(self.cfg, "pw")
+        (job,) = self._jobs()
+        self.assertEqual(job["prompt"], "/issue PROJ-2\n\n이거 봐줘\n급함")
+        self.assertEqual(job["allowed_tools"], ["Read", "mcp__tracker__get_issue"])
+
     def test_issue_command_off_without_prefix(self):
         # issue_prefix 가 비면 이슈 기능은 꺼져 있다 — 평범한 쓰기 지시(write_tools)로 돈다
         self.cfg.update(issue_prefix="", issue_tools=["Read", "mcp__tracker__get_issue"])
@@ -1066,8 +1077,11 @@ class Config(unittest.TestCase):
         self.assertFalse(mg.is_issue_prompt("/issue PROJ-1", {"issue_command": "/issue"}))
         on = {"issue_prefix": "PROJ-", "issue_command": "/issue"}
         self.assertTrue(mg.is_issue_prompt("/issue PROJ-1", on))
-        self.assertFalse(mg.is_issue_prompt("/issue PROJ-1 그리고 rm -rf", on))
         self.assertFalse(mg.is_issue_prompt("/issuex PROJ-1", on))
+        self.assertFalse(mg.is_issue_prompt("어제 /issue PROJ-1 로 돌린 것 봐줘", on))   # 줄 앞이 아니면 평범한 지시
+        # 본문 어느 줄이든 — 나머지 말은 덧붙인 요청, 키는 대문자로
+        self.assertEqual(mg.issue_prompt("/issue proj-1 로그도 봐 줘", on), "/issue PROJ-1\n\n로그도 봐 줘")
+        self.assertEqual(mg.issue_prompt("부탁해요\n  /issue PROJ-2\n급함", on), "/issue PROJ-2\n\n부탁해요\n급함")
 
 
 class GrantFlow(unittest.TestCase):
@@ -1127,11 +1141,35 @@ class GrantFlow(unittest.TestCase):
         self.assertNotIn("allowed_tools", new)
         self.assertEqual(new["prompt"], "그냥 내용만 알려줘")
 
-    def test_claude_question_wins(self):
-        self._start('어디에?\n```choices\n{"question": "어느 폴더?", "options": ["docs", "tmp"]}\n```')
+    ASKED = '어디에?\n```choices\n{"question": "어느 폴더?", "options": ["docs", "tmp"]}\n```'
+
+    def test_claude_question_keeps_grant_line(self):
+        # Claude 가 먼저 물어도 끝에 '🔓 허용' 한 줄 — 예전엔 Claude 질문만 남아 그 안의 '허용' 을 골라도 권한이 그대로였다
+        reply = self._start(self.ASKED)
         (job,) = self._jobs()
-        self.assertNotIn("grant", job)
-        self.assertEqual(job["ask"]["options"], ["docs", "tmp"])
+        self.assertEqual(job["grant"], ["Write"])
+        self.assertEqual(job["grant_pick"], 3)
+        self.assertEqual(job["ask"]["options"][:2], ["docs", "tmp"])
+        self.assertTrue(job["ask"]["options"][2].startswith(mg.GRANT_EXTRA))
+        self.assertIn("☐ 3. " + mg.GRANT_EXTRA, reply.get_body(("plain",)).get_content())
+
+    def test_claude_question_grant_pick_allows(self):
+        self._start(self.ASKED)
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "1,3", "<m2@x>")      # docs + 허용
+        mg.poll_once(self.cfg, "pw")
+        (new,) = [j for j in self._jobs() if j["status"] == "queued"]
+        self.assertEqual(new["allowed_tools"], ["Read", "Glob", "Write"])
+        self.assertEqual(new["mode"], "write")
+        self.assertIn("허용했다: Write", new["prompt"])
+        self.assertIn("☑ 1. docs", new["prompt"])
+
+    def test_claude_question_other_pick_is_plain_answer(self):
+        self._start(self.ASKED)
+        self._mail("2", "Re: #c [T1] 메모 파일 만들어줘", "1", "<m2@x>")         # '1' 은 Claude 선택지 — 허용 아님
+        mg.poll_once(self.cfg, "pw")
+        (new,) = [j for j in self._jobs() if j["status"] == "queued"]
+        self.assertNotIn("allowed_tools", new)
+        self.assertIn("☑ 1. docs", new["prompt"])
 
     def test_folder_policy_still_applies(self):
         self.cfg["folder_policy"] = {"default": {"write_from": []}}    # 이 폴더는 수정 지시를 아무 데서도 안 받는다

@@ -321,10 +321,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(calls[1]["prompt"], "내용만 알려줘")
         self.assertNotIn("Write", calls[1]["args"][calls[1]["args"].index("--allowedTools") + 1:])
 
-    def test_claude_question_wins_over_grant(self):
+    def test_claude_question_keeps_grant_line(self):
+        # Claude 가 먼저 물어도 끝에 '🔓 허용' 한 줄 — 그 번호를 골라야 권한이 더해진다(게이트웨이와 같게)
         rep = self._denied_reply("#c 메모 만들어 DENYWRITE ASK")
         cfg, _ = chat.load_cfg()
-        self.assertEqual(chat.parse_message(rep.as_bytes(), cfg)["ask"]["options"], ["더 보기", "여기서 멈춤"])
+        opts = chat.parse_message(rep.as_bytes(), cfg)["ask"]["options"]
+        self.assertEqual(opts[:2], ["더 보기", "여기서 멈춤"])
+        self.assertTrue(opts[2].startswith(runner.GRANT_EXTRA))
+        self.assertEqual(runner.answer_picks("1,3 이건", {"options": opts})[0], [1, 3])
+        self.assertIsNone(runner.answer_picks("4", {"options": opts}))
 
     def test_grant_rules(self):
         rules = dict(runner.grant_rules([
@@ -336,6 +341,12 @@ class RunnerTest(unittest.TestCase):
         # 규칙으로 못 적는 명령(따옴표)은 'Bash 전체' 를 묻지 않는다
         self.assertEqual(list(rules), ["Bash(npm test)", "mcp__browser"])
         self.assertEqual(runner.grant_rules([{"tool_name": "Bash", "tool_input": {"command": "dir&calc"}}]), [])
+        # Jira 쓰기는 '🔓 허용' 으로만(댓글·필드·상태) — 처음 도구 목록엔 없다
+        self.assertEqual(runner.grant_rules([{"tool_name": "mcp__jira__jira_update_issue", "tool_input": {"issue_key": "PROJ-1"}},
+                                             {"tool_name": "mcp__jira__jira_delete_issue", "tool_input": {}}]),
+                         [("mcp__jira__jira_update_issue", "Jira 필드 바꾸기 (PROJ-1)")])
+        self.assertFalse(set(runner.JIRA_WRITE) & set(runner.JIRA_TOOLS))
+        self.assertNotIn("--read-only", runner.JIRA_MCP_ARGS)
 
     def test_retry_failed_instruction(self):
         self.turn_on()
@@ -377,10 +388,10 @@ class RunnerTest(unittest.TestCase):
 
     # ---------- 전용 브라우저 · Jira (설정에서 켤 때만)
 
-    def run_write(self, subject):
+    def run_write(self, subject, body=""):
         """쓰기 지시 하나를 확인 답까지 해서 돌리고 그 claude 호출을 돌려준다."""
         n = len(self.replies("confirm"))
-        add(self.box, mail(subject)[0])
+        add(self.box, mail(subject, body)[0])
         self.step()
         conf = self.replies("confirm")[n]
         add(self.box, mail("Re: " + subject, "1", reply_to=conf["Message-ID"])[0])
@@ -454,12 +465,16 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(allowed, runner.JIRA_TOOLS)                          # 브라우저를 켜 둬도 Jira 지시엔 안 붙는다
         self.assertIn("Bash(rtk curl:*)", args[args.index("--disallowedTools") + 1:])
         self.assertEqual(call["mcp"]["mcpServers"]["jira"]["env"],
-                         {"JIRA_URL": "https://jira.example.com", "JIRA_PERSONAL_TOKEN": "tok"})
+                         {"JIRA_URL": "https://jira.example.com", "JIRA_PERSONAL_TOKEN": "tok", "UV_SYSTEM_CERTS": "true"})
         self.assertIn("ABC-12", call["prompt"])                               # 작업 폴더에 jira 스킬이 없다 → 풀어 쓴 지시
         self.assertNotIn("/jira", call["prompt"])
         os.makedirs(os.path.join(self.work, ".claude", "skills", "jira"))
         open(os.path.join(self.work, ".claude", "skills", "jira", "SKILL.md"), "w").close()
         self.assertEqual(self.run_write("#cw /jira ABC-13")["prompt"], "/jira ABC-13")
+        # 본문에 있어도, 소문자 키여도 — 나머지 말은 덧붙인 요청으로
+        call = self.run_write("#cw 이거 봐줘", "/jira abc-15 급함")
+        self.assertEqual(call["prompt"], "/jira ABC-15\n\n이거 봐줘\n급함")
+        self.assertEqual(call["args"][call["args"].index("--allowedTools") + 1:call["args"].index("--disallowedTools")], runner.JIRA_TOOLS)
         self.r.configure({"enabled": True, "jira_token_clear": True})        # 토큰이 없으면 이 PC 의 jira MCP 를 쓴다(붙이지 않음)
         call = self.run_write("#cw /jira ABC-14")
         self.assertNotIn("jira", (call["mcp"] or {}).get("mcpServers", {}))

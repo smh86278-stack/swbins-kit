@@ -220,8 +220,11 @@ class LocalMarks(unittest.TestCase):
 
     def test_issue_key_with_underscore(self):
         """직접 실행도 입력칸·키트 게이트웨이와 같은 이슈 키 모양(밑줄 · 한 글자 프로젝트)을 이슈 지시로 알아본다."""
-        self.assertEqual(runner.jira_key_of("/jira AB_C-7", {}), "AB_C-7")
-        self.assertEqual(runner.jira_key_of("/issue X-7", {"issue_command": "/issue"}), "X-7")
+        self.assertEqual(runner.jira_key_of("/jira AB_C-7", {}), ("AB_C-7", ""))
+        self.assertEqual(runner.jira_key_of("/issue X-7", {"issue_command": "/issue"}), ("X-7", ""))
+        # 본문 어느 줄이든 — 나머지 말은 덧붙인 요청, 키는 대문자로. 줄 앞이 아니면 이슈 지시가 아니다
+        self.assertEqual(runner.jira_key_of("봐줘\n/issue x-8 급함", {"issue_command": "/issue"}), ("X-8", "봐줘\n급함"))
+        self.assertIsNone(runner.jira_key_of("어제 /jira AB-1 돌린 것", {}))
 
     def test_clear_all(self):
         """🧹 전체 지우기 — 끝난 대화만 목록에서 빠지고, 일하는 중인 대화는 남고, 새 글이 오면 다시 보이고, 되돌릴 수 있다."""
