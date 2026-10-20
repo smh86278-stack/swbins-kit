@@ -322,13 +322,47 @@ class AlertMail(unittest.TestCase):
         self.assertIn('boom', body)
         self.assertNotIn('#c', subject)             # 게이트웨이 지시 태그로 읽히면 안 된다
 
+    def test_ask_button(self):
+        # 「🔍 원인 봐 줘」 — 읽기 지시, 로그 끝 15줄, 암호 단어는 본문 마지막 줄
+        subject, body = alertmail.ask_text(dict(self.FAIL, tail=['x' * 500] + ['line%d' % i for i in range(30)]), '#c', 'kit')
+        self.assertTrue(subject.startswith('#c @kit '))
+        self.assertTrue(alertmail.ask_text(self.FAIL)[0].startswith('#c 실패 원인'))      # 키트 폴더 키가 없으면 @ 없이
+        self.assertIn('line29', body)
+        self.assertNotIn('line14', body)
+        href = alertmail.ask_mailto('me@example.com', subject, body, 'w0rd')
+        self.assertTrue(href.endswith('%0A%0A%5Bk%3Aw0rd%5D'))
+        self.assertIn('&lt;b&gt;', alertmail.compose_html('<b>로그</b>', href))
+
+    def test_ask_html_only_when_dispatch_on(self):
+        class FakeGw:
+            def __init__(self, cfg):
+                self.cfg = cfg
+            def load_cfg(self):
+                return self.cfg
+            def word_for_reply(self, cfg, sender):
+                return 'w0rd' if sender == 'me@example.com' else None
+        base = {'user': 'me@example.com', 'tag': '#c', 'workdir_keys': {'kit': alertmail.kit.ROOT}, 'alert_via': 'append'}
+        self.assertIsNone(alertmail.ask_html(self.FAIL, '본문', FakeGw(dict(base, enabled=False))))
+        page = alertmail.ask_html(self.FAIL, '본문', FakeGw(dict(base, enabled=True)))
+        self.assertIn('🔍 원인 봐 줘', page)
+        self.assertIn('%23c%20%40kit', page)
+        self.assertIn('%5Bk%3Aw0rd%5D', page)
+
+    def test_gateway_reads_ask_as_read_instruction(self):
+        mg = alertmail._load_gateway()
+        cfg = dict(mg.DEFAULT_CFG, workdir_keys={'kit': 'C:\kit'}, default_workdir='C:\other')
+        subject, body = alertmail.ask_text(self.FAIL, '#c', 'kit')
+        prompt, workdir, label, mode = mg.build_instruction(subject, body, cfg)
+        self.assertEqual((mode, workdir, label), ('read', 'C:\kit', 'kit'))
+        self.assertIn('원인만 찾아 줘', prompt)
+
     def test_on_run_end_sends_once(self):
         sent_mail = []
         tmp = os.path.join(os.environ.get('TEMP', '.'), 'alertmail-test-%d.json' % os.getpid())
         orig = alertmail.F_SENT, alertmail.F_LOG
         alertmail.F_SENT, alertmail.F_LOG = tmp, tmp + '.log'
         try:
-            send = lambda s, b: sent_mail.append(s)
+            send = lambda s, b, rec: sent_mail.append(s)
             ready = lambda: (True, '')
             self.assertTrue(alertmail.on_run_end(self.FAIL, None, send=send, ready=ready))
             self.assertFalse(alertmail.on_run_end(self.FAIL, None, send=send, ready=ready))   # 쿨다운
@@ -350,7 +384,7 @@ class AlertMail(unittest.TestCase):
         alertmail.kit.mail_ready = lambda m=None: (False, '설정에 없는 값: user')
         alertmail._unready_logged = False
         try:
-            send = lambda s, b: sent_mail.append(s)
+            send = lambda s, b, rec: sent_mail.append(s)
             self.assertFalse(alertmail.on_run_end(self.FAIL, None, send=send))
             self.assertFalse(alertmail.on_run_end(dict(self.FAIL, macro='job_y'), None, send=send))
             self.assertEqual(sent_mail, [])

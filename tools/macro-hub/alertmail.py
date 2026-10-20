@@ -11,15 +11,22 @@
   'append' 면 내 INBOX 에 직접 넣는다(자기에게 보낸 메일을 딴 폴더로 치우는 서버용). 계정은 `python setup.py` 로 채운다.
 - config "notify" 의 출구(슬랙·Teams·디스코드·구글 챗·웹훅)가 있으면 그쪽으로도 같이 간다(kit.alert).
 - 메일도 출구도 아직 없으면(kit.alert_ready() 가 False) 조용히 건너뛴다 — 로그에 한 번만 남기고 예외를 내지 않는다.
+- 디스패치(dispatch.enabled)가 켜져 있으면 메일에 「🔍 원인 봐 줘」 단추(HTML)를 단다 — 누르면 '#c 실패 원인 봐 줘' 읽기 지시가
+  채워진 메일 작성 화면이 열리고, 보내기만 누르면 게이트웨이가 받아 원인만 찾는다(고치지 않음 — 고치기는 허브 화면의 🩹 고쳐 달라기).
+  키트 폴더를 가리키는 workdir_keys 가 있으면 '@그 키' 로, 암호 단어는 게이트웨이 회신 단추처럼 본문 마지막 줄에(word_for_reply).
 - 설정: state.local.json 의 "alert": {"on": true, "cooldown_min": 60}. 없으면 켜짐·60분.
   허브 트레이 ⚙ 설정 → '실패 알림 메일' 로 켜고 끈다.
 - 표준 라이브러리만 쓴다(허브와 같은 규칙).
 """
 import datetime
+import html
+import importlib.util
 import json
 import os
+import sys
 import threading
 import time
+from urllib.parse import quote
 
 import kit
 
@@ -30,6 +37,9 @@ F_LOG = os.path.join(HERE, 'data.local', 'alertmail.log')
 ALERT_STATUS = ('fail', 'timeout')
 DEFAULT_COOLDOWN_MIN = 60
 TAIL_LINES = 30
+ASK_TAIL = 15          # 「원인 봐 줘」 지시에 담을 로그 끝 줄 수 — mailto 주소가 너무 길면 메일 앱이 자른다
+ASK_LINE_MAX = 200
+GATEWAY = os.path.join(kit.ROOT, 'mail-gateway.py')
 
 _lock = threading.Lock()
 
@@ -81,9 +91,77 @@ def compose(rec, settings):
     return subject, '\n'.join(lines)
 
 
-def deliver(subject, body):
+def ask_text(rec, tag='#c', folder_key=None):
+    """「🔍 원인 봐 줘」 단추가 채울 (제목, 본문) — 게이트웨이 읽기 지시. 원인만 찾게 한다."""
+    timeout = rec.get('status') == 'timeout'
+    name = rec.get('name') or rec.get('macro')
+    tail = [str(x)[:ASK_LINE_MAX] for x in (rec.get('tail') or [])][-ASK_TAIL:]
+    subject = '%s %s실패 원인 봐 줘 — %s' % (tag, ('@%s ' % folder_key) if folder_key else '', name)
+    body = '\n'.join([
+        '자동화 허브의 자동화가 실패했어 — 원인만 찾아 줘(고치지는 말고).',
+        '자동화: %s (%s)' % (name, rec.get('macro')),
+        '결과: %s · 시작 %s · 종료 코드 %s' % ('제한 시간 초과' if timeout else '오류', _clock(rec.get('started')), rec.get('code')),
+        '자동화 파일은 %s 나 %s 의 %s.py, 지난 실행 기록은 %s.' % (os.path.join(kit.HERE, 'macros'), os.path.join(kit.HERE, 'macros.local'),
+                                                            rec.get('macro'), os.path.join(kit.HERE, 'runs.jsonl')),
+        '',
+        '로그 끝 %d줄:' % len(tail),
+    ] + (tail or ['(로그 없음)']) + [
+        '',
+        '원인과 고칠 방법을 짧게 알려 줘. 로그인 만료·네트워크·메일 서버처럼 코드 밖 문제면 그렇다고 말해 줘.',
+    ])
+    return subject, body
+
+
+def ask_mailto(to, subject, body, word=None):
+    """메일 작성 화면을 여는 mailto 주소. 암호 단어는 본문 마지막 줄에 — 제목에 붙이면 스팸 장비가 의심한다(게이트웨이 mailto 와 같게)."""
+    if word:
+        body = body.rstrip() + '\n\n[k:%s]' % word
+    return 'mailto:%s?subject=%s&body=%s' % (to, quote(subject), quote(body))
+
+
+def compose_html(body, href):
+    """글자 본문 + 맨 위 「🔍 원인 봐 줘」 단추."""
+    return ('<div style="font-family:-apple-system,\'Segoe UI\',\'Malgun Gothic\',sans-serif;font-size:14px;line-height:1.5;color:#2f2b45">'
+            '<a href="%s" style="display:inline-block;padding:8px 14px;margin:2px 0 6px;border-radius:999px;text-decoration:none;'
+            'font-weight:700;background:#eee9ff;color:#5b45c9;border:1px solid #d9cffb">🔍 원인 봐 줘</a>'
+            '<div style="color:#8781a0;font-size:12px;margin-bottom:12px">누르면 원인을 묻는 지시가 채워진 메일이 열립니다 — 보내기만 누르세요. '
+            'Claude 가 이 PC 에서 로그와 파일을 읽고 원인만 답합니다(고치지는 않음).</div>'
+            '<div style="white-space:pre-wrap">%s</div></div>') % (html.escape(href, quote=True), html.escape(body))
+
+
+def _load_gateway():
+    spec = importlib.util.spec_from_file_location('mail_gateway_for_alert', GATEWAY)
+    mg = importlib.util.module_from_spec(spec)
+    argv, sys.argv = sys.argv, ['mail-gateway']
+    try:
+        spec.loader.exec_module(mg)
+    finally:
+        sys.argv = argv
+    return mg
+
+
+def _same_dir(a, b):
+    return os.path.normcase(os.path.normpath(a or '')) == os.path.normcase(os.path.normpath(b or ''))
+
+
+def ask_html(rec, body, mg=None):
+    """「🔍 원인 봐 줘」 단추가 달린 HTML 본문 — 디스패치가 꺼져 있거나 설정을 못 읽으면 None(글자 메일만 간다)."""
+    try:
+        mg = mg or _load_gateway()
+        cfg = mg.load_cfg()
+    except Exception:
+        return None
+    if not cfg.get('enabled') or not cfg.get('user'):
+        return None
+    key = next((k for k, v in (cfg.get('workdir_keys') or {}).items() if _same_dir(v, kit.ROOT) or _same_dir(v, kit.HERE)), None)
+    subject, text = ask_text(rec, cfg.get('tag') or '#c', key)
+    sender = cfg['user'] if cfg.get('alert_via') == 'append' else (kit._as_list(cfg.get('alert_to')) or [cfg['user']])[0]
+    return compose_html(body, ask_mailto(cfg['user'], subject, text, mg.word_for_reply(cfg, sender)))
+
+
+def deliver(subject, body, rec=None):
     """알림 메일을 보낸다(kit.alert — mail.alert_via 에 따라 발송 또는 INBOX 에 넣기). 실패하면 예외."""
-    kit.alert(subject, body)
+    kit.alert(subject, body, html=ask_html(rec, body) if rec else None)
 
 
 _unready_logged = False
@@ -148,7 +226,7 @@ def on_run_end(rec, raw_settings, send=deliver, ready=_mail_ready):
         _write_sent(sent)
     subject, body = compose(rec, settings)
     try:
-        send(subject, body)
+        send(subject, body, rec)
     except Exception as e:
         _log('보내지 못함 %s: %s' % (rec.get('macro'), e))
         raise

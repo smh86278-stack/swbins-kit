@@ -38,6 +38,7 @@ start_server.bat   콘솔 모드(디버깅용) — 트레이 없이 허브만, �
   묶음 안에 문제가 있으면 이름 끝에 `(⚠ n)` — 허브가 지키는 서버가 꺼짐 · 도구 멈춤/오류 · 예약 작업 마지막 실행 실패.
 - **알림 풍선** — 자동화가 `ctx.notify()` 를 부를 때, 자동 실행된 자동화가 실패할 때, 상시 자동화가 죽었을 때.
 - **실패 알림 메일** (`alertmail.py`) — 예약 작업·상시 서비스가 실패하거나 제한 시간을 넘기면 `[자동화 허브] … 실패 — 이름` 메일을 보낸다(마지막 로그 30줄 포함). 직접 누른 실행은 빼고, 같은 자동화는 60분에 한 번만. 보내는 길은 `kit.alert()` — `config.local.json` 의 `mail.alert_via` 가 `smtp` 면 `alert_to`(없으면 내 주소)로 발송, `append` 면 내 INBOX 에 직접 넣는다(자기에게 보낸 메일을 딴 폴더로 치우는 서버용). 메일 설정이 아직 없으면(`python setup.py` 전) 조용히 건너뛰고 로그에 한 번만 남긴다. 켜고 끄기: 트레이 ⚙ 설정 → 실패 알림 메일(`state.local.json` 의 `alert`). 보낸 기록·오류는 `data.local\alertmail.json`·`alertmail.log`. 허브 자체가 죽어 감시자가 포기할 때는 여전히 메시지 상자뿐이다.
+  디스패치(`dispatch.enabled`)가 켜져 있으면 알림 메일 맨 위에 **🔍 원인 봐 줘** 단추가 붙는다 — 누르면 읽기 지시(`#c 실패 원인 봐 줘`, 로그 끝 15줄)가 채워진 메일이 열리고, 보내면 Claude 가 원인만 찾아 답한다(고치기는 허브 화면의 🩹 고쳐 달라기). `workdir_keys` 에 키트 폴더를 가리키는 키가 있으면 `@그 키` 로 간다.
 - **자동 시작** — HKCU Run `MacroHub` = `WorkKit.exe --background`(감시자째로 뜬다. exe 가 없으면 `launcher.py`). 관리자 권한 불필요.
   `WorkKit.exe --install` 또는 `python app.py --install-autostart` / `--remove-autostart`, 트레이 메뉴에서도 토글.
   로그온하면 허브가 뜨고, 켜 둔 상시 자동화는 `state.local.json` 에 기억돼 있어 자동으로 다시 시작한다.

@@ -253,10 +253,10 @@ def send_mail(to, subject, body, cc=None, bcc=None, attachments=None, html=None,
     return msg['Message-ID']
 
 
-def append_inbox(subject, body, folder='INBOX', m=None):
-    """내 메일함에 직접 넣는다(보내지 않음) — 자기에게 보낸 메일을 규칙이 딴 폴더로 치우는 서버에서 쓴다."""
+def append_inbox(subject, body, folder='INBOX', m=None, html=None):
+    """내 메일함에 직접 넣는다(보내지 않음) — 자기에게 보낸 메일을 규칙이 딴 폴더로 치우는 서버에서 쓴다. html 이면 HTML 본문도 단다."""
     m = m or mail_config()
-    msg = build_message(m['user'], m['user'], subject, body)
+    msg = build_message(m['user'], m['user'], subject, body, html=html)
     conn = imap_connect(m)
     try:
         conn.append(folder, '', imaplib.Time2Internaldate(time.time()), msg.as_bytes())
@@ -267,11 +267,11 @@ def append_inbox(subject, body, folder='INBOX', m=None):
             pass
 
 
-def alert(subject, body, m=None, channels=None, post=None):
+def alert(subject, body, m=None, channels=None, post=None, html=None):
     """알림 — 메일(mail.alert_via 가 'append' 면 내 INBOX, 아니면 alert_to/내 주소로 발송)과 config "notify" 의 출구
     (슬랙·Teams·디스코드·구글 챗·웹훅)로 같이 보낸다. 하나라도 가면 성공, 다 실패하면 마지막 예외.
     메일도 출구도 준비 안 됐으면 RuntimeError. 보낸 기록은 data.local/notify/sent.jsonl.
-    channels·post 는 시험용(안 주면 설정의 출구 · urllib)."""
+    channels·post 는 시험용(안 주면 설정의 출구 · urllib). html 은 메일에만 붙는다(출구에는 글자 본문)."""
     m = m or mail_config()
     conf = section('notify', {}) or {}
     conf = conf if isinstance(conf, dict) else {}
@@ -288,9 +288,9 @@ def alert(subject, body, m=None, channels=None, post=None):
     if use_mail:
         try:
             if m.get('alert_via') == 'append':
-                append_inbox(subject, body, m=m)
+                append_inbox(subject, body, m=m, html=html)
             else:
-                send_mail(m.get('alert_to') or m['user'], subject, body, m=m)
+                send_mail(m.get('alert_to') or m['user'], subject, body, html=html, m=m)
             sent += 1
             _notify_log('메일', 'mail', subject, True)
         except Exception as e:
