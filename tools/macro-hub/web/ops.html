@@ -67,6 +67,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
     <button data-tab="audit">📜 변경 이력</button>
   </nav>
   <span id="modeSw" style="margin-left:auto"></span>
+  <button id="lookBtn" title="꾸미기 — 색 테마 · 내 강조색 (배치는 허브 첫 화면에서)">🎨</button>
 </header>
 <main>
   <section id="sched">
@@ -98,7 +99,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--accentsoft) 55%,transparent
 <script src="/static/theme.js"></script>
 <script>
 const TOKEN = '__TOKEN__';
-HubMode.mount('#modeSw', TOKEN);
+HubMode.mount('#modeSw', TOKEN); HubLook.mount('#lookBtn', TOKEN);
 const $ = s => document.querySelector(s);
 function el(t, c, x){ const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 4000); }
@@ -395,7 +396,7 @@ for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => { h
 let start = location.hash.slice(1); if (!LOAD[start] && !document.getElementById(start)) { try { start = localStorage.getItem('ops.tab') || 'sched'; } catch (e) { start = 'sched'; } }
 show(document.getElementById(start) ? start : 'sched');
 const es = new EventSource('/events');
-es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); const on = document.querySelector('main section.on');
+es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); if (m.t === 'look') HubLook.apply(m.look); const on = document.querySelector('main section.on');
   if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); }
   if (on && m.t === 'audit' && on.id === 'audit') { clearTimeout(es.t); es.t = setTimeout(loadAudit, 300); } };
 setInterval(() => { const on = document.querySelector('main section.on'); if (on && LOAD[on.id]) LOAD[on.id](); }, 30000);

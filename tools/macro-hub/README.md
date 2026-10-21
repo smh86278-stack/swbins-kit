@@ -82,6 +82,8 @@ runner.py       자동화 1개를 .venv 파이썬에서 별도 프로세스로 �
 web/index.html  화면
 web/theme.css   공통 테마(파스텔 색·단추·칩·입력) — index.html·ops.html 이 함께 쓴다. 색은 여기 :root 만 고친다(light-dark 한 쌍)
 web/theme.js    화면 모드 단추(☀️ 라이트 · 🌙 다크 · 자동=Windows 설정) — 허브가 기억(/api/theme), 열린 화면·전용 창이 같이 바뀐다
+                · 🎨 꾸미기(HubLook) — 색 테마(파스텔·네이비·민트·모노·선셋, theme.css :root[data-theme]) · 내 강조색 · 첫 화면 배치
+                  (펫 무대 보통/작게/숨김 · 두 칸/한 칸 · 좌우 바꾸기 · 촘촘하게). 허브가 state['look'] 에 기억(GET·POST /api/look), 페이지 <html> 에 심는다
 web/ops.html    운영 화면(/ops) — 예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트
 ops.py          운영 화면의 데이터 — 기능 상태(kit.read_status) · 설정 준비 여부 · 에이전트 보드
 kit.py          키트 공통 바탕 — 설정(config.local.json) · 메일 · DPAPI · 예약 시각 판정 · 상태 파일
@@ -89,7 +91,8 @@ alertmail.py    실패 알림 메일
 macros/         예제 (git 에 들어간다) — example_groupware: 그룹웨어 공지·결재 목록의 새 줄 알림 견본(주소·목록 줄 CSS 는 params, 로그인은 secret groupware_id·groupware_pw)
 macros.local/   실제 업무 자동화 (git 제외)          ← 회사 자동화는 여기에
 builtin/        요소 찍기 · 창 구조 보기 (허브가 부르는 도구)
-secrets.local.json   계정·비밀번호 (git 제외, 견본 secrets.example.json)
+secrets.local.json   계정·비밀번호 (git 제외, 견본 secrets.example.json) — 값은 DPAPI 'dpapi:…'(hubutil.seal/open_secret).
+                     평문으로 넣으면 허브 시작·ctx.secret 때 그 자리에서 암호화. 바뀌거나 실패하면 평문으로 다시 넣는다. 다른 PC 에선 안 풀린다
 data.local/     자동화별 전용 데이터(ctx.data_dir) — 자격증명·설정·상태 (git 제외)
 ```
 

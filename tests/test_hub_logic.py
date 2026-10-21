@@ -285,7 +285,7 @@ class UiMode(unittest.TestCase):
         for page in ('index.html', 'ops.html'):
             with self.subTest(page=page):
                 html = macrohub.render_page(os.path.join(HUB, 'web', page))
-                self.assertIn('<html lang="ko" data-mode="dark">', html)
+                self.assertIn('<html lang="ko" data-mode="dark" data-theme="', html)   # 꾸미기 속성이 뒤에 붙는다
                 self.assertNotIn('__MODE__', html)
                 self.assertNotIn('__TOKEN__', html)
 
@@ -480,6 +480,50 @@ class TestRunButton(unittest.TestCase):
         self.assertIn('내 자동화', err)
 
 
+class LookCustom(unittest.TestCase):
+    """🎨 꾸미기 — 색 테마·내 강조색·배치 값 검사와 <html> 속성."""
+
+    def setUp(self):
+        from unittest import mock
+        p = mock.patch.object(macrohub, 'state', {'enabled': {}})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_default_and_attrs(self):
+        self.assertEqual(macrohub.look()['theme'], 'pastel')
+        a = macrohub.look_attrs()
+        self.assertIn('data-theme="pastel"', a)
+        self.assertIn('data-hero="show"', a)
+        self.assertNotIn('style=', a)                                  # 내 색이 없으면 style 도 없다
+
+    def test_clean_and_custom_color(self):
+        lk, err = macrohub.clean_look({'theme': 'navy', 'accent': '#AA3366', 'swap': 1, 'zzz': 'x'})
+        self.assertIsNone(err)
+        self.assertEqual((lk['theme'], lk['accent'], lk['swap'], lk['cols']), ('navy', '#aa3366', True, '2'))
+        self.assertNotIn('zzz', lk)
+        a = macrohub.look_attrs(lk)
+        self.assertIn('data-swap="1"', a)
+        self.assertIn('--accent:light-dark(#aa3366,', a)
+        self.assertIn('--accentsoft:', a)
+
+    def test_rejects(self):
+        for bad in ({'theme': 'neon'}, {'hero': 'big'}, {'cols': '3'}, {'accent': 'red'},
+                    {'accent': '#12345'}, {'accent2': '" onload="x'}):
+            with self.subTest(bad=bad):
+                self.assertIsNone(macrohub.clean_look(bad)[0])
+
+    def test_render_page_injects(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f:
+            f.write('<html lang="ko" data-mode="__MODE__"><script>const TOKEN=\'__TOKEN__\'</script>')
+        self.addCleanup(os.remove, f.name)
+        macrohub.state['look'] = {'theme': 'mint', 'hero': 'hide'}
+        page = macrohub.render_page(f.name)
+        self.assertIn('data-theme="mint"', page)
+        self.assertIn('data-hero="hide"', page)
+        self.assertNotIn('__MODE__', page)
+
+
 class SecretizeRecording(unittest.TestCase):
     """녹화 저장 — 비밀번호 칸에 넣은 값은 파일에 남기지 않고 secret("키") 로, 값은 secrets.local.json 으로."""
 
@@ -512,7 +556,29 @@ class SecretizeRecording(unittest.TestCase):
             macrohub.save_secrets({'a': '1'})                             # 없으면 새로 만든다
             macrohub.save_secrets({'b': '비번'})
         with open(sec, encoding='utf-8') as f:
-            self.assertEqual(json.load(f), {'a': '1', 'b': '비번'})
+            data = json.load(f)
+        self.assertTrue(all(v.startswith('dpapi:') for v in data.values()))     # 녹화에서 옮긴 값도 암호화해서
+        self.assertEqual({k: macrohub.hubutil.open_secret(v) for k, v in data.items()}, {'a': '1', 'b': '비번'})
+
+    def test_encrypt_file_in_place(self):
+        """사람이 평문으로 넣어 둔 값은 그 자리에서 DPAPI 로 — 설명(_)·빈 값·이미 암호화된 값은 그대로."""
+        import shutil
+        import tempfile
+        hu = macrohub.hubutil
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        sec = os.path.join(tmp, 'secrets.local.json')
+        sealed = hu.seal('old')
+        with open(sec, 'w', encoding='utf-8') as f:
+            json.dump({'_comment': '설명', 'id': 'me', 'pw': 'p@ss"w', 'empty': '', 'done': sealed}, f)
+        self.assertEqual(hu.encrypt_secrets_file(sec), 2)
+        self.assertEqual(hu.encrypt_secrets_file(sec), 0)                        # 두 번째는 할 것 없음
+        with open(sec, encoding='utf-8') as f:
+            data = json.load(f)
+        self.assertEqual((data['_comment'], data['empty'], data['done']), ('설명', '', sealed))
+        self.assertNotIn('p@ss', json.dumps(data))
+        self.assertEqual([hu.open_secret(data[k]) for k in ('id', 'pw', 'done')], ['me', 'p@ss"w', 'old'])
+        self.assertEqual(hu.encrypt_secrets_file(os.path.join(tmp, 'none.json')), 0)
 
 
 if __name__ == '__main__':

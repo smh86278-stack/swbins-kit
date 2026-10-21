@@ -46,6 +46,14 @@
 /* ---------- 본문 ---------- */
 main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px;padding:12px 16px 28px;align-items:start}
 @media (max-width:980px){main{grid-template-columns:1fr}}
+/* 🎨 꾸미기 배치(<html data-…>, theme.js HubLook) — 펫 무대 · 한 칸 · 좌우 바꾸기 · 촘촘하게 */
+[data-hero=hide] .hero{display:none}
+[data-hero=small] .hero{zoom:.78}
+[data-cols="1"] main{grid-template-columns:1fr}
+[data-swap="1"] main>.stack:first-child{order:2}
+[data-dense="1"] main{gap:8px;padding-top:8px}
+[data-dense="1"] section.box{padding:8px 10px}
+[data-dense="1"] .card{padding-top:5px;padding-bottom:5px}
 section.box{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;box-shadow:var(--shadow)}
 h2{font-size:12px;margin:0 0 9px;color:var(--muted);font-weight:800;letter-spacing:.4px;display:flex;align-items:center;gap:6px}
 h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
@@ -149,6 +157,7 @@ pre#log .ln{animation:fadein .35s ease both}
   <select id="catBreed" class="breedSel" title="고양이(일꾼) 품종 — 펫과 같이 바뀝니다" hidden></select>
   <button id="petBtn" title="화면 구석에 강아지·고양이 펫을 띄웁니다">화면 펫</button>
   <span id="modeSw"></span>
+  <button id="lookBtn" title="꾸미기 — 색 테마 · 내 강조색 · 첫 화면 배치">🎨 꾸미기</button>
   <span class="sub autonote" style="margin-left:auto">자동 실행은 자동화마다 켜야 동작합니다 (기본 꺼짐)</span>
 </header>
 
@@ -239,7 +248,7 @@ pre#log .ln{animation:fadein .35s ease both}
 <script>
 const TOKEN='__TOKEN__';
 if(new URLSearchParams(location.search).get('view')==='make')document.body.classList.add('view-make');
-HubMode.mount('#modeSw',TOKEN);
+HubMode.mount('#modeSw',TOKEN);HubLook.mount('#lookBtn',TOKEN,{layout:true});
 const $=s=>document.querySelector(s);
 let macros=[],deleted=[],runs=[],sel=null,toolRuns=new Map(),paramVals={};
 let firstDraw=true;const seenRuns=new Set();
@@ -468,6 +477,7 @@ function connect(){
     else if(m.t==='pet')setTimeout(petState,400);
     else if(m.t==='skin')setSkin(m.skin,m.breed);
     else if(m.t==='theme')HubMode.apply(m.mode);
+    else if(m.t==='look')HubLook.apply(m.look);
     else if(m.t==='note')toast(m.text);
     else if(m.t==='notify'){toast('🔔 '+m.title+' — '+m.text);PetMood.notify(flash,m)}
   };

@@ -110,10 +110,57 @@ def ui_mode():
     return m if m in UI_MODES else 'auto'
 
 
+# 꾸미기(🎨) — 색 테마·내 강조색·첫 화면 배치. 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 속성으로 심는다.
+# 색은 theme.css 의 :root[data-theme=…], 내 색은 inline --accent·--accent2, 배치는 index.html 의 [data-hero] 등.
+LOOK_THEMES = ('pastel', 'navy', 'mint', 'mono', 'sunset')
+LOOK_DEFAULT = {'theme': 'pastel', 'accent': '', 'accent2': '', 'hero': 'show', 'cols': '2', 'swap': False, 'dense': False}
+LOOK_CHOICES = {'theme': LOOK_THEMES, 'hero': ('show', 'small', 'hide'), 'cols': ('2', '1')}
+HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def look():
+    return dict(LOOK_DEFAULT, **{k: v for k, v in (state.get('look') or {}).items() if k in LOOK_DEFAULT})
+
+
+def clean_look(body):
+    """POST /api/look 의 값 검사 — (새 look, 오류). 빠진 키는 지금 값 그대로."""
+    cur = look()
+    for k, v in (body or {}).items():
+        if k not in LOOK_DEFAULT:
+            continue
+        if k in LOOK_CHOICES:
+            if v not in LOOK_CHOICES[k]:
+                return None, '%s 는 %s 중 하나입니다' % (k, ' · '.join(LOOK_CHOICES[k]))
+        elif k in ('accent', 'accent2'):
+            if v and not HEX_COLOR.match(str(v)):
+                return None, '색은 #rrggbb 형식입니다'
+            v = (v or '').lower()
+        else:
+            v = bool(v)
+        cur[k] = v
+    return cur, None
+
+
+def look_attrs(lk=None):
+    """<html> 에 붙일 속성 — data-theme·배치 + 내 색이면 style 의 --accent 한 쌍(다크는 조금 밝게)."""
+    lk = lk or look()
+    attrs = 'data-theme="%s" data-hero="%s" data-cols="%s" data-swap="%d" data-dense="%d"' % (
+        lk['theme'], lk['hero'], lk['cols'], lk['swap'], lk['dense'])
+    css = []
+    for var, c in (('--accent', lk['accent']), ('--accent2', lk['accent2'])):
+        if c:
+            css.append('%s:light-dark(%s,color-mix(in srgb,%s 72%%,white))' % (var, c, c))
+    if lk['accent']:
+        c = lk['accent']
+        css.append('--accentsoft:light-dark(color-mix(in srgb,%s 13%%,white),color-mix(in srgb,%s 24%%,#1a1826))' % (c, c))
+    return attrs + (' style="%s"' % ';'.join(css) if css else '')
+
+
 def render_page(path):
-    """화면 HTML — 실행 토큰과 화면 모드를 심는다(<html data-mode="__MODE__">). 요청마다 읽으니 고치면 새로고침만으로 보인다."""
+    """화면 HTML — 실행 토큰·화면 모드·꾸미기를 심는다(<html data-mode="__MODE__">). 요청마다 읽으니 고치면 새로고침만으로 보인다."""
     with open(path, encoding='utf-8') as f:
-        return f.read().replace('__TOKEN__', TOKEN).replace('__MODE__', ui_mode())
+        page = f.read().replace('__TOKEN__', TOKEN)
+    return page.replace('data-mode="__MODE__"', 'data-mode="%s" %s' % (ui_mode(), look_attrs())).replace('__MODE__', ui_mode())
 
 
 def save_state():
@@ -1016,17 +1063,14 @@ def secretize_recording(code, stem):
 
 
 def save_secrets(values):
-    """secrets.local.json 에 키를 더한다(있는 키는 덮어씀). 이 PC 에만 있는 파일 — git 에서 빠져 있다."""
+    """secrets.local.json 에 키를 더한다(있는 키는 덮어씀) — 값은 DPAPI 로 암호화해서. 이 PC 에만 있는 파일 — git 에서 빠져 있다."""
     try:
         with open(runner.SECRETS, encoding='utf-8-sig') as f:
             data = json.load(f)
     except FileNotFoundError:
         data = {}
-    data.update(values)
-    tmp = runner.SECRETS + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, runner.SECRETS)
+    data.update({k: hubutil.seal(v) for k, v in values.items()})
+    hubutil.write_secrets(runner.SECRETS, data)
 
 
 def record_web(url, name):
@@ -1266,6 +1310,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}})
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
+        if u.path == '/api/look':                     # 꾸미기 — 지금 값 · 고를 수 있는 것
+            return self._send(200, {'look': look(), 'attrs': look_attrs(), 'themes': LOOK_THEMES})
         if u.path == '/api/schedule':
             return self._send(200, schedule_view())
         if u.path == '/api/audit':                    # 변경 이력 — 새것 먼저
@@ -1432,6 +1478,14 @@ class Handler(BaseHTTPRequestHandler):
             save_state()
             broadcast({'t': 'theme', 'mode': mode})
             return self._send(200, {'ok': True, 'mode': mode})
+        if path == '/api/look':                       # 꾸미기 {"theme"|"accent"|"accent2"|"hero"|"cols"|"swap"|"dense"} — 빠진 키는 그대로
+            lk, err = clean_look(body)
+            if err:
+                return self._send(400, {'error': err})
+            state['look'] = lk
+            save_state()
+            broadcast({'t': 'look', 'look': lk, 'attrs': look_attrs(lk)})
+            return self._send(200, {'ok': True, 'look': lk, 'attrs': look_attrs(lk)})
         if path == '/api/pet':
             ok = set_pet(bool(body.get('on')))
             return self._send(200 if ok else 409, {'ok': ok, 'on': bool(pet_pids())} if ok else {'error': 'pet 폴더에서 npm install 을 먼저 실행하세요'})
@@ -1483,6 +1537,10 @@ def shutdown_children():
 def start_services(host='127.0.0.1', port=8630):
     """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 자동화)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
     load_state()
+    try:
+        hubutil.encrypt_secrets_file(runner.SECRETS)   # 사람이 평문으로 넣어 둔 비밀값은 바로 암호화(DPAPI)
+    except OSError:
+        pass
     load_last_runs()
     os.makedirs(DIR_LOCAL, exist_ok=True)
     atexit.register(shutdown_children)

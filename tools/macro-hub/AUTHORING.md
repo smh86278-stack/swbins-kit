@@ -28,7 +28,7 @@
       page.get_by_role('button', name='승인').click()
   ```
 - **비밀번호·토큰·계정은 파일에 쓰지 않는다** — `ctx.secret('키')`. 값은 사람이 `secrets.local.json` 에 넣는다(견본 `secrets.example.json`).
-  `secrets.local.json` 을 직접 만들거나 고치지 않는다.
+  `secrets.local.json` 을 직접 만들거나 고치지 않는다. 값은 DPAPI 로 암호화돼 있어(`dpapi:…`) 열어 봐도 읽을 수 없다 — `ctx.secret` 이 풀어 준다.
 - 파일 지우기·많은 사람에게 메일 같은 큰 일은 만들기 전에 물어본다.
 - 시험은 **허브 없이 이 파일만** 돌린다. 허브 화면·API 를 부르지 않는다.
 

@@ -61,6 +61,56 @@ def unprotect_text(hex_text):
     return unprotect_bytes(bytes.fromhex(hex_text.strip())).decode('utf-16-le')
 
 
+# ---------------------------------------------------------------- secrets.local.json 암호화
+#
+# 값은 'dpapi:<16진수>' 로 둔다 — 이 PC·이 Windows 계정에서만 풀린다(파일이 새도 못 읽는다, 다른 PC 로 옮기면 다시 넣어야 한다).
+# 사람이 평문으로 넣어 두면 허브가 뜰 때·처음 읽을 때 encrypt_secrets_file 이 그 자리에서 암호화해 바꿔 쓴다.
+# '_' 로 시작하는 키(설명)와 빈 값은 그대로 둔다.
+
+SECRET_PREFIX = 'dpapi:'
+
+
+def seal(plain):
+    return SECRET_PREFIX + protect_text(plain)
+
+
+def open_secret(value):
+    """'dpapi:…' 이면 풀고, 아니면(평문·숫자 등) 그대로."""
+    if isinstance(value, str) and value.startswith(SECRET_PREFIX):
+        return unprotect_text(value[len(SECRET_PREFIX):])
+    return value
+
+
+def _plain_keys(data):
+    return [k for k, v in data.items()
+            if not k.startswith('_') and isinstance(v, str) and v and not v.startswith(SECRET_PREFIX)]
+
+
+def write_secrets(path, data):
+    import json
+    import os
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    os.replace(tmp, path)
+
+
+def encrypt_secrets_file(path):
+    """평문 값을 암호화해 다시 쓴다 — 바꾼 키 수. 파일이 없거나 깨졌으면 0(읽는 쪽이 알린다)."""
+    import json
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return 0
+    keys = _plain_keys(data) if isinstance(data, dict) else []
+    if keys:
+        for k in keys:
+            data[k] = seal(data[k])
+        write_secrets(path, data)
+    return len(keys)
+
+
 # ---------------------------------------------------------------- TOTP (RFC 6238)
 
 def _key(base32_secret):

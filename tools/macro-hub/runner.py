@@ -111,10 +111,16 @@ class Ctx:
         return {pid for pid, (_, name) in Ctx._pl.snapshot().items() if name.lower() == want}
 
     def secret(self, key):
-        """secrets.local.json 의 값. 계정·비밀번호는 자동화 파일에 쓰지 말고 여기에 둔다."""
+        """secrets.local.json 의 값. 계정·비밀번호는 자동화 파일에 쓰지 말고 여기에 둔다.
+        값은 DPAPI 로 암호화돼 있다('dpapi:…', hubutil) — 여기서 풀어 준다. 평문이 남아 있으면 먼저 암호화해 둔다."""
+        import hubutil
         try:
+            try:
+                hubutil.encrypt_secrets_file(SECRETS)
+            except OSError:
+                pass                             # 못 바꿔 써도(잠김 등) 읽기는 한다
             with open(SECRETS, encoding='utf-8-sig') as f:
-                v = json.load(f)[key]
+                v = hubutil.open_secret(json.load(f)[key])
             if isinstance(v, str) and len(v) >= 4 and v not in SECRET_VALUES:
                 SECRET_VALUES.append(v)
             return v

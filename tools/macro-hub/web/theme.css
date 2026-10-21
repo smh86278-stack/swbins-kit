@@ -15,6 +15,27 @@
   --petglow:light-dark(#ffffffd0,#c9bbff55);--glass:light-dark(#ffffff88,#ffffff14);
   --r:16px;--r-sm:11px;
 }
+/* 🎨 꾸미기 — 색 테마(<html data-theme>, 허브가 심는다). pastel 은 위 :root 그대로. 내 강조색은 <html style> 이 이긴다 */
+:root[data-theme=navy]{
+  --bg:light-dark(#f4f6fb,#141824);--bg2:light-dark(#e3ebfb,#1a2236);--bg3:light-dark(#e4f4fb,#16242c);
+  --soft:light-dark(#eef1f8,#1f2536);--line:light-dark(#dde3f0,#2c3550);
+  --accent:light-dark(#2f5bd3,#7aa2ff);--accent2:light-dark(#1f9fd0,#5cc8f0);--accentsoft:light-dark(#e4ebfd,#232f4f);
+  --hero1:light-dark(#e3ebfb,#1b2338);--hero2:light-dark(#eaf0ff,#1d2540);--hero3:light-dark(#e3f5fb,#18272f)}
+:root[data-theme=mint]{
+  --bg:light-dark(#f3faf7,#13201c);--bg2:light-dark(#dff5ec,#17291f);--bg3:light-dark(#e2f4f7,#14262a);
+  --soft:light-dark(#ecf6f2,#1a2a25);--line:light-dark(#d6ebe2,#27403a);
+  --accent:light-dark(#139a72,#4fd1a5);--accent2:light-dark(#2ea9bd,#6fd3e0);--accentsoft:light-dark(#ddf4ea,#1d3a30);
+  --hero1:light-dark(#dff5ec,#19302a);--hero2:light-dark(#e8f7f1,#1a2d2a);--hero3:light-dark(#e0f3f6,#172a2e)}
+:root[data-theme=mono]{
+  --bg:light-dark(#f6f6f7,#161618);--bg2:light-dark(#ececee,#1e1e22);--bg3:light-dark(#f0f0f2,#1b1b1f);
+  --soft:light-dark(#f0f0f2,#212126);--line:light-dark(#e2e2e6,#2f2f36);
+  --accent:light-dark(#3b3b46,#d6d6e0);--accent2:light-dark(#6b6b7a,#a0a0b0);--accentsoft:light-dark(#e9e9ee,#2a2a31);--onaccent:light-dark(#fff,#16161a);
+  --hero1:light-dark(#ededf0,#1f1f24);--hero2:light-dark(#f2f2f4,#222228);--hero3:light-dark(#e9e9ec,#1d1d22)}
+:root[data-theme=sunset]{
+  --bg:light-dark(#fdf7f2,#221a16);--bg2:light-dark(#fde6d8,#2e1f18);--bg3:light-dark(#fff1d9,#2a2214);
+  --soft:light-dark(#f9efe8,#2a211c);--line:light-dark(#f1e0d4,#3e2f27);
+  --accent:light-dark(#df5f34,#ff9a6b);--accent2:light-dark(#e99a1f,#ffc66b);--accentsoft:light-dark(#fde7dc,#3a2a22);
+  --hero1:light-dark(#fde3d3,#2f2019);--hero2:light-dark(#fff0dc,#2c2418);--hero3:light-dark(#ffe9e0,#2f221d)}
 :root[data-mode=light]{color-scheme:light}
 :root[data-mode=dark]{color-scheme:dark}
 html.mode-anim *,html.mode-anim *::before,html.mode-anim *::after{transition:background-color .3s,border-color .3s,color .3s!important}
@@ -34,6 +55,19 @@ body{margin:0;color:var(--text);font:13px/1.5 "Segoe UI","Malgun Gothic",sans-se
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 28%,var(--line));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
+
+/* 🎨 꾸미기 창 — theme.js HubLook */
+.lookpanel{position:fixed;top:52px;right:16px;z-index:60;width:min(340px,calc(100vw - 32px));background:var(--solid);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow2);padding:12px 14px}
+.lookpanel h3{font-size:12px;color:var(--muted);margin:10px 0 6px;font-weight:800}
+.lookpanel h3:first-child{margin-top:0}
+.lookpanel .lrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lookpanel .sw{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--line)}
+.lookpanel .sw.on{border-color:var(--text);box-shadow:0 0 0 2px var(--solid) inset}
+.lookpanel .seg button{padding:3px 10px;font-size:12px}
+.lookpanel .seg button.on{background:var(--accentsoft);border-color:var(--accent);color:var(--accent)}
+.lookpanel input[type=color]{width:34px;height:26px;border:1px solid var(--line);border-radius:8px;padding:0 2px;background:var(--soft);cursor:pointer}
+.lookpanel label{font-size:12px;display:inline-flex;align-items:center;gap:5px}
 
 /* ---------- 상단 ---------- */
 .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 16px;position:sticky;top:0;z-index:20;
