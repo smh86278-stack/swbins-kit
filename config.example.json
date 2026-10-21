@@ -102,6 +102,14 @@
     }
   ],
 
+  "ai": {
+    "_설명": "AI 고르기 — 🛠 말로 부탁하기 · 🩹 고쳐 달라기 · 주간 보고 초안(weekly_report.engine)에 쓸 AI. 이 PC 에 그 명령줄 도구가 깔려 있고 로그인돼 있어야 한다. claude = Claude Code(디스패치 대화를 거쳐 권한을 묻는다 — 메일·대화로 일 맡기기는 Claude 전용), codex = Codex CLI(ChatGPT 계정, npm install -g @openai/codex 뒤 codex login — 허브 폴더 안에서만 쓰는 샌드박스로 돈다), gemini = Gemini CLI(npm install -g @google/gemini-cli). 허브 화면 「말로 부탁하기」 위 선택칸으로도 바꾼다. model 은 비면 그 도구의 기본값.",
+    "_gemini_approval_설명": "auto_edit = 파일 고치기만 저절로(시험 실행은 못 함 — 카드의 🧪 시험으로 확인), yolo = 명령도 묻지 않고 실행(샌드박스 없음 — 이 PC 를 믿을 때만)",
+    "engine": "claude",
+    "model": "",
+    "gemini_approval": "auto_edit"
+  },
+
   "dispatch": {
     "_설명": "메일로 AI(Claude Code)에게 일 맡기기 — 이 PC 에 Claude Code 가 깔려 있어야 한다. 기본 꺼짐. 제목이 태그로 시작하는 메일을 mail-gateway.py 가 받아 inbox-worker.ps1 이 claude -p 로 실행하고 결과를 회신한다.",
     "enabled": false,
@@ -240,7 +248,7 @@
     "_other_설명": "다른 파트 하네스 레포(선택, harness 를 켰을 때만) — 읽기 전용 clone 으로 그 파트 기록을 참고로 함께 본다. repo_url 이 비면 기능·화면이 숨는다. 비공개 레포면 python agent.py set-token --other (비면 gitlab 토큰).",
     "other": { "part": "", "repo_url": "", "branch": "main", "team": [], "token_enc": "" },
 
-    "_weekly_report_설명": "주간 업무 보고 초안(허브 예약 작업 job_weekly_report) — days·at 에 이번 주(월요일~오늘)를 모아 claude CLI(engine claude) 또는 ollama(engine ollama, model)로 초안을 쓰고 wiki_dir\\reports\\YYYYMMDD_주간보고.md 로 저장한 뒤 to 에게 메일로 보낸다(비면 mail.user — 내가 먼저 보고 고쳐 보내게). LLM 이 실패하면 모은 원자료를 대신 보낸다. 메일 설정이 안 돼 있으면 파일만 남긴다. days 표기는 다른 예약과 같다('fri' · 'mon-fri' · 'mon,thu'). prompt_file 로 프롬프트(견본 prompt_weekly.md)를 바꿀 수 있다. 제목 자리표시 {since} {until} {company}.",
+    "_weekly_report_설명": "주간 업무 보고 초안(허브 예약 작업 job_weekly_report) — days·at 에 이번 주(월요일~오늘)를 모아 claude CLI(engine claude) · ollama(engine ollama, model) · codex · gemini(engine codex|gemini — 위 ai 갈래 설명) 로 초안을 쓰고 wiki_dir\\reports\\YYYYMMDD_주간보고.md 로 저장한 뒤 to 에게 메일로 보낸다(비면 mail.user — 내가 먼저 보고 고쳐 보내게). LLM 이 실패하면 모은 원자료를 대신 보낸다. 메일 설정이 안 돼 있으면 파일만 남긴다. days 표기는 다른 예약과 같다('fri' · 'mon-fri' · 'mon,thu'). prompt_file 로 프롬프트(견본 prompt_weekly.md)를 바꿀 수 있다. 제목 자리표시 {since} {until} {company}.",
     "weekly_report": { "enabled": false, "days": "fri", "at": "16:00", "to": [], "engine": "claude", "model": "", "prompt_file": "", "subject": "[주간 보고 초안] {since} ~ {until}" }
   },
   "migrate": {

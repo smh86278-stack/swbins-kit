@@ -205,11 +205,13 @@ pre#log .ln{animation:fadein .35s ease both}
         <small class="mk-note">Chrome 이 열리면 하던 대로 클릭·입력하고 창을 닫으면 저장돼요. 🔒 비밀번호 칸에 넣은 값은 파일에 안 남고 이 PC 비밀 보관함으로 옮겨져요</small>
       </div>
       <div class="mk-card">
-        <div class="mk-head"><span class="mk-ico">💬</span><div><b>말로 부탁하기</b><small>녹화로 안 되는 일(프로그램 조작·조건·알림)은 Claude 에게</small></div></div>
+        <div class="mk-head"><span class="mk-ico">💬</span><div><b>말로 부탁하기</b><small>녹화로 안 되는 일(프로그램 조작·조건·알림)은 AI 에게</small></div>
+          <select id="aiSel" title="말로 부탁하기·고쳐 달라기를 맡길 AI — 이 PC 에 깔린 명령줄 도구를 씁니다" style="margin-left:auto;max-width:150px"></select></div>
         <textarea id="askWhat" rows="2" placeholder="무엇을 해 줄까요? (예: 공지 게시판 첫 글이 바뀌면 알려 줘)"></textarea>
         <div class="row"><select id="askWhen" class="grow">
             <option value="">언제 — 내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select>
           <button id="askBtn" class="pri">대화로 부탁하기</button></div>
+        <small class="mk-note" id="askDirect" hidden>누르면 <b id="aiName"></b> 가 이 PC 에서 바로 만들기 시작해요 — 오른쪽 아래 실행 기록에서 진행을 볼 수 있어요. 다 되면 🏠 허브 목록에 나타나요 <span id="aiNote"></span></small>
         <small class="mk-note" id="askOn">누르면 대화로 바로 보내져요. Claude 가 만든 뒤 <b>스스로 시험해 보고, 안 되면 고쳐서</b> 결과를 대화로 알려 줘요(메일 보내기·제출 같은 건 시험 때 건너뜀). 다 되면 🏠 허브 목록에 나타나요</small>
         <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있어요. 지금은 이 PC 의 Claude Code 에 같은 말로 부탁하면 됩니다 — 위 단추로 부탁 글만 복사할 수 있어요.</div>
       </div>
@@ -492,16 +494,36 @@ $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';
 let chatUp=false;
+// AI 고르기 — claude 는 디스패치 대화로(권한 묻기·허용 도구), codex·gemini 는 허브가 직접 띄워 실행 기록에 진행을 보인다(aicli.py)
+let ai={engine:'claude',engines:[]};
+const direct=()=>ai.engine!=='claude';
+function drawAi(){
+  const s=$('#aiSel');s.replaceChildren();
+  for(const e of ai.engines){const o=el('option','',e.name+(e.installed?'':' (설치 필요)'));o.value=e.id;o.selected=e.id===ai.engine;s.append(o)}
+  const cur=ai.engines.find(e=>e.id===ai.engine)||{};
+  $('#aiName').textContent=cur.name||'';
+  $('#aiNote').textContent=!cur.installed&&direct()?'— 아직 이 PC 에 없어요: '+cur.install:(ai.engine==='gemini'&&ai.gemini_approval!=='yolo'?'(Gemini 는 파일 고치기까지만 — 시험은 카드의 🧪 시험으로)':'');
+  $('#askDirect').hidden=!direct();$('#askOn').hidden=direct()||!chatUp;$('#askOff').hidden=direct()||chatUp;
+  $('#askBtn').textContent=direct()?(cur.name||'AI')+' 로 만들기':(chatUp?'대화로 부탁하기':'부탁 글 복사');
+}
+async function loadAi(){try{ai=await api('/api/ai');drawAi()}catch(e){}}
+$('#aiSel').onchange=guard(async()=>{ai=await api('/api/ai',{engine:$('#aiSel').value});drawAi();toast(($('#aiSel').selectedOptions[0]||{}).textContent+' 로 맡깁니다')});
 async function checkChat(){
   try{await fetch(CHAT_URL+'api/state',{mode:'no-cors',cache:'no-store',signal:AbortSignal.timeout(2500)});chatUp=true}catch(e){chatUp=false}
-  $('#askOn').hidden=!chatUp;$('#askOff').hidden=chatUp;
-  $('#askBtn').textContent=chatUp?'대화로 부탁하기':'부탁 글 복사';
+  drawAi();
 }
+loadAi();   // 🩹 고쳐 달라기는 허브 화면에도 있다 — 어느 AI 로 갈지 알아야 한다
 if(document.body.classList.contains('view-make')){checkChat();setInterval(checkChat,15000)}
 $('#askBtn').onclick=guard(async()=>{
   const what=$('#askWhat').value.trim();if(!what)throw new Error('무엇을 해 줄지 적어 주세요');
   const when=$('#askWhen').value,btn=$('#askBtn');
   // 부탁 글은 허브가 만든다(ask_prompt) — 작성 안내서(AUTHORING.md)·시험 실행 명령을 넣어 '만들기 → 시험 → 고치기' 로 돌게
+  if(direct()){
+    btn.disabled=true;
+    try{const r=await api('/api/ask',{what,when,send:true});$('#askWhat').value='';$('#askWhen').value='';toast('만들기 시작 — 실행 기록에서 진행을 볼 수 있어요');select(r.run)}
+    finally{btn.disabled=false}
+    return;
+  }
   if(chatUp){
     btn.disabled=true;btn.textContent='보내는 중…';
     try{await api('/api/ask',{what,when,send:true})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
@@ -517,6 +539,7 @@ $('#askBtn').onclick=guard(async()=>{
 $('#fixBtn').onclick=guard(async()=>{                    // 🩹 고쳐 달라기(showFix 가 보이게 한다)
   const btn=$('#fixBtn'),id=sel;btn.disabled=true;
   try{
+    if(direct()){const r=await api('/api/fix',{id,send:true});toast('고치기 시작 — 실행 기록에서 진행을 볼 수 있어요');select(r.run);return}
     try{await api('/api/fix',{id,send:true});toast('고쳐 달라고 보냈어요 — 대화에서 진행을 볼 수 있어요');window.open(CHAT_URL,'_blank');return}
     catch(e){if(/없는 실행|실패한 실행만|내 자동화/.test(e.message))throw e}   // 대화가 꺼졌거나 못 보냄 → 아래에서 글만 복사
     const {text}=await api('/api/fix',{id,send:false});

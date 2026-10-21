@@ -26,7 +26,8 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | ☀ 아침 브리핑 | 정한 요일·시각에 어제 자동화(성공·실패)·맡긴 일·답 기다리는 질문·상시 서비스·기능 상태 ✖ 를 한 통으로(LLM 안 씀) | `morning_brief` |
 | 🔌 허브 MCP 서버 | Claude Code·Claude Desktop·Cursor 같은 AI 도구가 허브 상태(서비스·실행 기록·로그·기능 상태·맡긴 일)를 **읽기 전용** 도구로 바로 묻는다 — `python setup.py --mcp` 로 등록(실행·끄기·비밀값은 내주지 않음) | `dispatch.extra_tools` |
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
-| 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
+| 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama·codex·gemini)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
+| 🧠 AI 고르기 | 「말로 부탁하기」·「고쳐 달라기」·주간 보고 초안을 **Claude Code · Codex(ChatGPT) · Gemini CLI** 중 이 PC 에 깔린 것으로. Codex·Gemini 는 허브가 직접 띄워 실행 기록에서 진행을 보여 준다(Codex 는 허브 폴더 안에서만 쓰는 샌드박스). 메일·대화로 일 맡기기는 권한 묻기 때문에 Claude 전용 — `tools\macro-hub\aicli.py` | `ai` |
 | 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
 | 🚚 PC 이전 | PC 를 바꿀 때 Claude Code 대화 기록·키트 설정·저장소의 커밋 안 한 작업물·환경변수 값을 암호 걸린 `.7z` 하나로 묶고 새 PC 에서 풀어 넣는다 — [tools\pc-migrate\README.md](tools/pc-migrate/README.md) | `migrate` |
 

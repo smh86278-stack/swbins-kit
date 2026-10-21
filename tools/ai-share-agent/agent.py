@@ -1157,7 +1157,13 @@ def run_ollama(prompt, model, num_ctx=32768):
 
 
 def run_llm(prompt, engine="claude", model=""):
-    return run_ollama(prompt, model) if engine == "ollama" else run_claude(prompt)
+    """claude(로그인된 claude CLI) · ollama(로컬) · codex · gemini(aicli — 읽기 전용으로 답 글만)."""
+    if engine == "ollama":
+        return run_ollama(prompt, model)
+    if engine in ("codex", "gemini"):
+        import aicli    # tools\macro-hub (위 sys.path)
+        return aicli.text(prompt, engine, model)
+    return run_claude(prompt)
 
 
 def present(engine, model):
@@ -1690,7 +1696,7 @@ def main(argv=None):
                     choices=["weekly", "collect", "present", "run", "serve", "set-token"])
     ap.add_argument("--since")
     ap.add_argument("--until")
-    ap.add_argument("--engine", choices=["claude", "ollama"], default="claude")
+    ap.add_argument("--engine", choices=["claude", "ollama", "codex", "gemini"], default="claude")
     ap.add_argument("--model", default="qwen2.5:7b", help="ollama 모델 (맛보기용)")
     ap.add_argument("--port", type=int, help="serve 포트 (기본 ai_share.port)")
     ap.add_argument("--no-browser", action="store_true", help="serve 때 브라우저를 자동으로 열지 않는다")

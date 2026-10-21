@@ -36,6 +36,7 @@ SECTIONS = [
     ('morning_brief', '아침 브리핑', 'tools/macro-hub/macros/job_morning_brief.py'),
     ('rate_limits', 'API 호출 한도 조절 · 미터기', 'tools/macro-hub/ratelimit.py'),
     ('links', '바로가기', None),
+    ('ai', 'AI 고르기 (Claude Code · Codex · Gemini)', 'tools/macro-hub/aicli.py'),
     ('dispatch', '디스패치(메일 → Claude Code, 고급)', 'mail-gateway.py'),
     ('jira', 'Jira 새 이슈 감시(고급)', 'jira-watch.py'),
     ('ai_share', 'AI 공유 위키 · 주간 보고 초안', 'tools/ai-share-agent/agent.py'),

@@ -71,6 +71,7 @@ _spec.loader.exec_module(pl)
 sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
+import aicli  # noqa: E402  (AI 고르기 — Claude Code · Codex · Gemini CLI)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
 import winevents  # noqa: E402
@@ -307,6 +308,41 @@ def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=Fa
     threading.Thread(target=_pump, args=(run,), daemon=True).start()
     threading.Thread(target=_watch, args=(run, timeout), daemon=True).start()
     return run, None
+
+
+AI_TIMEOUT = 1800     # 말로 부탁하기·고쳐 달라기를 Codex·Gemini 로 직접 돌릴 때 — 만들고 시험하고 고치기(최대 3번)에 넉넉히
+
+
+def start_ai_run(what, prompt):
+    """🛠 말로 부탁하기 · 🩹 고쳐 달라기를 고른 AI(codex·gemini)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
+    도구 실행(tool)이라 실행 기록 파일·실패 알림 메일에는 넣지 않는다. 프롬프트는 표준 입력으로."""
+    s = aicli.settings()
+    argv, shell, note = aicli.agent_cmd(s['engine'], HERE, s)
+    run = Run('ai:' + what, '%s — %s' % (what, aicli.NAMES[s['engine']]), {'kind': 'ai'}, tool=True)
+    env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
+    try:
+        run.proc = subprocess.Popen(argv, cwd=HERE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, creationflags=NO_WINDOW, shell=shell)
+    except OSError as e:
+        raise RuntimeError('%s 를 띄우지 못했습니다: %s' % (aicli.NAMES[s['engine']], e))
+    if note:
+        run.lines.append('ℹ ' + note)
+
+    def feed():
+        try:
+            run.proc.stdin.write(aicli.agent_prompt(s['engine'], prompt, s).encode('utf-8'))
+            run.proc.stdin.close()
+        except OSError:
+            pass
+    with lock:
+        runs.append(run)
+        runs_by_id[run.id] = run
+    broadcast({'t': 'run', 'run': run.summary()})
+    threading.Thread(target=feed, daemon=True).start()
+    threading.Thread(target=_pump, args=(run,), daemon=True).start()
+    threading.Thread(target=_watch, args=(run, AI_TIMEOUT), daemon=True).start()
+    audit('AI 에게 맡김', what, aicli.NAMES[s['engine']])
+    return run
 
 
 NOTIFY_PREFIX = '@@notify '
@@ -1312,6 +1348,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/ping':                     # 화면이 실시간 연결을 다시 붙일 때 — 토큰이 옛것(허브가 다시 뜸)이면 403 → 화면이 새로 고친다
             return self._send(200, {'ok': True}) if self._token_ok() else self._send(403, {'error': 'forbidden'})
+        if u.path == '/api/ai':                       # AI 고르기 — 고른 엔진 · 엔진마다 깔렸는지 · 설치 명령
+            return self._send(200, aicli.status())
         if u.path == '/api/look':                     # 꾸미기 — 지금 값 · 고를 수 있는 것
             return self._send(200, {'look': look(), 'attrs': look_attrs(), 'themes': LOOK_THEMES})
         if u.path == '/api/schedule':
@@ -1438,6 +1476,8 @@ class Handler(BaseHTTPRequestHandler):
             if 'what' in body and not body.get('send'):
                 return self._send(200, {'text': text})
             try:
+                if aicli.settings()['engine'] != 'claude':   # Codex·Gemini — 허브가 직접 돌리고 로그로 보여 준다
+                    return self._send(200, {'ok': True, 'run': start_ai_run('말로 부탁하기', text).id, 'text': text})
                 return self._send(200, dict(ask_chat(text), text=text))
             except Exception as e:
                 return self._send(502, {'error': str(e), 'text': text})
@@ -1449,9 +1489,17 @@ class Handler(BaseHTTPRequestHandler):
             if not body.get('send'):
                 return self._send(200, {'text': text})
             try:
+                if aicli.settings()['engine'] != 'claude':
+                    return self._send(200, {'ok': True, 'run': start_ai_run('고쳐 달라기', text).id, 'text': text})
                 return self._send(200, dict(ask_chat(text), text=text))
             except Exception as e:
                 return self._send(502, {'error': str(e), 'text': text})
+        if path == '/api/ai':                         # AI 고르기 {"engine": "claude"|"codex"|"gemini"} — config.local.json ai.engine
+            try:
+                aicli.set_engine(str(body.get('engine') or ''), via='허브 화면')
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            return self._send(200, aicli.status())
         if path in ('/api/pick', '/api/inspect'):
             tool = 'pick' if path == '/api/pick' else 'inspect'
             title = '요소 찍기' if tool == 'pick' else '창·컨트롤 구조 보기'
