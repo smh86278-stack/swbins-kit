@@ -212,6 +212,9 @@ API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,s
 ## 녹화 · 도구
 
 - **웹 녹화**: 주소·이름을 넣고 시작 → Chrome 이 뜬다 → 조작하고 창을 닫으면 `macros.local` 에 저장 (`playwright codegen`).
+  저장할 때 `secretize_recording` 이 비밀번호 칸(그 줄 locator 에 password·pwd·pw·비밀번호·암호…)의 `.fill("값")` 을
+  `secret('<이름>_비밀번호')` 로 바꾸고 값은 `save_secrets` 로 `secrets.local.json` 에 넣는다. 녹화 스크립트(kind script)엔
+  runner 가 `secret` 함수를 넣어 주고, 읽은 값은 로그에서 ●●● 로 가린다. 시험 `tests\test_hub_logic.py` SecretizeRecording.
 - **요소 찍기**: 누르고 3초 안에 컨트롤에 마우스를 올리면 자동화에 붙일 `child_window(...)` 코드가 로그에 나온다.
 - **구조 보기**: 창 제목 일부를 넣으면 컨트롤 트리를 출력한다. 비우면 열린 창 목록.
 

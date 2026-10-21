@@ -989,6 +989,46 @@ def fix_text(run_id):
                build_steps()))
 
 
+SECRET_FIELD = re.compile(r'(?i)passw|passwd|pwd|\bpw\b|비밀번호|비번|암호|패스워드')
+FILL_LINE = re.compile(r'^(?P<pre>.*\.(?:fill|type|press_sequentially)\()(?P<lit>"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')(?P<post>.*)$')
+
+
+def secretize_recording(code, stem):
+    """녹화 코드에서 비밀번호 칸에 넣은 값을 빼낸다 — (바꾼 코드, {키: 값}).
+    codegen 은 입력한 값을 .fill("…") 그대로 적는다. 칸을 가리키는 말(password·비밀번호…)이 그 줄에 있으면
+    값을 secret("<이름>_비밀번호") 로 바꾼다. 같은 값은 같은 키, 다른 값은 _2·_3."""
+    found, out = {}, []
+    for line in code.split('\n'):
+        m = FILL_LINE.match(line)
+        if m and SECRET_FIELD.search(m.group('pre')):
+            try:
+                val = ast.literal_eval(m.group('lit'))
+            except (ValueError, SyntaxError):
+                val = ''
+            if isinstance(val, str) and val:
+                key = next((k for k, v in found.items() if v == val), None)
+                if not key:
+                    key = '%s_비밀번호' % stem + ('_%d' % (len(found) + 1) if found else '')
+                    found[key] = val
+                line = '%ssecret(%r)%s' % (m.group('pre'), key, m.group('post'))
+        out.append(line)
+    return '\n'.join(out), found
+
+
+def save_secrets(values):
+    """secrets.local.json 에 키를 더한다(있는 키는 덮어씀). 이 PC 에만 있는 파일 — git 에서 빠져 있다."""
+    try:
+        with open(runner.SECRETS, encoding='utf-8-sig') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {}
+    data.update(values)
+    tmp = runner.SECRETS + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, runner.SECRETS)
+
+
 def record_web(url, name):
     stem = safe_name(name)
     if not stem or not url:
@@ -1019,11 +1059,19 @@ def record_web(url, name):
             if os.path.exists(tmp):
                 os.remove(tmp)
         if code.strip():
+            code, found = secretize_recording(code, stem)
+            moved = ''
+            if found:
+                try:
+                    save_secrets(found)
+                    moved = ' — 비밀번호 %d개는 파일에 쓰지 않고 secrets.local.json 으로 옮겼습니다(%s)' % (len(found), ', '.join(found))
+                except (OSError, ValueError) as e:      # 못 옮기면 값 없이 저장 — 키만 남기고 사람이 넣는다
+                    moved = ' — 비밀번호를 secrets.local.json 에 넣지 못했습니다(%s). %s 키에 직접 넣으세요' % (e, ', '.join(found))
             meta = {'name': name.strip(), 'desc': '녹화 %s' % datetime.date.today(), 'kind': 'script',
                     'target': 'web', 'triggers': [], 'timeout': 300}
             with open(dest, 'w', encoding='utf-8') as f:
                 f.write('# -*- coding: utf-8 -*-\nMETA = %r\n\n%s' % (meta, code))
-            broadcast({'t': 'note', 'text': '녹화 저장: %s' % os.path.basename(dest)})
+            broadcast({'t': 'note', 'text': '녹화 저장: %s%s' % (os.path.basename(dest), moved)})
         else:
             broadcast({'t': 'note', 'text': '녹화한 내용이 없어 저장하지 않았습니다'})
         broadcast({'t': 'macros'})

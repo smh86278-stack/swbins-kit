@@ -9,6 +9,7 @@
 허브를 띄우지 않는다(함수만 부른다). 표준 라이브러리만으로 돈다.
 """
 import datetime
+import json
 import os
 import sys
 import unittest
@@ -453,12 +454,65 @@ class TestRunButton(unittest.TestCase):
         self.assertFalse(os.path.exists(self.runs_file))                      # 실행 기록·실패 알림에 넣지 않는다
         self.assertIsNone(macrohub.macro_view(macrohub.find_macro('local/mail_job'))['last'])
 
+    def test_recording_secret_runs(self):
+        """녹화 스크립트(kind script)에서 secret() 을 쓸 수 있다 — 값은 로그에서 가려진다."""
+        from unittest import mock
+        sec = os.path.join(os.path.dirname(self.local), 'secrets.local.json')
+        with open(sec, 'w', encoding='utf-8') as f:
+            json.dump({'rec_비밀번호': 'pa55word'}, f)
+        path = os.path.join(self.local, 'rec.py')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('META = {"name": "rec", "kind": "script"}\nprint("pw=" + secret("rec_비밀번호"))\n')
+        with mock.patch.dict(os.environ, {'MACROHUB_SECRETS': sec}):
+            run, err = macrohub.run_macro('local/rec', {}, {'kind': 'test'})
+            self.assertIsNone(err)
+            self.wait(run)
+        text = '\n'.join(run.lines)
+        self.assertEqual(run.status, 'ok', text)
+        self.assertIn('pw=●●●', text)
+        self.assertNotIn('pa55word', text)
+
     def test_refuses_builtin(self):
         with open(os.path.join(macrohub.DIR_EXAMPLE, 'job_x.py'), 'w', encoding='utf-8') as f:
             f.write('META = {"name": "x"}\n\ndef run(ctx):\n    pass\n')
         run, err = macrohub.run_macro('job_x', {}, {'kind': 'test'})
         self.assertIsNone(run)
         self.assertIn('내 자동화', err)
+
+
+class SecretizeRecording(unittest.TestCase):
+    """녹화 저장 — 비밀번호 칸에 넣은 값은 파일에 남기지 않고 secret("키") 로, 값은 secrets.local.json 으로."""
+
+    CODE = ('    page.get_by_label("아이디").fill("smith")\n'
+            '    page.get_by_label("비밀번호").fill("s3cr\\"et")\n'
+            '    page.locator("#userPwd").press("Enter")\n'
+            '    page.get_by_role("textbox", name="Password").fill("s3cr\\"et")\n'
+            '    page.locator("input[name=\'pw\']").fill(\'other\')\n'
+            '    page.get_by_placeholder("암호").fill("")\n')
+
+    def test_moves_password_values(self):
+        code, found = macrohub.secretize_recording(self.CODE, 'login')
+        self.assertEqual(found, {'login_비밀번호': 's3cr"et', 'login_비밀번호_2': 'other'})   # 같은 값은 한 키
+        self.assertIn('fill("smith")', code)                              # 아이디는 그대로
+        self.assertNotIn('s3cr', code)
+        self.assertNotIn('other', code)
+        self.assertEqual(code.count("secret('login_비밀번호')"), 2)
+        self.assertIn("fill(secret('login_비밀번호_2'))", code)
+        self.assertIn('.press("Enter")', code)                            # fill 이 아닌 줄은 그대로
+        self.assertIn('fill("")', code)                                   # 빈 값은 옮길 것이 없다
+
+    def test_save_secrets_keeps_others(self):
+        import shutil
+        import tempfile
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        sec = os.path.join(tmp, 'secrets.local.json')
+        with mock.patch.object(macrohub.runner, 'SECRETS', sec):
+            macrohub.save_secrets({'a': '1'})                             # 없으면 새로 만든다
+            macrohub.save_secrets({'b': '비번'})
+        with open(sec, encoding='utf-8') as f:
+            self.assertEqual(json.load(f), {'a': '1', 'b': '비번'})
 
 
 if __name__ == '__main__':

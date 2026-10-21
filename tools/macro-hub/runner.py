@@ -31,7 +31,7 @@ import time
 import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SECRETS = os.path.join(HERE, 'secrets.local.json')
+SECRETS = os.environ.get('MACROHUB_SECRETS') or os.path.join(HERE, 'secrets.local.json')   # 환경변수는 시험용
 
 
 SECRET_VALUES = []                       # ctx.secret 으로 읽은 값 — 출력(print·예외)에서 가린다
@@ -276,7 +276,8 @@ def main():
         t.start()
     try:
         say('▶ %s 시작 (%s)' % (meta.get('name') or os.path.basename(path), ctx.trigger.get('kind', 'manual')))
-        ns = runpy.run_path(path, run_name='macro')
+        # 녹화 스크립트(kind script)는 ctx 가 없다 — 녹화 저장 때 비밀번호를 secret("키") 로 바꿔 두니 그 함수를 넣어 준다
+        ns = runpy.run_path(path, init_globals={'secret': ctx.secret}, run_name='macro')
         if meta.get('kind', 'ctx') == 'ctx':
             if 'run' not in ns:
                 raise RuntimeError('자동화에 run(ctx) 함수가 없습니다')
