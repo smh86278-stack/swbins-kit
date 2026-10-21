@@ -400,5 +400,66 @@ class AlertMail(unittest.TestCase):
                     pass
 
 
+class TestRunButton(unittest.TestCase):
+    """🧪 시험 실행 — 내 자동화만, for_real 동작은 건너뛰고, 실행 기록·마지막 결과에 남지 않는다. META steps 는 카드로 간다."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.local, ex = os.path.join(tmp, 'macros.local'), os.path.join(tmp, 'macros')
+        os.makedirs(self.local)
+        os.makedirs(ex)
+        self.path = os.path.join(self.local, 'mail_job.py')
+        with open(self.path, 'w', encoding='utf-8') as f:
+            f.write('META = {"name": "메일 보내기", "steps": ["표 읽기", "  ", "메일 보내기"]}\n\n'
+                    'def run(ctx):\n'
+                    '    ctx.log("dry=%s" % ctx.dry_run)\n'
+                    '    if ctx.for_real("메일 보내기"):\n'
+                    '        ctx.log("SENT")\n')
+        self.runs_file = os.path.join(tmp, 'runs.jsonl')
+        for name, val in (('broadcast', lambda *a: None), ('F_RUNS', self.runs_file),
+                          ('DIR_LOCAL', self.local), ('DIR_EXAMPLE', ex), ('_cache', {'sig': None, 'items': []}),
+                          ('state', {'enabled': {}, 'hidden': []})):
+            p = mock.patch.object(macrohub, name, val)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def wait(self, run):
+        import time
+        for _ in range(300):
+            if run.ended:
+                return
+            time.sleep(0.1)
+        self.fail('시험 실행이 끝나지 않음')
+
+    def test_steps_from_meta(self):
+        m = macrohub.find_macro('local/mail_job')
+        self.assertEqual(m['steps'], ['표 읽기', '메일 보내기'])               # 빈 단계는 뺀다
+
+    def test_test_run_skips_for_real(self):
+        run, err = macrohub.run_macro('local/mail_job', {}, {'kind': 'test'})
+        self.assertIsNone(err)
+        self.wait(run)
+        text = '\n'.join(run.lines)
+        self.assertEqual(run.status, 'ok', text)
+        self.assertIn('dry=True', text)
+        self.assertIn('🧪 시험이라 건너뜀: 메일 보내기', text)
+        self.assertNotIn('SENT', text)
+        self.assertIn('🧪 시험 결과: 성공', run.lines[-1])
+        self.assertIn('시험', run.name)
+        self.assertFalse(os.path.exists(self.runs_file))                      # 실행 기록·실패 알림에 넣지 않는다
+        self.assertIsNone(macrohub.macro_view(macrohub.find_macro('local/mail_job'))['last'])
+
+    def test_refuses_builtin(self):
+        with open(os.path.join(macrohub.DIR_EXAMPLE, 'job_x.py'), 'w', encoding='utf-8') as f:
+            f.write('META = {"name": "x"}\n\ndef run(ctx):\n    pass\n')
+        run, err = macrohub.run_macro('job_x', {}, {'kind': 'test'})
+        self.assertIsNone(run)
+        self.assertIn('내 자동화', err)
+
+
 if __name__ == '__main__':
     unittest.main()

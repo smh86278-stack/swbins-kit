@@ -64,6 +64,8 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .badge.ex{background:var(--soft);color:var(--muted)}
 .badge.svc{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
 .trg{font-size:11.5px;color:var(--muted)}
+.msteps{margin:2px 0 3px;padding-left:20px;font-size:11.5px;color:var(--muted)}
+.msteps li{margin:0}
 .card .act{gap:8px}
 .card .act button{padding:3px 12px}
 .params{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0}
@@ -330,6 +332,7 @@ function macroCard(m,idx,dim){
     if(m.running)top.append(chip('running'));
     c.append(top);
     if(m.desc)c.append(el('div','desc',m.desc));
+    if((m.steps||[]).length){const ol=el('ol','msteps');for(const s of m.steps)ol.append(el('li','',s));c.append(ol)}   // META steps — 무엇을 하는지 쉬운 말로
     if(m.triggers.length)c.append(el('div','trg','트리거: '+m.triggers.map(trgText).join(' · ')));
     const keys=Object.keys(m.params||{});
     if(keys.length){
@@ -344,6 +347,9 @@ function macroCard(m,idx,dim){
     if(m.running){const b=el('button','bad','중지');b.onclick=()=>api('/api/stop',{run:m.running}).catch(e=>toast(e.message));act.append(b)}
     else{const b=el('button','pri','실행');b.onclick=async()=>{
       try{const r=await api('/api/run',{id:m.id,params:paramVals[m.id]||{}});select(r.run)}catch(e){toast(e.message)}};act.append(b)}
+    if(m.local&&!m.service&&!m.running){   // 🧪 시험 — 메일 보내기·제출처럼 ctx.for_real() 로 감싼 동작은 건너뛰고 돌려 본다
+      const t=el('button','','🧪 시험');t.title='진짜로 보내거나 지우는 동작은 건너뛰고 한 번 돌려 봅니다 — 켜기 전에 확인용';
+      t.onclick=async()=>{try{const r=await api('/api/test',{id:m.id,params:paramVals[m.id]||{}});select(r.run)}catch(e){toast(e.message)}};act.append(t)}
     if(m.triggers.length||m.service){
       const lab=el('label','switch'),cb=el('input');cb.type='checkbox';cb.checked=m.enabled;
       cb.onchange=()=>api('/api/enable',{id:m.id,enabled:cb.checked}).then(()=>toast(cb.checked?(m.service?'상시 실행을 켰습니다':'자동 실행을 켰습니다'):'껐습니다')).catch(e=>toast(e.message));

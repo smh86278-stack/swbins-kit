@@ -175,6 +175,7 @@ def _discover_files():
         items.append({
             'id': ('local/' if local else '') + stem, 'path': path, 'local': local,
             'name': meta.get('name') or stem, 'desc': meta.get('desc', ''),
+            'steps': [str(s) for s in meta.get('steps') or [] if str(s).strip()],   # 쉬운 말 단계 — 카드에 보여 준다
             'kind': meta.get('kind', 'ctx'), 'target': meta.get('target', ''),
             'params': meta.get('params') or {}, 'triggers': meta.get('triggers') or [],
             'service': bool(meta.get('service')),
@@ -242,8 +243,11 @@ def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=Fa
         return None, '이미 실행 중입니다'
     run = Run(macro_id, name or macro_id, trigger, tool)
     run.motion = run.motion_default = motion
+    ctx = {'macro': macro_id, 'params': params or {}, 'trigger': trigger}
+    if trigger.get('kind') == 'test':
+        ctx['dry_run'] = True                    # 시험 실행 — ctx.for_real() 로 감싼 동작은 건너뛴다(runner.py --test 와 같게)
     env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', PYTHONUNBUFFERED='1',
-               MACROHUB_CTX=json.dumps({'macro': macro_id, 'params': params or {}, 'trigger': trigger}, ensure_ascii=False))
+               MACROHUB_CTX=json.dumps(ctx, ensure_ascii=False))
     try:
         run.proc = subprocess.Popen([PYTHON, '-u', RUNNER, path], cwd=HERE, env=env, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
@@ -307,7 +311,11 @@ def _watch(run, timeout):
     run.ended = time.time()
     if run.status == 'running':
         run.status = 'stopped' if run.stopping else ('ok' if run.code == 0 else 'fail')
-    if not run.tool:
+    if run.trigger.get('kind') == 'test':        # 시험 실행은 실행 기록·실패 알림 메일에 넣지 않는다 — 화면 로그로만 본다
+        ok = run.status == 'ok'
+        run.lines.append('🧪 시험 결과: %s' % ('성공' if ok else '실패 — 위 로그를 보고 고치세요'))
+        broadcast({'t': 'log', 'run': run.id, 'line': run.lines[-1]})
+    elif not run.tool:
         rec = dict(run.summary(), tail=list(run.lines)[-30:])
         try:
             with open(F_RUNS, 'a', encoding='utf-8') as f:
@@ -519,9 +527,13 @@ def run_macro(macro_id, params=None, trigger=None):
     m = find_macro(macro_id)
     if not m:
         return None, '자동화를 찾을 수 없습니다'
+    if (trigger or {}).get('kind') == 'test' and (not m['local'] or m['service']):
+        # 기본 자동화는 for_real 로 감싸지 않아 시험이어도 진짜 메일·서버에 닿는다
+        return None, '시험 실행은 내 자동화(상시 자동화 제외)만 됩니다'
     merged = {k: v for k, v in m['params'].items()}
     merged.update({k: v for k, v in (params or {}).items() if k in m['params'] or not m['params']})
-    return start_run(m['id'], merged, trigger, m['path'], m['name'], timeout=m['timeout'],
+    name = m['name'] + (' 🧪시험' if (trigger or {}).get('kind') == 'test' else '')
+    return start_run(m['id'], merged, trigger, m['path'], name, timeout=m['timeout'],
                      motion=None if m['service'] else m['motion'])
 
 
@@ -1098,7 +1110,8 @@ def load_last_runs(keep=2000, limit=2 * 1024 * 1024):
 
 def macro_view(m):
     r = running_run(m['id'])
-    last = next((x for x in reversed(runs) if x.macro == m['id'] and not x.tool and x.status != 'running'), None)
+    last = next((x for x in reversed(runs) if x.macro == m['id'] and not x.tool and x.status != 'running'
+                 and x.trigger.get('kind') != 'test'), None)
     d = {k: v for k, v in m.items() if k != 'path'}
     d.update(enabled=bool(state['enabled'].get(m['id'])), running=r.id if r else None, hidden=m['id'] in hidden_ids(),
              last=last.summary() if last else LAST_RUN.get(m['id']),
@@ -1265,6 +1278,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/run':
             run, err = run_macro(body.get('id', ''), body.get('params'), {'kind': 'manual'})
             audit('지금 실행', body.get('id', ''), '' if run else '실패: %s' % err)
+            return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
+        if path == '/api/test':                       # 🧪 시험 실행 {"id", "params"} — 내 자동화만, for_real 동작은 건너뜀
+            run, err = run_macro(body.get('id', ''), body.get('params'), {'kind': 'test'})
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/stop':
             return self._send(200, {'ok': stop_run(int(body.get('run', 0)))})
