@@ -1310,6 +1310,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}})
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
+        if u.path == '/api/ping':                     # 화면이 실시간 연결을 다시 붙일 때 — 토큰이 옛것(허브가 다시 뜸)이면 403 → 화면이 새로 고친다
+            return self._send(200, {'ok': True}) if self._token_ok() else self._send(403, {'error': 'forbidden'})
         if u.path == '/api/look':                     # 꾸미기 — 지금 값 · 고를 수 있는 것
             return self._send(200, {'look': look(), 'attrs': look_attrs(), 'themes': LOOK_THEMES})
         if u.path == '/api/schedule':

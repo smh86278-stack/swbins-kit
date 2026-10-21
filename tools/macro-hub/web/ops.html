@@ -396,6 +396,10 @@ for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => { h
 let start = location.hash.slice(1); if (!LOAD[start] && !document.getElementById(start)) { try { start = localStorage.getItem('ops.tab') || 'sched'; } catch (e) { start = 'sched'; } }
 show(document.getElementById(start) ? start : 'sched');
 const es = new EventSource('/events');
+// 허브가 다시 뜨면(토큰이 바뀜) 실시간 연결이 다시 붙는다 — 그때 /api/ping 으로 물어봐서 옛 화면(403)이면 조용히 새로 고친다.
+// D&C 창은 화면을 살려 두므로, 이게 없으면 숨김·새 기능이 F5 전까지 안 보였다(2026-10-21)
+let reopen = false;
+es.onopen = () => { if (reopen) fetch('/api/ping', {headers: {'X-Hub-Token': TOKEN}}).then(r => { if (r.status === 403) location.reload(); }).catch(() => {}); reopen = true; };
 es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); if (m.t === 'look') HubLook.apply(m.look); const on = document.querySelector('main section.on');
   if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); }
   if (on && m.t === 'audit' && on.id === 'audit') { clearTimeout(es.t); es.t = setTimeout(loadAudit, 300); } };

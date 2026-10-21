@@ -465,9 +465,12 @@ function upsertRun(r){
 function showFix(r){$('#fixBtn').hidden=!((r.status==='fail'||r.status==='timeout')&&String(r.macro).startsWith('local/'))}
 async function loadMacros(){try{macros=await api('/api/macros');try{deleted=await api('/api/deleted')}catch(e){deleted=[]}drawMacros();updatePets()}catch(e){}}
 async function loadRuns(){try{runs=await api('/api/runs');runs.forEach(r=>seenRuns.add(r.id));drawRuns();updatePets()}catch(e){}}
+let reopen=false;
 function connect(){
   const es=new EventSource('/events');
-  es.onopen=()=>{$('#dot').classList.add('on');loadMacros();loadRuns()};
+  es.onopen=()=>{$('#dot').classList.add('on');loadMacros();loadRuns()
+    if(reopen)fetch('/api/ping',{headers:{'X-Hub-Token':TOKEN}}).then(r=>{if(r.status===403)location.reload()}).catch(()=>{})   // 허브가 다시 떴으면(옛 토큰) 화면째 새로 — 허브 창은 화면을 살려 둔다
+    reopen=true};
   es.onerror=()=>$('#dot').classList.remove('on');
   es.onmessage=ev=>{
     const m=JSON.parse(ev.data);
