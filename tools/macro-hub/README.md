@@ -86,7 +86,7 @@ web/ops.html    운영 화면(/ops) — 예약 작업 · 상시 서비스 · 기
 ops.py          운영 화면의 데이터 — 기능 상태(kit.read_status) · 설정 준비 여부 · 에이전트 보드
 kit.py          키트 공통 바탕 — 설정(config.local.json) · 메일 · DPAPI · 예약 시각 판정 · 상태 파일
 alertmail.py    실패 알림 메일
-macros/         예제 (git 에 들어간다)
+macros/         예제 (git 에 들어간다) — example_groupware: 그룹웨어 공지·결재 목록의 새 줄 알림 견본(주소·목록 줄 CSS 는 params, 로그인은 secret groupware_id·groupware_pw)
 macros.local/   실제 업무 자동화 (git 제외)          ← 회사 자동화는 여기에
 builtin/        요소 찍기 · 창 구조 보기 (허브가 부르는 도구)
 secrets.local.json   계정·비밀번호 (git 제외, 견본 secrets.example.json)
