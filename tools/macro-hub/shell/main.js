@@ -21,6 +21,9 @@ const RAIL = 64;                                                          // 왼
 const TABS = { hub: HUB + '/', make: HUB + '/?view=make', chat: CHAT + '/', ops: HUB + '/ops' };
 const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
 
+// GPU 합성을 끈다 — 켜 두면 잠자기·모니터 바뀜 뒤 창이 '보임·맨 앞'인데 화면엔 아무것도 안 그려지는 유령이 되는 일이 있다.
+// 화면이 단순해 CPU 로 그려도 충분하다
+app.disableHardwareAcceleration();
 app.setAppUserModelId('WorkKit');
 app.setName(TITLE);
 app.setPath('userData', path.join(__dirname, '..', 'data.local', 'shell-profile'));   // 펫과 프로필을 나눈다
@@ -251,6 +254,16 @@ ipcMain.on('rail-menu', (e, tab) => {                                      // �
   Menu.buildFromTemplate([item]).popup({ window: win });
 });
 
+// 창을 맨 앞으로 — show()·focus() 만으로는 윈도우의 '포커스 가로채기 방지'에 걸려 보임·포커스 상태인데도
+// 다른 창 뒤에 깔린다(트레이를 눌러도 '안 뜸'). 잠깐 맨 위 고정을 걸었다 풀면 그 자리에 남는다
+function front() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.setAlwaysOnTop(true);
+  win.show(); win.focus(); win.moveTop();
+  setTimeout(() => { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false); }, 300);
+}
+
 function create(page) {
   const st = readState();
   win = new BrowserWindow({
@@ -261,9 +274,9 @@ function create(page) {
   });
   if (st.max) win.maximize();
   Menu.setApplicationMenu(null);
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', front);
   // ready-to-show 가 안 와서 창이 숨은 채로 남는 일이 있다(재부팅 직후 등 — 프로세스·창은 있는데 안 보임) — 2초 뒤엔 그냥 띄운다
-  setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible() && !quitting) win.show(); }, 2000);
+  setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible() && !quitting) front(); }, 2000);
   const wc = win.webContents;                                             // 창 자신의 화면 = 왼쪽 아이콘 줄(로컬 파일)
   wc.on('will-navigate', e => e.preventDefault());
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -281,10 +294,7 @@ function create(page) {
   });
   // 트레이 「자동화 허브 열기」가 숨은 창에 보내는 신호 — electron.exe 를 또 띄워 넘겨받는(second-instance) 0.2~0.4초 없이 바로.
   // 트레이가 Win32 ShowWindow 로 직접 꺼내면 화면이 다시 안 그려져(옛 그림만 보임) 꼭 여기서 win.show() 한다. 번호는 app.py WM_SHELL_SHOW 와 같게
-  win.hookWindowMessage(0xA0DC, () => {
-    if (win.isMinimized()) win.restore();
-    win.show(); win.focus();
-  });
+  win.hookWindowMessage(0xA0DC, front);
   win.on('query-session-end', () => { quitting = true; });               // 로그오프·재부팅을 막지 않게
   win.on('session-end', () => { quitting = true; });
   win.on('closed', () => {                                                // 떼어 낸 창은 그대로 둔다(닫을 때 원래 창이 없으면 그냥 닫힌다)
@@ -301,8 +311,7 @@ function create(page) {
 
 app.on('second-instance', (_e, argv) => {
   if (!win) return create(pageArg(argv));
-  if (win.isMinimized()) win.restore();
-  win.show(); win.focus();
+  front();
   if (argv.some(a => a.startsWith('--page='))) { const url = toUrl(pageArg(argv)); show(tabFor(url), url); }
 });
 app.whenReady().then(async () => { await fetchMode(); create(pageArg(process.argv)); watchMode(); watchChat(); });
