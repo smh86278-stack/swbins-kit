@@ -1,0 +1,8 @@
+{
+  "name": "AI 도우미",
+  "icon": "🤖",
+  "kind": "ai",
+  "version": "0.1.0",
+  "desc": "붙여 넣은 글을 요약·답장 초안·다듬기·번역·표 정리",
+  "permissions": ["db", "ai"]
+}

@@ -1,0 +1,10 @@
+{"steps": [
+  {"fill": "#input", "value": "내일 오후 3시 회의는 4시로 옮깁니다. 자료는 오전까지 공유 부탁드립니다."},
+  {"click": "#ask"},
+  {"expect": "#ai-mark"},
+  {"expect_text": "AI 작성"},
+  {"expect_text": "검사용 가짜 AI 답"},
+  {"expect": "#history li", "count_at_least": 1},
+  {"click": "#mode-custom"},
+  {"expect": "#instruction"}
+]}

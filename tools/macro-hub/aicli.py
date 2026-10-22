@@ -148,12 +148,39 @@ def agent_prompt(engine, text, s=None):
     return text
 
 
-def text(prompt, engine, model='', timeout=1800):
-    """글만 쓰는 일 — 답 글을 돌려준다. 실패하면 RuntimeError. claude 는 부르는 쪽(agent.run_claude)이 따로 한다."""
+def _claude_text(prompt, model='', timeout=1800, system=''):
+    """Claude Code 로 글만 — 이 PC 사용자 본인의 로그인으로, 도구 없이(--tools ""), 세션을 남기지 않고.
+    system 이 있으면 Claude Code 의 기본 지시 대신 그 지시로(--system-prompt) — 본문에 섞으면 지시를 놓친다(10-22 실측)."""
+    path = exe('claude')
+    if not path:
+        raise RuntimeError('%s 가 이 PC 에 없습니다 — %s' % (NAMES['claude'], INSTALL['claude']))
+    argv = ([path, '-p', '--output-format', 'text', '--tools', '', '--strict-mcp-config', '--no-session-persistence']
+            + (['--model', model] if model else []) + (['--system-prompt', system] if system else []))
+    env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
+    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         cwd=tempfile.gettempdir(), env=env, shell=_shell(path))
+    try:
+        out, err = p.communicate(prompt.encode('utf-8'), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(p.pid)], capture_output=True) if os.name == 'nt' else p.kill()
+        raise RuntimeError('%s 가 %d초 안에 끝나지 않아 껐습니다' % (NAMES['claude'], timeout))
+    if p.returncode != 0:
+        raise RuntimeError('%s 실행 실패 (rc=%s): %s' % (NAMES['claude'], p.returncode,
+                                                     (err or out).decode('utf-8', 'replace')[:800]))
+    return out.decode('utf-8', 'replace')
+
+
+def text(prompt, engine, model='', timeout=1800, system=''):
+    """글만 쓰는 일 — 답 글을 돌려준다. 실패하면 RuntimeError. 도구 없이, 빈 임시 폴더에서(프로젝트 파일이 섞이지 않게).
+    system = 어떻게 쓸지 지시(요약·번역…) — Claude·Ollama 는 따로 넘기고, Codex·Gemini 는 본문 앞에 붙인다."""
+    if engine == 'claude':
+        return _claude_text(prompt, model, timeout, system)
     if engine == 'ollama':
         import ollama_agent
-        return ollama_agent.chat(settings()['ollama_url'], model or OLLAMA_MODEL,
-                                 [{'role': 'user', 'content': prompt}], timeout=timeout)
+        msgs = ([{'role': 'system', 'content': system}] if system else []) + [{'role': 'user', 'content': prompt}]
+        return ollama_agent.chat(settings()['ollama_url'], model or OLLAMA_MODEL, msgs, timeout=timeout)
+    if system:
+        prompt = '[지시]\n%s\n\n[글]\n%s' % (system, prompt)
     path = exe(engine)
     if engine not in ('codex', 'gemini'):
         raise ValueError('text() 는 codex · gemini 용입니다')

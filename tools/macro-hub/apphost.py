@@ -13,9 +13,16 @@
   - 화면은 CSP 로 바깥 주소에 못 붙는다(connect-src 'self') — 앱이 PC 자료를 밖으로 내보내지 못하게.
 권한: app.json 에 적은 것 중 사람이 허브 「✨ 앱」 탭에서 허락한 것만 쓴다(data.local\\apps.json).
     db      이 앱 전용 SQLite(data.local\\apps\\<id>\\app.db) — ATTACH 로 다른 파일을 못 연다
-    ai · run · notify · files   — 3d 단계에서 연다(지금은 501)
-앱 화면의 도우미는 <script src="/_app.js"></script> → app.db(sql, params) · app.info().
+    files   이 앱 전용 파일 상자(data.local\\apps\\<id>\\files\\) — 목록·읽기·쓰기·지우기, 파일 하나 5MB·합계 100MB
+    ai      고른 AI(허브 AI 고르기 — Claude·Codex·Gemini·Ollama)에게 글 부탁. 도구 없이 글만, 한 번에 하나, 시간당 상한
+    run     app.json "macros" 에 적은 내 자동화만 실행·결과 보기(허락할 때 목록이 보인다)
+    notify  허브 알림 출구(메일·슬랙…)로 '[앱] 제목' 알림, 시간당 상한
+  ai·run·notify 는 허브가 HOOKS 로 연결해 준다(허브 밖에서 apphost 만 띄우면 503). 상한은 LIMITS.
+앱 화면의 도우미는 <script src="/_app.js"></script> → app.db · app.files · app.ai · app.run · app.notify · app.info.
 """
+import base64
+import collections
+import time
 import json
 import os
 import re
@@ -39,7 +46,16 @@ PERMS = {'db': '데이터 저장 (이 앱 전용 DB)',
          'run': '내 자동화 실행',
          'notify': '알림 보내기 (메일·메신저)',
          'files': '파일 읽기·쓰기 (이 앱 data 폴더 안만)'}
-READY = ('db',)                    # 지금 동작하는 권한 — 나머지는 3d
+READY = ('db', 'ai', 'run', 'notify', 'files')   # 지금 동작하는 권한
+HOOKS = {}                        # 허브가 채운다 — ai(prompt, system, app) → {text, engine} · run(macro, params, app, wait) → dict
+                                  #                 run_status(run_id, app) → dict · notify(title, text, app) → 보낸 곳 수
+LIMITS = {'ai': 60, 'run': 60, 'notify': 20}   # 앱마다 한 시간에 몇 번까지(설정 apps.limits)
+FILE_MAX = 5 * 1024 * 1024
+FILES_TOTAL = 100 * 1024 * 1024
+AI_PROMPT_MAX = 30000
+MACRO_RE = re.compile(r'(?:local/)?[\w\-]{1,80}')
+_calls = collections.defaultdict(collections.deque)     # (앱, 권한) → 최근 호출 시각
+_busy = set()                                            # AI 를 지금 부르고 있는 앱
 MAX_ROWS = 5000
 MAX_BODY = 2 * 1024 * 1024
 TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -60,8 +76,21 @@ APP_JS = r'''// 나만의 앱 도우미 — 허브 키트가 내준다(/_app.js)
     if (!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
     return d;
   }
+  const files = {
+    list: () => call('files', {op: 'list'}),
+    read: (path, opts) => call('files', {op: 'read', path: path, base64: !!(opts && opts.base64)}),
+    write: (path, data, opts) => call('files', {op: 'write', path: path, data: data, base64: !!(opts && opts.base64)}),
+    remove: (path) => call('files', {op: 'delete', path: path}),
+  };
   window.app = {
     info: () => call('info'),
+    files: files,
+    // 고른 AI 에게 글 부탁 → {text, engine, label}. 화면에 label('🤖 AI 작성 — …')을 같이 보여 줄 것(AI 기본법)
+    ai: (prompt, opts) => call('ai', Object.assign({prompt: prompt}, opts || {})),
+    // app.json "macros" 에 적은 내 자동화 실행 → {run, status, lines}. wait 초만큼 끝나기를 기다린다(최대 120)
+    run: (macro, params, opts) => call('run', Object.assign({macro: macro, params: params || {}}, opts || {})),
+    runStatus: (run) => call('run', {op: 'status', run: run}),
+    notify: (title, text) => call('notify', {title: title, text: text || ''}),
     // SQL 하나 — SELECT 면 rows(객체 배열), 아니면 changes·last_id. 값은 ? 자리에 params 로.
     db: (sql, params) => call('db', {sql: sql, params: params || []}),
     // 여러 문장(테이블 만들기 등) — 값 없이 한 번에
@@ -100,12 +129,14 @@ def manifest(folder):
     if not isinstance(raw, dict):
         raw = {'_error': 'app.json 이 없거나 JSON 이 아닙니다'}
     perms = [p for p in (raw.get('permissions') or []) if p in PERMS] if isinstance(raw.get('permissions'), list) else []
+    macros = [str(m) for m in raw.get('macros') or [] if MACRO_RE.fullmatch(str(m))] if isinstance(raw.get('macros'), list) else []
     return {'name': str(raw.get('name') or os.path.basename(folder))[:60],
             'icon': str(raw.get('icon') or '✨')[:4],
             'kind': raw.get('kind') if raw.get('kind') in KINDS else 'app',
             'version': str(raw.get('version') or '0.1.0')[:20],
             'desc': str(raw.get('desc') or '')[:300],
             'permissions': sorted(set(perms), key=list(PERMS).index),
+            'macros': macros[:20],
             'error': raw.get('_error') or ('' if os.path.isfile(os.path.join(folder, 'index.html')) else 'index.html 이 없습니다')}
 
 
@@ -157,7 +188,9 @@ def view(app, port=None):
     ok = approved(app['id'], app)
     return {k: app[k] for k in ('id', 'name', 'icon', 'kind', 'version', 'desc', 'permissions', 'builtin', 'error')} | {
         'approved': ok, 'pending': [p for p in app['permissions'] if p not in ok],
-        'perm_names': {p: PERMS[p] for p in app['permissions']}, 'ready': [p for p in app['permissions'] if p in READY],
+        'perm_names': {p: PERMS[p] + (' — %s' % ', '.join(app['macros']) if p == 'run' and app['macros'] else '')
+                       for p in app['permissions']},
+        'ready': [p for p in app['permissions'] if p in READY],
         'url': url(app['id'], port)}
 
 
@@ -240,6 +273,128 @@ def run_sql(app, body):
         return {'changes': cur.rowcount, 'last_id': cur.lastrowid}
     finally:
         con.close()
+
+
+# ---------------------------------------------------------------- 파일 상자·호출 상한
+
+def _files_root(app):
+    return os.path.join(DATA, app['id'], 'files')
+
+
+def _file_path(app, rel):
+    rel = str(rel or '').replace('\\', '/').strip('/')
+    parts = rel.split('/')
+    if not rel or any(p in ('', '.', '..') or p.startswith('.') or not re.fullmatch(r'[\w\-. ()가-힣]+', p) for p in parts):
+        raise ValueError('파일 이름은 글자·숫자·-_.() 로 (폴더는 / 로): %s' % rel[:80])
+    root = os.path.realpath(_files_root(app))
+    full = os.path.realpath(os.path.join(root, *parts))
+    if not full.startswith(root + os.sep):
+        raise ValueError('앱 파일 상자 밖입니다')
+    return full
+
+
+def run_files(app, body):
+    """{op: list|read|write|delete, path, data, base64} — 이 앱 파일 상자 안에서만."""
+    op = body.get('op')
+    root = _files_root(app)
+    if op == 'list':
+        out = []
+        for base, dirs, names in os.walk(root):
+            for n in names:
+                full = os.path.join(base, n)
+                st = os.stat(full)
+                out.append({'path': os.path.relpath(full, root).replace(os.sep, '/'), 'size': st.st_size,
+                            'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(st.st_mtime))})
+        return {'files': sorted(out, key=lambda f: f['path'])}
+    path = _file_path(app, body.get('path'))
+    if op == 'read':
+        if not os.path.isfile(path):
+            raise ValueError('없는 파일입니다: %s' % body.get('path'))
+        with open(path, 'rb') as f:
+            data = f.read()
+        if body.get('base64'):
+            return {'data': base64.b64encode(data).decode('ascii')}
+        try:
+            return {'data': data.decode('utf-8')}
+        except UnicodeDecodeError:
+            raise ValueError('글자 파일이 아닙니다 — base64: true 로 읽으세요')
+    if op == 'write':
+        raw = body.get('data')
+        if not isinstance(raw, str):
+            raise ValueError('data 는 글자여야 합니다(바이너리는 base64)')
+        data = base64.b64decode(raw) if body.get('base64') else raw.encode('utf-8')
+        if len(data) > FILE_MAX:
+            raise ValueError('파일 하나는 %dMB 까지입니다' % (FILE_MAX // 1024 // 1024))
+        used = sum(os.path.getsize(os.path.join(b, n)) for b, _, ns in os.walk(root) for n in ns
+                   if os.path.join(b, n) != path) if os.path.isdir(root) else 0
+        if used + len(data) > FILES_TOTAL:
+            raise ValueError('이 앱 파일 상자가 가득 찼습니다(%dMB)' % (FILES_TOTAL // 1024 // 1024))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(data)
+        return {'ok': True, 'size': len(data)}
+    if op == 'delete':
+        if os.path.isfile(path):
+            os.remove(path)
+        return {'ok': True}
+    raise ValueError('op 는 list · read · write · delete 중 하나입니다')
+
+
+def take(app_id, perm, now=None):
+    """시간당 상한 — 넘었으면 False. 상한이 없는 권한은 늘 True."""
+    limit = LIMITS.get(perm)
+    if not limit:
+        return True
+    now = now or time.time()
+    q = _calls[(app_id, perm)]
+    while q and now - q[0] > 3600:
+        q.popleft()
+    if len(q) >= limit:
+        return False
+    q.append(now)
+    return True
+
+
+def call_hook(app, name, body):
+    """ai·run·notify — 허브가 연결한 HOOKS 로. (상태 코드, 응답)."""
+    hook = HOOKS.get(name)
+    if not hook:
+        return 503, {'error': '허브가 연결되지 않아 이 기능을 쓸 수 없습니다'}
+    if name == 'run' and body.get('op') == 'status':
+        return 200, HOOKS['run_status'](int(body.get('run') or 0), app)
+    over = (429, {'error': '%s 를 한 시간에 %d번까지 쓸 수 있습니다 — 잠시 뒤에 다시' % (PERMS[name], LIMITS.get(name, 0))})
+    if name == 'ai':                                  # 잘못된 부탁·겹친 부탁은 상한에 세지 않는다
+        prompt = str(body.get('prompt') or '').strip()
+        if not prompt:
+            return 400, {'error': 'prompt 가 비었습니다'}
+        if len(prompt) > AI_PROMPT_MAX:
+            return 413, {'error': '부탁 글은 %d자까지입니다' % AI_PROMPT_MAX}
+        with _lock:
+            if app['id'] in _busy:
+                return 409, {'error': 'AI 가 앞 부탁을 아직 쓰는 중입니다'}
+            if not take(app['id'], name):
+                return over
+            _busy.add(app['id'])
+        try:
+            res = hook(prompt, str(body.get('system') or '')[:4000], app)
+        finally:
+            with _lock:
+                _busy.discard(app['id'])
+        return 200, dict(res, label='🤖 AI 작성 — %s' % res.get('engine', 'AI'))
+    if name == 'run':
+        macro = str(body.get('macro') or '')
+        if macro not in app['macros']:
+            return 403, {'error': "app.json macros 에 없는 자동화입니다: %s" % macro[:80]}
+        if not take(app['id'], name):
+            return over
+        params = body.get('params') if isinstance(body.get('params'), dict) else {}
+        return 200, hook(macro, params, app, max(0, min(120, int(body.get('wait') or 0))))
+    title = str(body.get('title') or '').strip()[:120]
+    if not title:
+        return 400, {'error': 'title 이 비었습니다'}
+    if not take(app['id'], name):
+        return over
+    return 200, {'ok': True, 'sent': hook(title, str(body.get('text') or '')[:20000], app)}
 
 
 # ---------------------------------------------------------------- 서버
@@ -347,10 +502,23 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send(403, {'error': "'%s' 권한을 아직 허락하지 않았습니다 — 허브 「✨ 앱」 탭에서 허락하세요" % PERMS[name]})
         if name not in READY:
             return self._send(501, {'error': '%s 기능은 아직 준비 중입니다' % PERMS[name]})
+        if name == 'db':
+            try:
+                return self._send(200, run_sql(app, body))
+            except (sqlite3.Error, ValueError) as e:
+                return self._send(400, {'error': 'DB 오류: %s' % e})
+        if name == 'files':
+            try:
+                return self._send(200, run_files(app, body))
+            except (ValueError, OSError) as e:
+                return self._send(400, {'error': '파일 오류: %s' % e})
         try:
-            return self._send(200, run_sql(app, body))
-        except (sqlite3.Error, ValueError) as e:
-            return self._send(400, {'error': 'DB 오류: %s' % e})
+            code, res = call_hook(app, name, body)
+        except (ValueError, TypeError) as e:
+            code, res = 400, {'error': str(e)}
+        except Exception as e:
+            code, res = 502, {'error': '%s 실패: %s' % (PERMS[name], str(e)[:500])}
+        return self._send(code, res)
 
 
 def make_server(port=PORT, hub_port=8630):

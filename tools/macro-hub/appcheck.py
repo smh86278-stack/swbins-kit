@@ -4,7 +4,8 @@
     "<허브 파이썬>" appcheck.py <앱 id> [--headed] [--channel chrome|msedge]
 
 - 허브의 앱 서버를 쓰지 않고 **자기 서버를 임시로**(port 0) 띄운다. 데이터·권한도 임시 폴더 —
-  사람의 앱 데이터는 건드리지 않고, 앱이 요청한 권한 중 동작하는 것(db 등)은 검사 동안만 허락한 것으로 본다.
+  사람의 앱 데이터는 건드리지 않고, 앱이 요청한 권한은 검사 동안만 허락한 것으로 본다.
+  ai·run·notify 는 **가짜**로 답한다(FAKE_HOOKS — 진짜 AI 비용·자동화 실행·알림 메일 없음). AI 답은 '(검사용 가짜 AI 답) …'.
 - 정적 검사: app.json · index.html · 바깥 주소(http/https — CSP 로 막힐 것) · tests\\smoke.json 형식.
 - 브라우저: 콘솔 error · 잡히지 않은 예외 · 자기 출처의 4xx/5xx 요청(파비콘 빼고) · CSP 위반을 모은다.
 - tests\\smoke.json 의 steps 를 차례로: fill · press · click · expect_text · expect(+count_at_least) · eval · wait.
@@ -27,6 +28,15 @@ import apphost  # noqa: E402
 
 STEP_TIMEOUT = 5000
 EXTERNAL = re.compile(r'''(?:src|href)\s*=\s*["'](https?://(?!localhost|127\.0\.0\.1)[^"']+)|(?:import|from)\s*\(?\s*["'](https?://[^"']+)|fetch\(\s*["'](https?://(?!localhost|127\.0\.0\.1)[^"']+)''')
+
+
+FAKE_RUN = {'run': 1, 'status': 'ok', 'code': 0, 'ended': True, 'lines': ['(검사용 — 자동화는 실제로 돌리지 않았습니다)']}
+FAKE_HOOKS = {
+    'ai': lambda prompt, system, app: {'text': '(검사용 가짜 AI 답) ' + prompt[:80], 'engine': '검사용 AI'},
+    'run': lambda macro, params, app, wait=0: dict(FAKE_RUN),
+    'run_status': lambda run_id, app: dict(FAKE_RUN),
+    'notify': lambda title, text, app: 0,
+}
 
 
 def log(*a):
@@ -125,8 +135,10 @@ def browser_check(app, headed=False, channel=''):
     """(문제 목록, 단계 로그) — 임시 서버·임시 데이터로 연다."""
     from playwright.sync_api import sync_playwright
     tmp = tempfile.mkdtemp(prefix='appcheck-')
-    saved = (apphost.STATE, apphost.DATA)
+    saved = (apphost.STATE, apphost.DATA, dict(apphost.HOOKS))
     apphost.STATE, apphost.DATA = os.path.join(tmp, 'apps.json'), os.path.join(tmp, 'data')
+    apphost.HOOKS.clear()
+    apphost.HOOKS.update(FAKE_HOOKS)          # 검사는 진짜 AI·자동화·알림을 부르지 않는다(비용·메일 없음)
     apphost.approve(app['id'], [p for p in app['permissions'] if p in apphost.READY])
     srv = apphost.make_server(0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -188,7 +200,9 @@ def browser_check(app, headed=False, channel=''):
     finally:
         srv.shutdown()
         srv.server_close()
-        apphost.STATE, apphost.DATA = saved
+        apphost.STATE, apphost.DATA = saved[:2]
+        apphost.HOOKS.clear()
+        apphost.HOOKS.update(saved[2])
         shutil.rmtree(tmp, ignore_errors=True)
     return problems, steps_log
 

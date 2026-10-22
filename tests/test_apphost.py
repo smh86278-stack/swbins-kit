@@ -77,10 +77,11 @@ class Listing(Base):
         make_app(self.local, 'a', {'permissions': ['ai']})            # 앱이 db 를 빼면 옛 허락도 안 쓴다
         self.assertEqual(apphost.approved('a'), ['ai'])
         v = apphost.list_view(8631)[0]
-        self.assertEqual((v['url'], v['ready'], v['pending']), ('http://a.localhost:8631/', [], []))
+        self.assertEqual((v['url'], v['ready'], v['pending']), ('http://a.localhost:8631/', ['ai'], []))
 
 
-class Server(Base):
+class ServerBase(Base):
+    """앱 서버를 port 0 으로 띄우고 앱 둘(notes·other)을 만든다 — 시험은 아래 클래스들에."""
     def setUp(self):
         super().setUp()
         self.srv = apphost.make_server(0, hub_port=8630)
@@ -111,6 +112,9 @@ class Server(Base):
         code, body, _ = self.req('/_api/db', app, 'POST', {'sql': sql, 'params': params or []}, **kw)
         return code, json.loads(body)
 
+
+
+class Server(ServerBase):
     def test_host_check(self):
         self.assertEqual(self.req('/', host='127.0.0.1:%d' % self.port)[0], 403)
         self.assertEqual(self.req('/', host='notes.localhost:1')[0], 403)          # 포트가 다르면
@@ -152,7 +156,7 @@ class Server(Base):
         path = os.path.join(apphost.DATA, 'other', 'app.db').replace('\\', '/')
         code, d = self.db("ATTACH DATABASE '%s' AS o" % path)
         self.assertEqual(code, 400)                                              # 다른 파일 붙이기 막힘
-        self.assertEqual(self.req('/_api/ai', method='POST')[0], 501)            # 허락했어도 아직 준비 중
+        self.assertEqual(self.req('/_api/ai', method='POST')[0], 503)            # 허브 연결(HOOKS) 없이 띄우면 503
 
     def test_body_limits(self):
         apphost.approve('notes', ['db'])
@@ -193,7 +197,7 @@ class Templates(Base):
         self.assertEqual(len(msgs), 3, msgs)                             # unpkg · esm.sh · steps 형식 (127.0.0.1 은 괜찮다)
 
 
-class LibAndPrompts(Server):
+class LibAndPrompts(ServerBase):
     def test_lib_served(self):
         code, body, h = self.req('/_lib/preact-htm.js')
         self.assertEqual(code, 200)
@@ -217,6 +221,74 @@ class LibAndPrompts(Server):
         self.assertNotIn('secret.py', rels)
 
 
+class Connect(ServerBase):
+    """3d — files · ai · run · notify. 허브 연결(HOOKS)은 가짜로."""
+    def setUp(self):
+        super().setUp()
+        make_app(self.local, 'hub', {'permissions': ['files', 'ai', 'run', 'notify'], 'macros': ['local/report', 'bad id!']})
+        apphost.approve('hub', ['files', 'ai', 'run', 'notify'])
+        self.calls = []
+        hooks = {'ai': lambda prompt, system, app: self.calls.append(('ai', prompt, system)) or {'text': '답', 'engine': '가짜'},
+                 'run': lambda macro, params, app, wait=0: self.calls.append(('run', macro, params, wait)) or {'run': 7, 'status': 'ok'},
+                 'run_status': lambda run_id, app: {'run': run_id, 'status': 'ok'},
+                 'notify': lambda title, text, app: self.calls.append(('notify', title, text)) or 2}
+        p = mock.patch.dict(apphost.HOOKS, hooks, clear=True)
+        p.start()
+        self.addCleanup(p.stop)
+        apphost._calls.clear()
+
+    def api(self, name, body):
+        code, raw, _ = self.req('/_api/' + name, 'hub', 'POST', body)
+        return code, json.loads(raw)
+
+    def test_files(self):
+        self.assertEqual(self.api('files', {'op': 'write', 'path': 'r/10월.csv', 'data': '가,나'})[0], 200)
+        self.assertEqual(self.api('files', {'op': 'read', 'path': 'r/10월.csv'})[1]['data'], '가,나')
+        self.assertEqual([f['path'] for f in self.api('files', {'op': 'list'})[1]['files']], ['r/10월.csv'])
+        b64 = __import__('base64').b64encode(b'\x00\xff').decode()
+        self.api('files', {'op': 'write', 'path': 'x.bin', 'data': b64, 'base64': True})
+        self.assertEqual(self.api('files', {'op': 'read', 'path': 'x.bin', 'base64': True})[1]['data'], b64)
+        self.assertEqual(self.api('files', {'op': 'read', 'path': 'x.bin'})[0], 400)        # 글자가 아니면 base64 로
+        for bad in ('../escape.txt', '.hidden', 'a/../../b', 'C:/x', ''):
+            self.assertEqual(self.api('files', {'op': 'write', 'path': bad, 'data': 'x'})[0], 400, bad)
+        self.assertFalse(os.path.exists(os.path.join(apphost.DATA, 'hub', 'escape.txt')))
+        self.api('files', {'op': 'delete', 'path': 'x.bin'})
+        self.assertEqual(len(self.api('files', {'op': 'list'})[1]['files']), 1)
+        with mock.patch.object(apphost, 'FILE_MAX', 3):
+            self.assertEqual(self.api('files', {'op': 'write', 'path': 'big.txt', 'data': 'abcd'})[0], 400)
+
+    def test_ai(self):
+        code, d = self.api('ai', {'prompt': '요약해', 'system': '3줄'})
+        self.assertEqual((code, d['text'], d['label']), (200, '답', '🤖 AI 작성 — 가짜'))   # AI 기본법 표시
+        self.assertEqual(self.calls[-1], ('ai', '요약해', '3줄'))
+        self.assertEqual(self.api('ai', {'prompt': ' '})[0], 400)
+        apphost._busy.add('hub')                                                            # 앞 부탁이 아직이면
+        self.assertEqual(self.api('ai', {'prompt': 'x'})[0], 409)
+        apphost._busy.discard('hub')
+        with mock.patch.dict(apphost.LIMITS, {'ai': 2}):          # 앞에서 한 번 썼다 — 잘못된·겹친 부탁은 안 셈
+            self.assertEqual(self.api('ai', {'prompt': 'x'})[0], 200)
+            self.assertEqual(self.api('ai', {'prompt': 'x'})[0], 429)                       # 시간당 상한
+
+    def test_run_only_listed_macros(self):
+        self.assertEqual(apphost.find('hub')['macros'], ['local/report'])                   # 이상한 이름은 버림
+        code, d = self.api('run', {'macro': 'local/report', 'params': {'a': 1}, 'wait': 999})
+        self.assertEqual((code, d['run']), (200, 7))
+        self.assertEqual(self.calls[-1], ('run', 'local/report', {'a': 1}, 120))           # 기다림은 120초까지
+        self.assertEqual(self.api('run', {'macro': 'local/other'})[0], 403)
+        self.assertEqual(self.api('run', {'op': 'status', 'run': 7})[1]['status'], 'ok')
+        self.assertIn('local/report', apphost.view(apphost.find('hub'))['perm_names']['run'])  # 허락할 때 목록이 보인다
+
+    def test_notify_and_hook_errors(self):
+        code, d = self.api('notify', {'title': '재고 부족', 'text': '3개'})
+        self.assertEqual((code, d['sent']), (200, 2))
+        self.assertEqual(self.api('notify', {'title': ''})[0], 400)
+        with mock.patch.dict(apphost.HOOKS, {'ai': mock.Mock(side_effect=RuntimeError('로그인 만료'))}):
+            code, d = self.api('ai', {'prompt': 'x'})
+        self.assertEqual(code, 502)
+        self.assertIn('로그인 만료', d['error'])
+        self.assertNotIn('hub', apphost._busy)                                              # 실패해도 풀린다
+
+
 @unittest.skipUnless(os.environ.get('KIT_BROWSER_TESTS', '1') == '1', 'KIT_BROWSER_TESTS=0')
 class BrowserCheck(Base):
     def test_tool_template_passes(self):
@@ -235,6 +307,22 @@ class BrowserCheck(Base):
         self.assertEqual(code, 0, out.getvalue())
         self.assertIn('🔍 검사 결과: 성공', out.getvalue())
         self.assertTrue(os.path.isfile(os.path.join(self.local, 't-tool', '.check', 'check.png')))
+
+    def test_ai_template_uses_fake_ai(self):
+        try:
+            import playwright  # noqa: F401
+        except ImportError:
+            self.skipTest('playwright 없음')
+        import io
+        import appcheck
+        apphost.create_app('t-ai', 'AI', 'ai-helper')
+        out = io.StringIO()
+        with mock.patch.object(sys, 'stdout', out):
+            code = appcheck.check('t-ai')
+        if '브라우저를 띄우지 못했습니다' in out.getvalue():
+            self.skipTest('브라우저 없음')
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertEqual(apphost.HOOKS, {})                                  # 검사 뒤 가짜 연결을 치웠다
 
     def test_broken_app_fails(self):
         try:

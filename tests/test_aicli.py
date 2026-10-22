@@ -341,9 +341,32 @@ class Ollama(unittest.TestCase):
         self.assertIn('ollama pull nope:1b', out)
 
     def test_text(self):
-        srv = self.serve(['<think>x</think>요약 끝'])
+        srv = self.serve(['<think>x</think>요약 끝', '번역 끝'])
         with mock.patch.object(aicli, 'settings', lambda cfg=None: {'ollama_url': srv.url}):
             self.assertEqual(aicli.text('요약해', 'ollama'), '요약 끝')
+            aicli.text('글', 'ollama', system='영어로')
+        self.assertEqual(srv.asked[1]['messages'][0], {'role': 'system', 'content': '영어로'})   # 지시는 따로
+
+    def test_claude_text_args(self):
+        """app.ai 의 Claude — 도구 없이·세션 안 남기고, 지시는 --system-prompt 로(본문에 섞으면 놓친다)."""
+        seen = {}
+
+        class P:
+            returncode = 0
+
+            def __init__(self, argv, **kw):
+                seen['argv'], seen['cwd'] = argv, kw.get('cwd')
+
+            def communicate(self, data, timeout=None):
+                seen['stdin'] = data.decode('utf-8')
+                return '답'.encode('utf-8'), b''
+        with mock.patch.object(aicli, 'exe', lambda e: r'C:\x\claude.exe'), mock.patch.object(aicli.subprocess, 'Popen', P):
+            self.assertEqual(aicli.text('본문', 'claude', system='3줄 요약'), '답')
+        argv = seen['argv']
+        self.assertEqual(argv[argv.index('--tools') + 1], '')
+        self.assertEqual(argv[argv.index('--system-prompt') + 1], '3줄 요약')
+        self.assertIn('--no-session-persistence', argv)
+        self.assertEqual(seen['stdin'], '본문')
 
 
 if __name__ == '__main__':

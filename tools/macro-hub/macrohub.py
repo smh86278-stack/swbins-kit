@@ -1791,7 +1791,53 @@ def start_apphost(hub_port):
         print('나만의 앱 서버(%d)를 띄우지 못했습니다:' % port, e, file=sys.stderr)
         return
     APPS_PORT = port
+    apphost.HOOKS.update(ai=_app_ai, run=_app_run, run_status=_app_run_status, notify=_app_notify)
+    limits = cfg.get('limits')
+    if isinstance(limits, dict):
+        apphost.LIMITS.update({k: int(v) for k, v in limits.items() if k in apphost.LIMITS and str(v).isdigit()})
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+
+APP_AI_TIMEOUT = 240
+APP_RUNS = {}          # 앱 id → 그 앱이 시작한 실행 id 들(다른 실행은 못 엿보게)
+
+
+def _app_ai(prompt, system, app):
+    """✨ 앱의 app.ai — 고른 AI 에게 글만(도구 없이). 이 PC 사용자 본인의 로그인·키·Ollama 로."""
+    s = aicli.settings()
+    out = aicli.text(prompt, s['engine'], s['model'], timeout=APP_AI_TIMEOUT, system=system)
+    return {'text': (out or '').strip(), 'engine': aicli.NAMES[s['engine']]}
+
+
+def _app_run_view(run):
+    return {'run': run.id, 'status': run.status, 'code': run.code, 'ended': bool(run.ended),
+            'lines': [str(x) for x in list(run.lines)[-30:]]}
+
+
+def _app_run(macro, params, app, wait=0):
+    """✨ 앱의 app.run — app.json macros 에 적고 사람이 허락한 내 자동화만(apphost 가 확인). wait 초까지 끝나기를 기다린다."""
+    run, err = run_macro(macro, params, {'kind': 'app', 'detail': '앱 「%s」' % app['name']})
+    if not run:
+        raise ValueError(err)
+    APP_RUNS.setdefault(app['id'], set()).add(run.id)
+    deadline = time.time() + wait
+    while not run.ended and time.time() < deadline:
+        time.sleep(0.2)
+    return _app_run_view(run)
+
+
+def _app_run_status(run_id, app):
+    if run_id not in APP_RUNS.get(app['id'], ()):
+        raise ValueError('이 앱이 시작한 실행이 아닙니다')
+    run = runs_by_id.get(run_id)
+    if not run:
+        raise ValueError('실행 기록이 지워졌습니다')
+    return _app_run_view(run)
+
+
+def _app_notify(title, text, app):
+    """✨ 앱의 app.notify — 허브 알림 출구(메일·슬랙…)로. 누가 보냈는지 제목·본문에 붙인다."""
+    return kit.alert('✨ %s — %s' % (app['name'], title), '%s\n\n(나만의 앱 「%s」 이 보낸 알림)' % (text, app['name']))
 
 
 def start_services(host='127.0.0.1', port=8630):

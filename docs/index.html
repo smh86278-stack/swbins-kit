@@ -329,6 +329,7 @@ AI 를 쓰는 곳은 두 가지다.
 </section>
 <section id="cfg-apps"><h3>나만의 앱 <code>apps</code></h3>
 <p>나만의 앱 — 이 PC 에서만 도는 작은 앱·게임(허브 🛠 만들기 화면의 ✨ 나만의 앱). 앱마다 http://&lt;id&gt;.localhost:&lt;port&gt;/ 로 따로 격리돼 허브·다른 앱 데이터에 손대지 못하고 바깥 주소로 자료를 내보내지 못한다. 견본은 tools\macro-hub\apps\, 내 앱은 tools\macro-hub\apps.local\&lt;id&gt;\(app.json·index.html), 데이터는 data.local\apps\&lt;id&gt;\. 앱이 쓰려는 권한(db 등)은 허브에서 허락해야 동작한다. enabled=false 면 앱 서버를 띄우지 않는다. history_keep = 앱마다 남길 버전 수(AI 에게 맡기기 전·후·설계서 고치기 전·되돌리기 전에 저절로 남고, 🕘 버전에서 바뀐 곳 보기·되돌리기 — 오래된 것부터 지움).</p>
+<p>앱마다 한 시간에 쓸 수 있는 횟수 — ai(고른 AI 에게 글 부탁, 내 구독·키 사용량이 든다) · run(app.json macros 의 내 자동화 실행) · notify(알림 출구로 보내기). 앱 권한 files(앱 전용 파일 상자, 하나 5MB·합계 100MB)·db 는 횟수 제한 없음.</p>
 <details><summary>자세한 동작 (tools/macro-hub/apphost.py)</summary><pre>✨ 나만의 앱 실행 환경 — 표준 라이브러리만.
 
 앱은 폴더 하나다. 키트가 주는 견본은 apps\&lt;id&gt;\, 내가 만든 앱은 apps.local\&lt;id&gt;\(git 제외).
@@ -343,13 +344,22 @@ AI 를 쓰는 곳은 두 가지다.
   - 화면은 CSP 로 바깥 주소에 못 붙는다(connect-src &#x27;self&#x27;) — 앱이 PC 자료를 밖으로 내보내지 못하게.
 권한: app.json 에 적은 것 중 사람이 허브 「✨ 앱」 탭에서 허락한 것만 쓴다(data.local\apps.json).
     db      이 앱 전용 SQLite(data.local\apps\&lt;id&gt;\app.db) — ATTACH 로 다른 파일을 못 연다
-    ai · run · notify · files   — 3d 단계에서 연다(지금은 501)
-앱 화면의 도우미는 &lt;script src=&quot;/_app.js&quot;&gt;&lt;/script&gt; → app.db(sql, params) · app.info().</pre></details>
+    files   이 앱 전용 파일 상자(data.local\apps\&lt;id&gt;\files\) — 목록·읽기·쓰기·지우기, 파일 하나 5MB·합계 100MB
+    ai      고른 AI(허브 AI 고르기 — Claude·Codex·Gemini·Ollama)에게 글 부탁. 도구 없이 글만, 한 번에 하나, 시간당 상한
+    run     app.json &quot;macros&quot; 에 적은 내 자동화만 실행·결과 보기(허락할 때 목록이 보인다)
+    notify  허브 알림 출구(메일·슬랙…)로 &#x27;[앱] 제목&#x27; 알림, 시간당 상한
+  ai·run·notify 는 허브가 HOOKS 로 연결해 준다(허브 밖에서 apphost 만 띄우면 503). 상한은 LIMITS.
+앱 화면의 도우미는 &lt;script src=&quot;/_app.js&quot;&gt;&lt;/script&gt; → app.db · app.files · app.ai · app.run · app.notify · app.info.</pre></details>
 <details><summary>설정 견본</summary><pre>{
   &quot;apps&quot;: {
     &quot;enabled&quot;: true,
     &quot;port&quot;: 8631,
-    &quot;history_keep&quot;: 30
+    &quot;history_keep&quot;: 30,
+    &quot;limits&quot;: {
+      &quot;ai&quot;: 60,
+      &quot;run&quot;: 60,
+      &quot;notify&quot;: 20
+    }
   }
 }</pre></details>
 </section>

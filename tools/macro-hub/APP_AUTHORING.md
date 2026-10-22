@@ -7,7 +7,8 @@
 
 ```
 apps.local\<id>\              (id = 영문 소문자·숫자·하이픈, 주소 http://<id>.localhost:8631/ 가 된다)
-  app.json        {"name", "icon", "kind": "app"|"game"|"ai", "version", "desc", "permissions": ["db"]}
+  app.json        {"name", "icon", "kind": "app"|"game"|"ai", "version", "desc",
+                   "permissions": ["db", "files", "ai", "run", "notify"] 중 쓰는 것만, "macros": ["local/<자동화>"] (run 일 때)}
   spec.md         설계서 — 목적 · 화면 · 데이터 · 동작 · 완료 기준. 만들기 전에 먼저 쓰고 사람이 확인한다
   index.html      시작 화면
   src\*.js        기능별로 파일을 나눈다(main.js 하나에 다 넣지 않는다 — 화면·데이터·계산을 갈라서)
@@ -44,6 +45,28 @@ const { rows } = await app.db('SELECT * FROM t WHERE name = ?', ['a'])          
 const { changes, last_id } = await app.db('INSERT INTO t (name) VALUES (?)', ['b'])   // 변경
 ```
 값은 꼭 `?` 자리에 넣는다(문자열 이어 붙이기 금지). 한 번에 5000줄까지.
+
+다른 권한(app.json `permissions` 에 적고 사람이 허락해야 동작):
+
+```js
+// files — 이 앱 전용 파일 상자(하나 5MB·합계 100MB). 사람이 고른 파일은 <input type="file"> 로 읽어 write 한다
+await app.files.write('reports/10월.csv', csvText)            // 바이너리는 app.files.write(p, b64, {base64: true})
+const { data } = await app.files.read('reports/10월.csv')
+const { files } = await app.files.list()                        // [{path, size, modified}]
+await app.files.remove('reports/10월.csv')
+
+// ai — 허브에서 고른 AI(Claude·Codex·Gemini·로컬)에게 글만. 한 번에 하나, 앱마다 시간당 60번
+const r = await app.ai(본문, { system: '아래 글을 3줄로 요약해' })  // {text, engine, label}
+// ⚠ AI 가 쓴 글을 보여 줄 때는 r.label('🤖 AI 작성 — …')을 꼭 같이 보여 준다(AI 기본법 — 생성물 표시)
+
+// run — app.json "macros": ["local/daily_report"] 에 적은 내 자동화만
+const x = await app.run('local/daily_report', { 날짜: '2026-10-22' }, { wait: 60 })  // {run, status, lines}
+const y = await app.runStatus(x.run)                                            // 안 끝났으면 나중에 다시
+
+// notify — 허브 알림 출구(메일·슬랙…)로 '✨ 앱 이름 — 제목'. 시간당 20번
+await app.notify('재고 부족', '볼펜 3개 남음')
+```
+검사(appcheck)에서는 ai·run·notify 가 **가짜**로 답한다 — AI 답은 '(검사용 가짜 AI 답) …', 알림·자동화는 실제로 안 간다.
 
 ## 순서
 
