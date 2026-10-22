@@ -1,0 +1,11 @@
+{"steps": [
+  {"fill": "#title", "value": "검사용 항목"},
+  {"fill": "#memo", "value": "메모 내용"},
+  {"click": "#save"},
+  {"expect": "#list tbody tr", "count_at_least": 1},
+  {"expect_text": "검사용 항목"},
+  {"fill": "#search", "value": "없는글자"},
+  {"expect": "#empty"},
+  {"fill": "#search", "value": "검사용"},
+  {"expect_text": "검사용 항목"}
+]}

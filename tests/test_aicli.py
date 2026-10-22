@@ -189,7 +189,7 @@ class Ollama(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.local = os.path.join(self.tmp, 'macros.local')
-        for name, val in (('LOCAL', self.local), ('BACKUP', os.path.join(self.tmp, 'bak'))):
+        for name, val in (('LOCAL', self.local), ('BACKUP', os.path.join(self.tmp, 'bak')), ('APPS', os.path.join(self.tmp, 'apps.local'))):
             p = mock.patch.object(ollama_agent, name, val)
             p.start()
             self.addCleanup(p.stop)
@@ -279,11 +279,38 @@ class Ollama(unittest.TestCase):
     def test_test_loop_retries_until_pass(self):
         srv = self.serve([GOOD, GOOD])
         results = iter([(False, 'Traceback: boom'), (True, 'ok')])
-        with mock.patch.object(self.oa, 'run_test', lambda py, p: next(results)):
+        with mock.patch.object(self.oa, 'run_test', lambda py, p, app_id=None: next(results)):
             code, out = self.run_agent(srv, '만들어줘', '--test')
         self.assertEqual(code, 0, out)
         self.assertIn('시험 실패', out)
         self.assertIn('Traceback: boom', srv.asked[1]['messages'][-1]['content'])
+
+    def test_app_mode_writes_only_inside_app(self):
+        app = os.path.join(self.tmp, 'apps.local', 'notes')
+        os.makedirs(os.path.join(app, 'src'))
+        with open(os.path.join(app, 'src', 'main.js'), 'w', encoding='utf-8') as f:
+            f.write('OLD()\n')
+        answer = ('=== FILE: src/main.js ===\nNEW()\n=== END ===\n=== FILE: ../../macrohub.py ===\nx\n=== END ===\n'
+                  '=== FILE: src/ui/list.js ===\nexport const a = 1;\n=== END ===\n다 고쳤어요.')
+        srv = self.serve([answer])
+        code, out = self.run_agent(srv, '목록을 날짜순으로', '--app', 'notes')
+        self.assertEqual(code, 0, out)
+        self.assertIn('--- 지금 파일: src/main.js ---\nOLD()', srv.asked[0]['messages'][1]['content'])   # 지금 파일을 보여 줬다
+        self.assertIn('APP_AUTHORING', srv.asked[0]['messages'][0]['content'])
+        with open(os.path.join(app, 'src', 'main.js'), encoding='utf-8') as f:
+            self.assertEqual(f.read(), 'NEW()\n')
+        self.assertTrue(os.path.isfile(os.path.join(app, 'src', 'ui', 'list.js')))   # 하위 폴더도
+        self.assertIn('쓰지 않음', out)
+        self.assertIn('허브가 이어서 🔍 검사', out)
+
+    def test_app_spec_step_only_spec(self):
+        os.makedirs(os.path.join(self.tmp, 'apps.local', 'notes'))
+        srv = self.serve(['=== FILE: spec.md ===\n# 설계서\n=== END ===\n=== FILE: index.html ===\nx\n=== END ==='])
+        code, out = self.run_agent(srv, '설계서 써 줘', '--app', 'notes', '--only', 'spec.md', '--test')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(os.path.isfile(os.path.join(self.tmp, 'apps.local', 'notes', 'spec.md')))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'apps.local', 'notes', 'index.html')))
+        self.assertFalse([ln for ln in out.splitlines() if ln.startswith(('✔ 시험', '✖ 시험'))])   # --test 여도 설계서 단계는 검사 안 함
 
     def test_missing_model_message(self):
         srv = self.serve([GOOD])

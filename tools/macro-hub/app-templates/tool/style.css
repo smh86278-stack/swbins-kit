@@ -1,0 +1,8 @@
+.panes { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-top: 12px; }
+.panes textarea { width: 100%; min-height: 320px; resize: vertical; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+.ops { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; }
+.ops label { display: flex; gap: 5px; align-items: center; font-size: 14px; cursor: pointer; }
+.pane-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.pane-head span { color: var(--muted); font-size: 12px; }
+table.preview { margin-top: 12px; }
+@media (max-width: 720px) { .panes { grid-template-columns: 1fr; } }

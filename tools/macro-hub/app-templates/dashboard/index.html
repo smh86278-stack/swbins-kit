@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기록 대시보드</title>
+<link rel="stylesheet" href="/_lib/app-kit.css">
+<link rel="stylesheet" href="style.css">
+<script src="/_app.js"></script>
+<script src="/_lib/chart.umd.js"></script>
+</head>
+<body>
+<main>
+  <h1>📊 기록 대시보드</h1>
+  <p class="hint">날짜·분류·숫자를 적으면 요약과 차트로 보여 줘요.</p>
+  <p class="error" id="error" hidden></p>
+  <section class="grid stats" id="stats"></section>
+  <form class="card row" id="add">
+    <input type="date" id="date" required>
+    <input id="category" placeholder="분류 (예: 온라인)" list="cats" required>
+    <datalist id="cats"></datalist>
+    <input type="number" id="amount" placeholder="숫자" step="any" required>
+    <input class="grow" id="note" placeholder="메모 (선택)">
+    <button class="pri" id="save">기록</button>
+  </form>
+  <section class="charts">
+    <div class="card"><h2>날짜별 추이 <small class="muted">최근 30일</small></h2><canvas id="trend" height="220"></canvas></div>
+    <div class="card"><h2>분류별</h2><canvas id="share" height="220"></canvas></div>
+  </section>
+  <section class="card">
+    <h2>최근 기록</h2>
+    <table id="recent"><thead><tr><th>날짜</th><th>분류</th><th class="num">숫자</th><th>메모</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="empty" id="empty" hidden>아직 기록이 없어요 — 위에서 하나 적어 보세요</div>
+  </section>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

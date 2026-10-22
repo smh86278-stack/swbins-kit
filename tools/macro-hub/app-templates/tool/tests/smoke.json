@@ -1,0 +1,7 @@
+{"steps": [
+  {"fill": "#input", "value": "  사과\n바나나\n\n사과\n"},
+  {"click": "#op-dedupe"},
+  {"click": "#op-number"},
+  {"eval": "document.querySelector('#output').value === '1. 사과\\n2. 바나나'"},
+  {"expect_text": "2줄"}
+]}

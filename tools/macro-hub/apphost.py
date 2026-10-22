@@ -29,6 +29,8 @@ DIR_BUILTIN = os.path.join(HERE, 'apps')
 DIR_LOCAL = os.path.join(HERE, 'apps.local')
 STATE = os.path.join(HERE, 'data.local', 'apps.json')
 DATA = os.path.join(HERE, 'data.local', 'apps')
+LIB = os.path.join(HERE, 'apps-lib')                 # 동봉 라이브러리 — 모든 앱에 /_lib/<파일>
+TEMPLATES = os.path.join(HERE, 'app-templates')      # 새 앱의 뼈대 — <이름>\template.json + 앱 파일
 PORT = 8631
 ID_RE = re.compile(r'[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?')
 KINDS = ('app', 'game', 'ai')
@@ -163,6 +165,42 @@ def list_view(port=None):
     return [view(a, port) for a in discover().values()]
 
 
+def templates():
+    """새 앱 뼈대 목록 [{id, name, desc, kind, tier}] — tier 는 free|pro(유료판 표시용, 지금은 모두 쓸 수 있음)."""
+    out = []
+    if os.path.isdir(TEMPLATES):
+        for name in sorted(os.listdir(TEMPLATES)):
+            t = _read_json(os.path.join(TEMPLATES, name, 'template.json'), None)
+            if ID_RE.fullmatch(name) and isinstance(t, dict):
+                out.append({'id': name, 'name': str(t.get('name') or name), 'desc': str(t.get('desc') or ''),
+                            'kind': t.get('kind') if t.get('kind') in KINDS else 'app', 'tier': t.get('tier') or 'free',
+                            'order': t.get('order', 99)})
+    return sorted(out, key=lambda t: (t['order'], t['id']))
+
+
+def create_app(app_id, name, template='blank', desc=''):
+    """템플릿을 apps.local\\<id> 로 복사하고 app.json 의 이름·설명을 채운다. 만든 앱 정보를 돌려준다."""
+    import shutil
+    app_id = (app_id or '').strip().lower()
+    if not ID_RE.fullmatch(app_id):
+        raise ValueError('앱 주소 이름은 영문 소문자·숫자·하이픈(-)으로 2~40자 (예: sales-board)')
+    if find(app_id):
+        raise ValueError('이미 있는 앱 이름입니다: %s' % app_id)
+    src = os.path.join(TEMPLATES, template or '')
+    if not ID_RE.fullmatch(template or '') or not os.path.isfile(os.path.join(src, 'template.json')):
+        raise ValueError('없는 템플릿입니다: %s' % template)
+    dst = os.path.join(DIR_LOCAL, app_id)
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns('template.json'))
+    mf = os.path.join(dst, 'app.json')
+    m = _read_json(mf, {}) if os.path.isfile(mf) else {}
+    m['name'] = (name or '').strip()[:60] or app_id
+    if desc:
+        m['desc'] = desc.strip()[:300]
+    with open(mf, 'w', encoding='utf-8') as f:
+        json.dump(m, f, ensure_ascii=False, indent=2)
+    return find(app_id)
+
+
 # ---------------------------------------------------------------- 앱 전용 DB
 
 def _deny_attach(action, *args):
@@ -253,6 +291,13 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send(200, APP_JS.encode('utf-8'), TYPES['.js'])
         if path == '/favicon.ico' and not os.path.isfile(os.path.join(app['dir'], 'favicon.ico')):
             return self._send(204, b'', TYPES['.ico'])
+        m = re.fullmatch(r'/_lib/([\w\-.]+\.(js|css))', path)
+        if m:                                         # 동봉 라이브러리 — apps-lib 바로 아래 js·css 만
+            full = os.path.join(LIB, m.group(1))
+            if not os.path.isfile(full):
+                return self._send(404, b'not found', 'text/plain')
+            with open(full, 'rb') as f:
+                return self._send(200, f.read(), TYPES['.' + m.group(2)])
         if path.startswith('/_api/'):
             return self._send(405, {'error': 'POST 로 부르세요'})
         rel = path.lstrip('/') or 'index.html'

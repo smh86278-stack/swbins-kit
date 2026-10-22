@@ -1,0 +1,10 @@
+{"steps": [
+  {"expect": "#empty"},
+  {"fill": "#category", "value": "온라인"},
+  {"fill": "#amount", "value": "12500"},
+  {"click": "#save"},
+  {"expect": "#recent tbody tr", "count_at_least": 1},
+  {"expect_text": "온라인"},
+  {"expect_text": "12,500"},
+  {"eval": "!!Chart.getChart('trend') && !!Chart.getChart('share')"}
+]}

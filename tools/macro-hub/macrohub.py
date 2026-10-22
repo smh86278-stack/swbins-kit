@@ -314,12 +314,17 @@ def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=Fa
 AI_TIMEOUT = 1800     # 말로 부탁하기·고쳐 달라기를 Codex·Gemini 로 직접 돌릴 때 — 만들고 시험하고 고치기(최대 3번)에 넉넉히
 
 
-def start_ai_run(what, prompt):
-    """🛠 말로 부탁하기 · 🩹 고쳐 달라기를 고른 AI(codex·gemini·ollama)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
-    도구 실행(tool)이라 실행 기록 파일·실패 알림 메일에는 넣지 않는다. 프롬프트는 표준 입력으로."""
+def start_ai_run(what, prompt, app_id=None, check=True):
+    """🛠 말로 부탁하기 · 🩹 고쳐 달라기 · ✨ 앱 만들기를 고른 AI(codex·gemini·ollama)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
+    도구 실행(tool)이라 실행 기록 파일·실패 알림 메일에는 넣지 않는다. 프롬프트는 표준 입력으로.
+    app_id 가 있으면 로컬 AI 는 그 앱 폴더만 고치고, 스스로 검사를 못 돌리는 AI 가 끝나면 허브가 🔍 검사를 이어 돌린다."""
     s = aicli.settings()
     argv, shell, note = aicli.agent_cmd(s['engine'], HERE, s)
+    if app_id and s['engine'] == 'ollama':
+        argv += ['--app', app_id] + ([] if check else ['--only', 'spec.md'])
     run = Run('ai:' + what, '%s — %s' % (what, aicli.NAMES[s['engine']]), {'kind': 'ai'}, tool=True)
+    if app_id and check and ((s['engine'] == 'gemini' and s['gemini_approval'] != 'yolo') or (s['engine'] == 'ollama' and not s['ollama_test'])):
+        run.after = lambda: start_app_check(app_id) if run.status == 'ok' else None
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
     try:
         run.proc = subprocess.Popen(argv, cwd=HERE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -395,6 +400,8 @@ def _watch(run, timeout):
     run.ended = time.time()
     if run.status == 'running':
         run.status = 'stopped' if run.stopping else ('ok' if run.code == 0 else 'fail')
+    if getattr(run, 'after', None):              # 끝난 뒤 이어서 할 일(예: 앱을 만든 AI 가 스스로 검사 못 하면 허브가 검사)
+        threading.Thread(target=run.after, daemon=True).start()
     if run.trigger.get('kind') == 'test':        # 시험 실행은 실행 기록·실패 알림 메일에 넣지 않는다 — 화면 로그로만 본다
         ok = run.status == 'ok'
         run.lines.append('🧪 시험 결과: %s' % ('성공' if ok else '실패 — 위 로그를 보고 고치세요'))
@@ -1073,6 +1080,69 @@ def fix_text(run_id):
                build_steps()))
 
 
+APP_AUTHORING = os.path.join(HERE, 'APP_AUTHORING.md')
+
+
+def app_check_cmd(app_id):
+    return '"%s" appcheck.py %s' % (test_python(), app_id)
+
+
+def app_prompt(step, app, what=''):
+    """✨ 나만의 앱 부탁 글 — step: spec(설계서만) · build(설계서대로 만들기) · change(말로 고치기·기능 추가)."""
+    rel = 'apps.local\\%s' % app['id']
+    head = ('먼저 %s 를 읽고 따라 줘. 대상은 나만의 앱 「%s」 — 폴더 %s\\%s (주소 %s). 이 폴더 밖은 고치지 마.\n'
+            % (APP_AUTHORING, app['name'], HERE, rel, apphost.url(app['id'], APPS_PORT)))
+    check = ('검사: cd "%s" 한 뒤 %s — 실패하면 고쳐서 다시(최대 3번), 스크린샷 %s\\.check\\check.png 도 봐 줘.\n'
+             '마지막에 쉬운 말로 보고 — 무엇을 만들었나 · 쓰는 법 · 허브에서 허락할 권한 · 검사 결과 · 남은 한계.'
+             % (HERE, app_check_cmd(app['id']), rel))
+    if step == 'spec':
+        return (head + '나만의 앱 설계서를 써 줘 — %s\\spec.md 만 고치고 코드는 아직 건드리지 마.\n'
+                '안내서의 설계서 형식(목적·화면·데이터·동작·완료 기준)대로, 지금 폴더의 템플릿 구조를 살려서.\n'
+                '부탁: %s\n다 쓰면 설계서 요점을 5줄로 알려 주고 멈춰 — 내가 확인한 뒤 「만들기」를 누른다.'
+                % (rel, (what or '').strip() or '(부탁 없음 — app.json 의 이름·설명을 보고)'))
+    if step == 'build':
+        return (head + '%s\\spec.md 설계서대로 앱을 만들어 줘. 기능별로 파일을 나누고, tests\\smoke.json 을 완료 기준에 맞춰 고쳐.\n%s'
+                % (rel, check))
+    if step == 'change':
+        if not (what or '').strip():
+            raise ValueError('무엇을 바꿀지 적어 주세요')
+        return (head + '이 앱을 이렇게 바꿔 줘: %s\nspec.md 도 바뀐 내용에 맞게 고치고, tests\\smoke.json 에 새 동작 확인을 더해.\n%s'
+                % (what.strip(), check))
+    raise ValueError('모르는 단계입니다: %s' % step)
+
+
+def start_app_check(app_id):
+    """🔍 앱 검사를 도구 실행으로 — 진짜 브라우저로 열어 오류·시나리오·스크린샷(appcheck.py)."""
+    app = apphost.find(app_id)
+    if not app:
+        raise ValueError('없는 앱입니다')
+    run = Run('app-check:' + app_id, '🔍 앱 검사 — %s' % app['name'], {'kind': 'tool'}, tool=True)
+    env = dict(os.environ, PYTHONIOENCODING='utf-8')
+    run.proc = subprocess.Popen([test_python(), '-u', os.path.join(HERE, 'appcheck.py'), app_id], cwd=HERE, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+    with lock:
+        runs.append(run)
+        runs_by_id[run.id] = run
+    broadcast({'t': 'run', 'run': run.summary()})
+    threading.Thread(target=_pump, args=(run,), daemon=True).start()
+    threading.Thread(target=_watch, args=(run, 180), daemon=True).start()
+    return run
+
+
+def app_ai(step, app_id, what=''):
+    """설계서 쓰기·만들기·말로 고치기를 고른 AI 로 — claude 는 디스패치 대화, 나머지는 허브가 직접."""
+    app = apphost.find(app_id)
+    if not app:
+        raise ValueError('없는 앱입니다')
+    if app['builtin']:
+        raise ValueError('견본 앱은 고치지 않습니다 — 새 앱을 만드세요')
+    text = app_prompt(step, app, what)
+    label = {'spec': '앱 설계서', 'build': '앱 만들기', 'change': '앱 고치기'}[step]
+    if aicli.settings()['engine'] != 'claude':
+        return {'ok': True, 'run': start_ai_run('%s · %s' % (label, app['name']), text, app_id, check=step != 'spec').id, 'text': text}
+    return dict(ask_chat(text), text=text)
+
+
 SECRET_FIELD = re.compile(r'(?i)passw|passwd|pwd|\bpw\b|비밀번호|비번|암호|패스워드')
 FILL_LINE = re.compile(r'^(?P<pre>.*\.(?:fill|type|press_sequentially)\()(?P<lit>"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')(?P<post>.*)$')
 
@@ -1332,8 +1402,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(204, b'', 'image/x-icon')
         if u.path == '/api/macros':
             return self._send(200, [macro_view(m) for m in discover()])
-        if u.path == '/api/apps':                     # ✨ 나만의 앱 목록 — 권한·허락·주소
-            return self._send(200, {'port': APPS_PORT, 'apps': apphost.list_view(APPS_PORT) if APPS_PORT else []})
+        if u.path == '/api/apps':                     # ✨ 나만의 앱 목록 — 권한·허락·주소 + 새 앱 템플릿
+            apps = apphost.list_view(APPS_PORT) if APPS_PORT else []
+            for a in apps:
+                shot = os.path.join(apphost.find(a['id'])['dir'], '.check', 'check.png')
+                a['shot'] = int(os.path.getmtime(shot)) if os.path.isfile(shot) else None
+            return self._send(200, {'port': APPS_PORT, 'apps': apps, 'templates': apphost.templates()})
+        if u.path == '/api/apps/spec':                # 설계서 읽기 ?id=
+            app = apphost.find((q.get('id') or [''])[0])
+            if not app:
+                return self._send(404, {'error': '없는 앱입니다'})
+            try:
+                with open(os.path.join(app['dir'], 'spec.md'), encoding='utf-8') as f:
+                    return self._send(200, {'text': f.read()})
+            except OSError:
+                return self._send(200, {'text': ''})
+        if u.path == '/api/apps/shot':                # 마지막 🔍 검사 스크린샷 ?id=
+            app = apphost.find((q.get('id') or [''])[0])
+            shot = os.path.join(app['dir'], '.check', 'check.png') if app else ''
+            if not shot or not os.path.isfile(shot):
+                return self._send(404, b'not found', 'text/plain')
+            with open(shot, 'rb') as f:
+                return self._send(200, f.read(), 'image/png')
         if u.path == '/api/deleted':                  # 지운 내 자동화(되살리기용)
             return self._send(200, deleted_macros())
         if u.path == '/api/runs':
@@ -1431,6 +1521,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {'error': str(e)})
             audit('앱 권한', str(body.get('id') or ''), ', '.join(ok) or '모두 거둠')
             return self._send(200, {'ok': True, 'approved': ok})
+        if path == '/api/apps/new':                   # 새 앱 {"id", "name", "template", "what"} — what 이 있으면 설계서 쓰기까지
+            try:
+                app = apphost.create_app(str(body.get('id') or ''), str(body.get('name') or ''),
+                                         str(body.get('template') or 'blank'), str(body.get('what') or ''))
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            except OSError as e:
+                return self._send(500, {'error': '앱 폴더를 만들지 못했습니다: %s' % e})
+            audit('앱 만듦', app['id'], str(body.get('template') or 'blank'))
+            res = {'ok': True, 'id': app['id']}
+            if str(body.get('what') or '').strip():
+                try:
+                    res['ai'] = app_ai('spec', app['id'], str(body['what']))
+                except Exception as e:
+                    res['ai_error'] = str(e)
+            return self._send(200, res)
+        if path == '/api/apps/ai':                    # {"id", "step": spec|build|change, "what"} — 고른 AI 에게
+            try:
+                return self._send(200, app_ai(str(body.get('step') or ''), str(body.get('id') or ''), str(body.get('what') or '')))
+            except (ValueError, KeyError) as e:
+                return self._send(400, {'error': str(e)})
+            except Exception as e:
+                return self._send(502, {'error': str(e)})
+        if path == '/api/apps/spec':                  # 설계서 저장 {"id", "text"} — 사람이 고친 것
+            app = apphost.find(str(body.get('id') or ''))
+            if not app or app['builtin']:
+                return self._send(400, {'error': '내 앱만 고칠 수 있습니다'})
+            with open(os.path.join(app['dir'], 'spec.md'), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(str(body.get('text') or ''))
+            return self._send(200, {'ok': True})
+        if path == '/api/apps/check':                 # 🔍 검사 {"id"}
+            try:
+                return self._send(200, {'ok': True, 'run': start_app_check(str(body.get('id') or '')).id})
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
         if path == '/api/enable':
             if not set_enabled(body.get('id', ''), bool(body.get('enabled'))):
                 return self._send(404, {'error': 'no such macro'})

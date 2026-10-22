@@ -118,6 +118,12 @@ body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0
 .app-perm{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px}
 .app-perm label{display:flex;gap:4px;align-items:center}
 .app-err{color:var(--bad,#c0392b);font-size:12px}
+.app-acts{display:flex;flex-wrap:wrap;gap:6px}
+.app-acts button{font-size:12px;padding:3px 9px}
+.app-pane{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:8px}
+.app-pane textarea{width:100%;box-sizing:border-box;font:12.5px/1.5 ui-monospace,Consolas,monospace;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 9px;resize:vertical}
+.app-shot{max-width:100%;border:1px solid var(--line);border-radius:10px;cursor:zoom-in}
+.tier{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--accentsoft);color:var(--accent);margin-left:4px}
 .mk-adv{border-top:1px dashed var(--line);padding-top:8px}
 .mk-adv>summary{cursor:pointer;font-weight:700;font-size:12.5px;color:var(--muted);margin-bottom:8px}
 .mk-adv>summary small{font-weight:400;margin-left:4px}
@@ -241,7 +247,16 @@ pre#log .ln{animation:fadein .35s ease both}
     </section>
     <section class="box" id="appsBox">
       <h2>✨ 나만의 앱</h2>
-      <p class="mk-intro">이 PC 에서만 도는 작은 앱·게임. 앱마다 따로 격리돼 허브와 다른 앱의 데이터에 손대지 못하고, 바깥 주소로 자료를 내보내지 못해요.</p>
+      <p class="mk-intro">이 PC 에서만 도는 앱·게임을 AI 와 같이 만들어요 — <b>설계서 → 만들기 → 자동 검사 → 고치기</b>. 앱마다 따로 격리돼 허브와 다른 앱의 데이터에 손대지 못하고, 바깥 주소로 자료를 내보내지 못해요.</p>
+      <details class="mk-card" id="appNew">
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico">➕</span><div><b>새 앱</b><small>템플릿을 고르고 무엇을 만들지 적으면 AI 가 설계서부터 써요</small></div></summary>
+        <div class="row"><select id="appTpl" class="grow"></select></div>
+        <div class="row"><input id="appName" type="text" placeholder="앱 이름 (예: 거래처 관리)" class="grow">
+          <input id="appId" type="text" placeholder="주소 이름 (영문, 예: clients)" style="max-width:190px"></div>
+        <textarea id="appWhat" rows="3" placeholder="무엇을 만들까요? (예: 거래처 이름·담당자·연락처·마지막 연락일을 적고, 30일 넘게 연락 안 한 곳을 위에 빨갛게)"></textarea>
+        <div class="row"><small class="mk-note grow">비워 두면 템플릿 그대로 만들어요. 설계서는 다 쓴 뒤 확인하고 「이대로 만들기」를 눌러요.</small>
+          <button id="appCreate" class="pri">만들기 시작</button></div>
+      </details>
       <div id="appList"></div>
       <small class="mk-note" id="appsOff" hidden>나만의 앱 서버가 꺼져 있어요(설정 <code>apps.enabled</code> · 포트 <code>apps.port</code>).</small>
     </section>
@@ -487,7 +502,7 @@ function connect(){
   es.onerror=()=>$('#dot').classList.remove('on');
   es.onmessage=ev=>{
     const m=JSON.parse(ev.data);
-    if(m.t==='run')upsertRun(m.run);
+    if(m.t==='run'){upsertRun(m.run);if(m.run.ended&&/^(app-check|ai):/.test(m.run.macro))loadApps()}
     else if(m.t==='log'){if(m.run===sel){const pre=$('#log'),near=pre.scrollHeight-pre.scrollTop-pre.clientHeight<48;addLine(m.line,true);if(near)pre.scrollTop=pre.scrollHeight}}
     else if(m.t==='macros'||m.t==='motion')loadMacros();
     else if(m.t==='pet')setTimeout(petState,400);
@@ -520,8 +535,45 @@ function drawAi(){
 }
 async function loadAi(){try{ai=await api('/api/ai');drawAi()}catch(e){}}
 // ✨ 나만의 앱 — 목록·권한 허락·열기(앱은 <id>.localhost:8631, 허브와 다른 출처 — apphost.py)
+const engineName=()=>(ai.engines.find(e=>e.id===ai.engine)||{}).name||'AI';
+function afterAi(r){   // 설계서·만들기·고치기를 보낸 뒤 — 직접 돌리면 실행 기록, Claude 면 대화로
+  if(r&&r.run){toast(engineName()+' 가 시작했어요 — 오른쪽 실행 기록에서 진행을 봐요')}
+  else toast('대화로 보냈어요 — 디스패치 대화에서 진행을 봐요');
+}
+function appActions(a){
+  const wrap=el('div'),acts=el('div','app-acts'),pane=el('div','app-pane');pane.hidden=true;
+  const show=(fill)=>{pane.replaceChildren();pane.hidden=false;fill(pane)};
+  const b=(t,title,fn)=>{const x=el('button','',t);x.title=title;x.onclick=guard(fn);acts.append(x);return x};
+  b('📝 설계서','설계서(spec.md)를 보고 고친 뒤 이대로 만들게 해요',async()=>{
+    const {text}=await api('/api/apps/spec?id='+encodeURIComponent(a.id));
+    show(p=>{const ta=el('textarea');ta.rows=14;ta.value=text||'';
+      const row=el('div','row'),save=el('button','','저장'),build=el('button','pri','이대로 만들기'),redo=el('button','','AI 에게 다시 쓰게');
+      save.onclick=guard(async()=>{await api('/api/apps/spec',{id:a.id,text:ta.value});toast('설계서를 저장했어요')});
+      build.onclick=guard(async()=>{await api('/api/apps/spec',{id:a.id,text:ta.value});afterAi(await api('/api/apps/ai',{id:a.id,step:'build'}))});
+      redo.onclick=guard(async()=>{const w=prompt('어떻게 다시 쓸까요? (예: 화면을 두 칸으로, 엑셀 내보내기 추가)');if(w==null)return;
+        afterAi(await api('/api/apps/ai',{id:a.id,step:'spec',what:w}))});
+      row.append(el('small','mk-note grow','설계서대로 '+engineName()+' 가 만들고 스스로 검사해요'),save,redo,build);p.append(ta,row)})});
+  b('💬 말로 고치기','바꿀 점·더할 기능을 말로',()=>show(p=>{
+    const ta=el('textarea');ta.rows=3;ta.placeholder='무엇을 바꿀까요? (예: 목록을 날짜순으로, 엑셀로 내보내기 단추 추가, 어두운 색으로)';
+    const go=el('button','pri','고쳐 줘');go.onclick=guard(async()=>{afterAi(await api('/api/apps/ai',{id:a.id,step:'change',what:ta.value}))});
+    const row=el('div','row');row.append(el('small','mk-note grow','설계서도 같이 고치고 검사까지 해요'),go);p.append(ta,row);ta.focus()}));
+  b('🔍 검사','진짜 브라우저로 열어 오류·시나리오·스크린샷을 봐요',async()=>{await api('/api/apps/check',{id:a.id});toast('검사를 시작했어요 — 실행 기록에서 결과를 봐요')});
+  if(a.shot)b('📷 마지막 검사 화면','',()=>show(p=>{const img=el('img','app-shot');img.src='/api/apps/shot?id='+encodeURIComponent(a.id)+'&t='+a.shot;
+    img.onclick=()=>window.open(img.src,'_blank','noopener');p.append(img)}));
+  wrap.append(acts,pane);return wrap;
+}
+async function createApp(){
+  const t=$('#appTpl').value,name=$('#appName').value.trim(),id=$('#appId').value.trim().toLowerCase(),what=$('#appWhat').value.trim();
+  const r=await api('/api/apps/new',{id,name,template:t,what});
+  toast(r.ai_error?'앱은 만들었지만 AI 에 못 보냈어요: '+r.ai_error:(what?'앱을 만들고 '+engineName()+' 에게 설계서를 부탁했어요':'앱을 만들었어요'));
+  $('#appName').value=$('#appId').value=$('#appWhat').value='';$('#appNew').open=false;loadApps();
+}
+$('#appCreate').onclick=guard(createApp);
 async function loadApps(){
   let d;try{d=await api('/api/apps')}catch(e){return}
+  const sel=$('#appTpl'),cur=sel.value;sel.replaceChildren();
+  for(const t of d.templates||[]){const o=el('option','',t.name+(t.tier==='pro'?' ⭐':'')+' — '+t.desc);o.value=t.id;sel.append(o)}
+  if(cur)sel.value=cur;
   const box=$('#appList');box.replaceChildren();$('#appsOff').hidden=!!d.port;
   if(d.port&&!d.apps.length)box.append(el('small','mk-note','아직 앱이 없어요.'));
   for(const a of d.apps){
@@ -531,6 +583,7 @@ async function loadApps(){
     open.onclick=()=>window.open(a.url,'_blank','noopener');open.disabled=!!a.error;
     h.append(el('span','mk-ico',a.icon),t,open);c.append(h);
     if(a.error)c.append(el('div','app-err','⚠ '+a.error));
+    if(!a.builtin)c.append(appActions(a));
     if(a.permissions.length){
       const p=el('div','app-perm');p.append(el('span','mk-note','이 앱이 쓰려는 것:'));
       for(const k of a.permissions){

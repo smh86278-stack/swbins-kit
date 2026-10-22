@@ -1,0 +1,11 @@
+.toolbar { margin: 14px 0; }
+.form { display: grid; gap: 8px; grid-template-columns: 1fr 140px auto; }
+.form textarea { grid-column: 1 / -1; min-height: 54px; resize: vertical; }
+.status { font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.status.todo { background: var(--soft); color: var(--muted); }
+.status.doing { background: var(--accent-soft); color: var(--accent); }
+.status.done { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+tr.done td.title { text-decoration: line-through; color: var(--muted); }
+td.memo { color: var(--muted); font-size: 13px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.counts button.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 640px) { .form { grid-template-columns: 1fr; } td.memo { display: none; } }

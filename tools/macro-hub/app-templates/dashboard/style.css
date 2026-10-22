@@ -1,0 +1,9 @@
+.stats { margin: 14px 0; }
+.stats .card b { font-size: 26px; display: block; font-variant-numeric: tabular-nums; }
+.stats .card span { color: var(--muted); font-size: 12px; }
+.up { color: var(--good); } .down { color: var(--bad); }
+form#add { margin-bottom: 12px; }
+form#add input[type=number] { width: 120px; }
+.charts { display: grid; gap: 12px; grid-template-columns: 2fr 1fr; margin-bottom: 12px; }
+.charts h2 small { font-weight: 400; }
+@media (max-width: 720px) { .charts { grid-template-columns: 1fr; } }

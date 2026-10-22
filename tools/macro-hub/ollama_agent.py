@@ -11,8 +11,10 @@
      꺼져 있으면(기본) 쓰기까지만 — 모델이 만든 코드를 묻지 않고 돌리지 않는다. 시험은 카드의 🧪 시험으로.
   4. 고친 파일의 원래 내용은 data.local\\ai-backup\\ 에 남긴다.
 허브(macrohub.start_ai_run)가 띄우고, 부탁 글은 표준 입력으로 받는다. 출력은 그대로 실행 기록 로그가 된다.
+--app <id> 면 ✨ 나만의 앱 모드 — apps.local\\<id>\\ 안의 html·js·css·json·md·svg 만 쓰고(하위 폴더 가능),
+지금 앱 파일들을 같이 보여 주고, 안내서는 APP_AUTHORING.md, 시험은 appcheck.py. --only 로 쓸 파일을 더 좁힌다(설계서 단계).
 
-    python ollama_agent.py --model qwen3:8b [--url http://127.0.0.1:11434] [--test]  < 부탁글
+    python ollama_agent.py --model qwen3:8b [--url http://127.0.0.1:11434] [--test] [--app <id> [--only spec.md]]  < 부탁글
 """
 import argparse
 import json
@@ -29,6 +31,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LOCAL = os.path.join(HERE, 'macros.local')
 BACKUP = os.path.join(HERE, 'data.local', 'ai-backup')
 AUTHORING = os.path.join(HERE, 'AUTHORING.md')
+APP_AUTHORING = os.path.join(HERE, 'APP_AUTHORING.md')
+APPS = os.path.join(HERE, 'apps.local')
+APP_EXTS = ('.html', '.js', '.mjs', '.css', '.json', '.md', '.svg')
+APP_SHOW_MAX = 60000          # 앱 모드에서 모델에게 보여 줄 지금 파일 내용 합계(글자)
 TRIES = 3
 TEST_TIMEOUT = 300
 FILE_RE = re.compile(r'^=== FILE: (?P<path>[^\r\n]+?) ===[ \t]*\r?\n(?P<body>.*?)^=== END ===', re.M | re.S)
@@ -45,6 +51,18 @@ SYSTEM = """너는 Windows 업무 자동화 허브의 파이썬 자동화를 만
 - 파일 블록 다음에 사용자에게 할 말을 쉬운 한국어로 3~6줄: 무엇을 만들었는지, 처음 한 번 사람이 할 일(로그인·비밀값), 시험하는 법.
 
 --- 안내서(AUTHORING.md) ---
+"""
+
+APP_SYSTEM = """너는 이 PC 에서만 도는 작은 웹 앱·게임을 전문가 수준으로 만드는 도우미다. 아래 안내서를 따른다.
+너는 파일을 직접 쓰거나 명령을 돌릴 수 없다. 만들거나 고친 파일은 반드시 이 모양으로 **전체 내용**을 돌려준다(경로는 앱 폴더 기준):
+=== FILE: src/main.js ===
+(파일 전체 내용 — 마크다운 ``` 울타리 없이)
+=== END ===
+- 바꾸지 않는 파일은 돌려주지 않는다. 쓸 수 있는 파일: %s
+- 바깥 주소(CDN·외부 API) 금지 — 동봉 /_lib/ 만. 데이터는 app.db(...).
+- 파일 블록 다음에 사용자에게 할 말을 쉬운 한국어로 3~6줄.
+
+--- 안내서(APP_AUTHORING.md) ---
 """
 
 
@@ -93,6 +111,39 @@ def safe_target(rel):
     return path if os.path.dirname(path) == os.path.realpath(LOCAL) else None
 
 
+def safe_app_target(app_dir, rel, only=None):
+    """앱 모드 — 앱 폴더 안의 허용 확장자 파일만(하위 폴더 가능, 점으로 시작하는 이름·.. 불가). 밖이면 None."""
+    rel = rel.strip().strip('`"\'').replace('\\', '/').lstrip('/')
+    parts = rel.split('/')
+    if not rel or any(p in ('', '.', '..') or p.startswith('.') or not re.fullmatch(r'[\w\-. ]+', p) for p in parts):
+        return None
+    if not rel.lower().endswith(APP_EXTS) or (only and rel not in only):
+        return None
+    root = os.path.realpath(app_dir)
+    path = os.path.realpath(os.path.join(root, *parts))
+    return path if path.startswith(root + os.sep) else None
+
+
+def app_files(app_dir):
+    """앱 폴더의 지금 파일들(점 폴더 빼고) — [(상대 경로, 내용)], 합계 APP_SHOW_MAX 글자까지."""
+    out, total = [], 0
+    for root, dirs, files in os.walk(app_dir):
+        dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+        for name in sorted(files):
+            if not name.lower().endswith(APP_EXTS):
+                continue
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, app_dir).replace('\\', '/')
+            with open(path, encoding='utf-8', errors='replace') as f:
+                body = f.read()
+            if total + len(body) > APP_SHOW_MAX:
+                out.append((rel, '(길어서 생략)'))
+                continue
+            total += len(body)
+            out.append((rel, body))
+    return out
+
+
 def parse_files(answer):
     out = []
     for m in FILE_RE.finditer(answer):
@@ -103,17 +154,19 @@ def parse_files(answer):
     return out
 
 
-def write_files(files):
+def write_files(files, target=None):
+    """target(rel) → 절대 경로|None. 비면 내 자동화 폴더(macros.local) 규칙."""
+    target = target or safe_target
     written = []
     for rel, body in files:
-        path = safe_target(rel)
+        path = target(rel)
         if not path:
-            log('⚠ 쓰지 않음(내 자동화 폴더 밖): %s' % rel)
+            log('⚠ 쓰지 않음(허용된 곳 밖): %s' % rel)
             continue
-        os.makedirs(LOCAL, exist_ok=True)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         if os.path.isfile(path):
             os.makedirs(BACKUP, exist_ok=True)
-            bak = os.path.join(BACKUP, '%s.%s' % (os.path.basename(path), time.strftime('%Y%m%d-%H%M%S')))
+            bak = os.path.join(BACKUP, '%s.%s' % (os.path.relpath(path, HERE).replace(os.sep, '_'), time.strftime('%Y%m%d-%H%M%S')))
             shutil.copy2(path, bak)
             log('  원래 파일은 %s 에 남겼습니다' % bak)
         with open(path, 'w', encoding='utf-8', newline='\n') as f:
@@ -135,10 +188,13 @@ def mentioned(prompt):
     return out
 
 
-def run_test(python, path):
+def run_test(python, path, app_id=None):
+    """내 자동화는 runner.py --test, 앱은 appcheck.py — (통과, 로그 끝)."""
+    cmd = ([python, '-u', os.path.join(HERE, 'appcheck.py'), app_id] if app_id else
+           [python, '-u', os.path.join(HERE, 'runner.py'), '--test', path])
     try:
-        p = subprocess.run([python, '-u', os.path.join(HERE, 'runner.py'), '--test', path], cwd=HERE,
-                           capture_output=True, timeout=TEST_TIMEOUT)
+        p = subprocess.run(cmd, cwd=HERE, capture_output=True, timeout=TEST_TIMEOUT,
+                           env=dict(os.environ, PYTHONIOENCODING='utf-8'))
     except subprocess.TimeoutExpired:
         return False, '시험이 %d초 안에 끝나지 않았습니다' % TEST_TIMEOUT
     out = (p.stdout + p.stderr).decode('utf-8', 'replace')
@@ -155,6 +211,8 @@ def main():
     ap.add_argument('--url', default='http://127.0.0.1:11434')
     ap.add_argument('--test', action='store_true', help='만든 파일을 runner.py --test 로 시험하고 실패하면 다시(최대 3번)')
     ap.add_argument('--python', default=sys.executable)
+    ap.add_argument('--app', default='', help='✨ 나만의 앱 id — apps.local\\<id> 안만 고친다')
+    ap.add_argument('--only', nargs='*', default=None, help='앱 모드에서 쓸 수 있는 파일(예: spec.md)')
     a = ap.parse_args()
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -162,15 +220,29 @@ def main():
     if not prompt:
         log('부탁 글이 비어 있습니다')
         return 2
+    app_dir = None
+    if a.app:
+        app_dir = os.path.join(APPS, a.app)
+        if not re.fullmatch(r'[a-z0-9-]+', a.app) or not os.path.isdir(app_dir):
+            log('✖ 없는 앱입니다: %s' % a.app)
+            return 1
     try:
-        with open(AUTHORING, encoding='utf-8') as f:
+        with open(APP_AUTHORING if app_dir else AUTHORING, encoding='utf-8') as f:
             guide = f.read()
     except OSError:
         guide = '(안내서를 찾지 못함)'
     user = prompt
-    for path, body in mentioned(prompt):
-        user += '\n\n--- 지금 파일 내용: macros.local/%s ---\n%s' % (os.path.basename(path), body)
-    messages = [{'role': 'system', 'content': SYSTEM + guide}, {'role': 'user', 'content': user}]
+    if app_dir:
+        def target(rel):
+            return safe_app_target(app_dir, rel, a.only)
+        system = APP_SYSTEM % (', '.join(a.only) if a.only else '앱 폴더 안의 ' + ' '.join(APP_EXTS)) + guide
+        for rel, body in app_files(app_dir):
+            user += '\n\n--- 지금 파일: %s ---\n%s' % (rel, body)
+    else:
+        target, system = None, SYSTEM + guide
+        for path, body in mentioned(prompt):
+            user += '\n\n--- 지금 파일 내용: macros.local/%s ---\n%s' % (os.path.basename(path), body)
+    messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]
     log('▶ 로컬 AI(%s)에게 맡깁니다 — PC 사양에 따라 몇 분 걸릴 수 있습니다' % a.model)
     for n in range(1, TRIES + 1):
         try:
@@ -187,21 +259,24 @@ def main():
             messages += [{'role': 'assistant', 'content': answer},
                          {'role': 'user', 'content': '파일을 "=== FILE: macros.local/<이름>.py ===" … "=== END ===" 모양으로 전체 내용을 다시 줘.'}]
             continue
-        written = write_files(files)
+        written = write_files(files, target)
         if not written:
             return 1
-        if not a.test:
+        if not a.test or a.only:
             log('')
             log(strip_files(answer) or '만들었습니다.')
             log('')
-            log('ℹ 로컬 AI 는 만든 코드를 직접 돌려 보지 않습니다 — 카드의 🧪 시험으로 확인하세요(설정 ai.ollama_test 를 켜면 허브가 시험까지)')
+            if not a.only:
+                log('ℹ 로컬 AI 는 만든 코드를 직접 돌려 보지 않습니다 — %s(설정 ai.ollama_test 를 켜면 시험까지)'
+                    % ('허브가 이어서 🔍 검사합니다' if app_dir else '카드의 🧪 시험으로 확인하세요'))
             return 0
         fails = []
-        for path in written:
-            ok, out = run_test(a.python, path)
-            log('%s 시험 %s' % ('✔' if ok else '✖', os.path.basename(path)))
+        for path in ([written[0]] if app_dir else written):
+            ok, out = run_test(a.python, path, a.app or None)
+            name = '앱 ' + a.app if app_dir else os.path.basename(path)
+            log('%s 시험 %s' % ('✔' if ok else '✖', name))
             if not ok:
-                fails.append('%s 시험 실패:\n%s' % (os.path.basename(path), out))
+                fails.append('%s 시험 실패:\n%s' % (name, out))
         if not fails:
             log('')
             log(strip_files(answer) or '만들고 시험까지 마쳤습니다.')

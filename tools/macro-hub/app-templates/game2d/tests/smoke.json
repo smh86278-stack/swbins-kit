@@ -1,0 +1,8 @@
+{"steps": [
+  {"expect": "canvas"},
+  {"wait": 600},
+  {"eval": "!!window.game && window.game.isRunning"},
+  {"press": "body", "key": "Space"},
+  {"wait": 400},
+  {"eval": "window.game.scene.isActive('play') || window.game.scene.isActive('over')"}
+]}

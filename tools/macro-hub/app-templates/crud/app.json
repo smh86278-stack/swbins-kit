@@ -1,0 +1,8 @@
+{
+  "name": "목록 관리",
+  "icon": "📋",
+  "kind": "app",
+  "version": "0.1.0",
+  "desc": "항목을 적고 상태별로 관리한다",
+  "permissions": ["db"]
+}

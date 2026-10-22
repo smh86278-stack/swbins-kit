@@ -1,0 +1,8 @@
+{
+  "name": "텍스트 손질",
+  "icon": "🧹",
+  "kind": "app",
+  "version": "0.1.0",
+  "desc": "붙여 넣은 글을 규칙대로 정리해 복사한다",
+  "permissions": []
+}

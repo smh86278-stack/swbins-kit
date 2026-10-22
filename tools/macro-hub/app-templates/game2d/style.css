@@ -1,0 +1,4 @@
+html, body { margin: 0; height: 100%; background: #16151c; color: #c9c6d6; font: 14px system-ui, "Malgun Gothic", sans-serif; }
+body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+#game canvas { border-radius: 14px; box-shadow: 0 8px 40px rgba(0, 0, 0, .45); max-width: 100vw; height: auto !important; }
+.help { margin: 0; opacity: .7; font-size: 13px; }

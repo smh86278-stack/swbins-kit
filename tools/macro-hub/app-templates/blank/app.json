@@ -1,0 +1,8 @@
+{
+  "name": "새 앱",
+  "icon": "✨",
+  "kind": "app",
+  "version": "0.1.0",
+  "desc": "",
+  "permissions": ["db"]
+}

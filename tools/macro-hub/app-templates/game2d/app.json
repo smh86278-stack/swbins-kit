@@ -1,0 +1,8 @@
+{
+  "name": "별 모으기",
+  "icon": "🎮",
+  "kind": "game",
+  "version": "0.1.0",
+  "desc": "떨어지는 돌을 피하며 별을 모으는 게임",
+  "permissions": ["db"]
+}

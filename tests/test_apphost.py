@@ -161,5 +161,99 @@ class Server(Base):
         self.assertEqual(code, 400)
 
 
+class Templates(Base):
+    def test_templates_and_create(self):
+        ts = apphost.templates()                                         # 진짜 키트 템플릿
+        ids = [t['id'] for t in ts]
+        self.assertEqual(ids[:4], ['crud', 'dashboard', 'tool', 'game2d'])
+        self.assertIn('blank', ids)
+        self.assertEqual({t['id']: t['tier'] for t in ts}['game2d'], 'pro')
+        app = apphost.create_app('my-list', '내 목록', 'crud', '거래처 관리')
+        self.assertEqual((app['name'], app['desc'], app['permissions']), ('내 목록', '거래처 관리', ['db']))
+        for rel in ('index.html', 'src/db.js', 'src/main.js', 'spec.md', 'tests/smoke.json'):
+            self.assertTrue(os.path.isfile(os.path.join(app['dir'], *rel.split('/'))), rel)
+        self.assertFalse(os.path.exists(os.path.join(app['dir'], 'template.json')))
+        for bad_id, tpl in (('My List', 'crud'), ('my-list', 'crud'), ('ok-id', 'nope'), ('ok-id', '../apps')):
+            with self.assertRaises(ValueError):
+                apphost.create_app(bad_id, 'x', tpl)
+
+    def test_templates_use_only_bundled_libs(self):
+        import appcheck
+        for t in apphost.templates():
+            d = os.path.join(apphost.TEMPLATES, t['id'])
+            app = dict(apphost.manifest(d), id='t', dir=d, builtin=True)
+            self.assertEqual([m for lv, m in appcheck.static_check(app) if lv == 'error'], [], t['id'])
+
+    def test_static_check_flags_external(self):
+        import appcheck
+        d = make_app(self.local, 'ext', {'name': 'x'}, {
+            'index.html': '<script src="https://unpkg.com/react"></script><script src="/_lib/chart.umd.js"></script>',
+            'src/a.js': "import x from 'https://esm.sh/x'; fetch('http://127.0.0.1:1/ok')", 'tests/smoke.json': '{"steps": 3}'})
+        msgs = [m for lv, m in appcheck.static_check(dict(apphost.manifest(d), id='ext', dir=d)) if lv == 'error']
+        self.assertEqual(len(msgs), 3, msgs)                             # unpkg · esm.sh · steps 형식 (127.0.0.1 은 괜찮다)
+
+
+class LibAndPrompts(Server):
+    def test_lib_served(self):
+        code, body, h = self.req('/_lib/preact-htm.js')
+        self.assertEqual(code, 200)
+        self.assertIn('javascript', h['Content-Type'])
+        self.assertEqual(self.req('/_lib/app-kit.css')[0], 200)
+        for bad in ('/_lib/LICENSE-htm.txt', '/_lib/../apphost.py', '/_lib/README.md', '/_lib/nope.js'):
+            self.assertEqual(self.req(bad)[0], 404, bad)
+
+    def test_ollama_app_mode_targets(self):
+        import ollama_agent as oa
+        d = os.path.join(self.local, 'notes')
+        self.assertEqual(oa.safe_app_target(d, 'src/main.js'), os.path.realpath(os.path.join(d, 'src', 'main.js')))
+        self.assertTrue(oa.safe_app_target(d, 'src/scenes/play.js'))
+        for bad in ('../other/index.html', '.history/x.js', 'secret.py', 'src/../../x.js', 'C:/x.js', 'src/.hidden.js'):
+            self.assertIsNone(oa.safe_app_target(d, bad), bad)
+        self.assertIsNone(oa.safe_app_target(d, 'src/main.js', only=['spec.md']))   # 설계서 단계는 spec.md 만
+        self.assertTrue(oa.safe_app_target(d, 'spec.md', only=['spec.md']))
+        rels = [r for r, _ in oa.app_files(d)]
+        self.assertIn('src/main.js', rels)
+        self.assertNotIn('.history/old.js', rels)
+        self.assertNotIn('secret.py', rels)
+
+
+@unittest.skipUnless(os.environ.get('KIT_BROWSER_TESTS', '1') == '1', 'KIT_BROWSER_TESTS=0')
+class BrowserCheck(Base):
+    def test_tool_template_passes(self):
+        try:
+            import playwright  # noqa: F401
+        except ImportError:
+            self.skipTest('playwright 없음')
+        import io
+        import appcheck
+        apphost.create_app('t-tool', '도구', 'tool')
+        out = io.StringIO()
+        with mock.patch.object(sys, 'stdout', out):
+            code = appcheck.check('t-tool')
+        if '브라우저를 띄우지 못했습니다' in out.getvalue():
+            self.skipTest('브라우저 없음')
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn('🔍 검사 결과: 성공', out.getvalue())
+        self.assertTrue(os.path.isfile(os.path.join(self.local, 't-tool', '.check', 'check.png')))
+
+    def test_broken_app_fails(self):
+        try:
+            import playwright  # noqa: F401
+        except ImportError:
+            self.skipTest('playwright 없음')
+        import io
+        import appcheck
+        make_app(self.local, 'broken', {'name': 'x'}, {'index.html': '<script>nope()</script><h1>hi</h1>',
+                                                       'tests/smoke.json': '{"steps": [{"expect_text": "없는 글자"}]}'})
+        out = io.StringIO()
+        with mock.patch.object(sys, 'stdout', out), mock.patch.object(appcheck, 'STEP_TIMEOUT', 800):
+            code = appcheck.check('broken')
+        if '브라우저를 띄우지 못했습니다' in out.getvalue():
+            self.skipTest('브라우저 없음')
+        self.assertEqual(code, 1)
+        self.assertIn('nope is not defined', out.getvalue())
+        self.assertIn("'없는 글자' 글자가 화면에 없습니다", out.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()

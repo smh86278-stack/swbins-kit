@@ -1,0 +1,8 @@
+{
+  "name": "기록 대시보드",
+  "icon": "📊",
+  "kind": "app",
+  "version": "0.1.0",
+  "desc": "숫자 기록을 요약·차트로 본다",
+  "permissions": ["db"]
+}
