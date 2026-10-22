@@ -135,5 +135,167 @@ class FakeTool(unittest.TestCase):
         self.assertIn('Codex', run.name)
 
 
+class FakeOllama:
+    """/api/tags · /api/chat(스트림) 만 흉내 내는 가짜 Ollama — answers 를 차례로 답한다."""
+    def __init__(self, answers, models=('qwen3:8b',)):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        me = self
+        self.answers, self.asked = list(answers), []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                body = json.dumps({'models': [{'name': m} for m in models]}).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                req = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                me.asked.append(req)
+                if req['model'] not in models:
+                    self.send_response(404)
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"model not found"}')
+                    return
+                text = me.answers.pop(0)
+                self.send_response(200)
+                self.end_headers()
+                half = len(text) // 2
+                for part in (text[:half], text[half:]):
+                    self.wfile.write(json.dumps({'message': {'content': part}, 'done': False}).encode() + b'\n')
+                self.wfile.write(b'{"message":{"content":""},"done":true}\n')
+
+        self.srv = ThreadingHTTPServer(('127.0.0.1', 0), H)
+        self.url = 'http://127.0.0.1:%d' % self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+GOOD = ('<think>생각</think>=== FILE: macros.local/notice_check.py ===\n```python\nMETA = {"name": "공지 확인"}\n\n'
+        'def run(ctx):\n    ctx.log("ok")\n```\n=== END ===\n공지 확인 자동화를 만들었어요.')
+
+
+class Ollama(unittest.TestCase):
+    def setUp(self):
+        import ollama_agent
+        self.oa = ollama_agent
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.local = os.path.join(self.tmp, 'macros.local')
+        for name, val in (('LOCAL', self.local), ('BACKUP', os.path.join(self.tmp, 'bak'))):
+            p = mock.patch.object(ollama_agent, name, val)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def serve(self, answers, **kw):
+        srv = FakeOllama(answers, **kw)
+        self.addCleanup(srv.close)
+        return srv
+
+    def run_agent(self, srv, prompt, *extra):
+        import io
+        out = io.StringIO()
+        stdin = mock.Mock(buffer=io.BytesIO(prompt.encode('utf-8')))
+        with mock.patch.object(sys, 'stdin', stdin), mock.patch.object(sys, 'stdout', out), \
+                mock.patch.object(sys, 'argv', ['ollama_agent.py', '--url', srv.url] + list(extra)):
+            code = self.oa.main()
+        return code, out.getvalue()
+
+    def test_settings_and_status(self):
+        s = aicli.settings({'ai': {'engine': 'ollama', 'ollama_url': 'http://x:1/', 'ollama_test': 'yes'}})
+        self.assertEqual((s['engine'], s['ollama_url'], s['ollama_test']), ('ollama', 'http://x:1', False))   # true 만 켠다
+        srv = self.serve([])
+        with mock.patch.object(aicli, 'settings', lambda cfg=None: {'engine': 'ollama', 'model': '', 'gemini_approval': 'auto_edit',
+                                                                 'ollama_url': srv.url, 'ollama_test': False}):
+            row = [e for e in aicli.status()['engines'] if e['id'] == 'ollama'][0]
+        self.assertTrue(row['installed'])
+        self.assertEqual(row['models'], ['qwen3:8b'])
+        with mock.patch.object(aicli, 'settings', lambda cfg=None: {'engine': 'ollama', 'model': 'gemma3:4b', 'gemini_approval': 'auto_edit',
+                                                                 'ollama_url': srv.url, 'ollama_test': False}):
+            row = [e for e in aicli.status()['engines'] if e['id'] == 'ollama'][0]
+        self.assertFalse(row['installed'])
+        self.assertEqual(row['install'], '명령 창에서 ollama pull gemma3:4b')
+
+    def test_agent_cmd(self):
+        srv = self.serve([])
+        s = {'engine': 'ollama', 'model': '', 'gemini_approval': 'auto_edit', 'ollama_url': srv.url, 'ollama_test': False}
+        argv, shell, note = aicli.agent_cmd('ollama', r'C:\hub', s)
+        self.assertFalse(shell)
+        self.assertTrue(argv[2].endswith('ollama_agent.py'))
+        self.assertEqual(argv[argv.index('--model') + 1], 'qwen3:8b')
+        self.assertNotIn('--test', argv)
+        self.assertIn('🧪', note)
+        s['ollama_test'] = True
+        self.assertIn('--test', aicli.agent_cmd('ollama', r'C:\hub', s)[0])
+        s['ollama_url'] = 'http://127.0.0.1:9'          # 꺼져 있음
+        with self.assertRaises(RuntimeError):
+            aicli.agent_cmd('ollama', r'C:\hub', s)
+
+    def test_safe_target(self):
+        ok = self.oa.safe_target('macros.local/a_b.py')
+        self.assertEqual(ok, os.path.realpath(os.path.join(self.local, 'a_b.py')))
+        for bad in ('../macrohub.py', 'macros.local/../x.py', 'macros/job_x.py', 'macros.local/a.txt', 'C:/x.py', '.hidden.py'):
+            self.assertIsNone(self.oa.safe_target(bad), bad)
+
+    def test_writes_file_without_test(self):
+        srv = self.serve([GOOD])
+        code, out = self.run_agent(srv, '자동화 만들어줘 — 공지 확인')
+        self.assertEqual(code, 0, out)
+        with open(os.path.join(self.local, 'notice_check.py'), encoding='utf-8') as f:
+            body = f.read()
+        self.assertTrue(body.startswith('META = '))         # 울타리·think 는 빠진다
+        self.assertNotIn('```', body)
+        self.assertIn('공지 확인 자동화를 만들었어요', out)
+        self.assertIn('🧪', out)
+        self.assertIn('--- 안내서(AUTHORING.md) ---', srv.asked[0]['messages'][0]['content'])   # 안내서를 같이 줬다
+
+    def test_fix_includes_file_and_backs_up(self):
+        os.makedirs(self.local)
+        with open(os.path.join(self.local, 'notice_check.py'), 'w', encoding='utf-8') as f:
+            f.write('OLD = 1\n')
+        srv = self.serve([GOOD])
+        code, out = self.run_agent(srv, '실패했어 — 고쳐줘.\n파일: C:\\kit\\macros.local\\notice_check.py')
+        self.assertEqual(code, 0, out)
+        self.assertIn('OLD = 1', srv.asked[0]['messages'][1]['content'])      # 지금 파일 내용을 같이 줬다
+        baks = os.listdir(os.path.join(self.tmp, 'bak'))
+        self.assertEqual(len(baks), 1)
+
+    def test_refuses_outside_and_retries_without_files(self):
+        bad = '=== FILE: ../macrohub.py ===\nx\n=== END ==='
+        srv = self.serve(['그냥 말만', bad])
+        code, out = self.run_agent(srv, '만들어줘')
+        self.assertEqual(code, 1)
+        self.assertIn('쓰지 않음', out)
+        self.assertEqual(len(srv.asked), 2)                  # 파일이 없으면 한 번 더 달라고 했다
+        self.assertFalse(os.path.isdir(self.local) and os.listdir(self.local))
+
+    def test_test_loop_retries_until_pass(self):
+        srv = self.serve([GOOD, GOOD])
+        results = iter([(False, 'Traceback: boom'), (True, 'ok')])
+        with mock.patch.object(self.oa, 'run_test', lambda py, p: next(results)):
+            code, out = self.run_agent(srv, '만들어줘', '--test')
+        self.assertEqual(code, 0, out)
+        self.assertIn('시험 실패', out)
+        self.assertIn('Traceback: boom', srv.asked[1]['messages'][-1]['content'])
+
+    def test_missing_model_message(self):
+        srv = self.serve([GOOD])
+        code, out = self.run_agent(srv, '만들어줘', '--model', 'nope:1b')
+        self.assertEqual(code, 1)
+        self.assertIn('ollama pull nope:1b', out)
+
+    def test_text(self):
+        srv = self.serve(['<think>x</think>요약 끝'])
+        with mock.patch.object(aicli, 'settings', lambda cfg=None: {'ollama_url': srv.url}):
+            self.assertEqual(aicli.text('요약해', 'ollama'), '요약 끝')
+
+
 if __name__ == '__main__':
     unittest.main()

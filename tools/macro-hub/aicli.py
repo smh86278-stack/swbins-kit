@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""AI 고르기 — Claude Code · Codex(ChatGPT) · Gemini CLI. 표준 라이브러리만.
+"""AI 고르기 — Claude Code · Codex(ChatGPT) · Gemini CLI · 로컬 AI(Ollama). 표준 라이브러리만.
 
 설정 config.local.json 의 "ai":
-    {"engine": "claude" | "codex" | "gemini", "model": "", "gemini_approval": "auto_edit" | "yolo"}
+    {"engine": "claude" | "codex" | "gemini" | "ollama", "model": "", "gemini_approval": "auto_edit" | "yolo",
+     "ollama_url": "http://127.0.0.1:11434", "ollama_test": false}
 
 AI 를 쓰는 곳은 두 가지다.
 - 글만 쓰는 일(주간 보고 초안·발표 자료) → text(prompt) 가 답 글만 돌려받는다. 파일·명령은 못 건드리게 띄운다.
@@ -14,27 +15,48 @@ AI 를 쓰는 곳은 두 가지다.
   gemini : gemini -p --approval-mode auto_edit — 파일 고치기만 저절로, 명령 실행(시험)은 못 한다. 'yolo' 로 바꾸면
            명령도 묻지 않고 돈다(샌드박스 없음 — 이 PC 를 믿을 때만). 프롬프트는 표준 입력으로(-p 뒤에 덧붙는다 — -p 문구는 영문, cmd.exe 를 거쳐도 깨지지 않게).
 명령줄 옵션은 codex-cli 0.63 의 `codex exec --help`, Gemini CLI 문서 docs/cli/cli-reference.md(2026-10) 기준.
+  ollama : 무료·PC 밖으로 안 나감. 로컬 모델은 스스로 파일·명령을 못 다뤄 ollama_agent.py 가 손발이 된다 —
+           모델이 돌려준 파일을 macros.local 안에만 쓰고, ollama_test 가 켜져 있을 때만 시험 실행(기본은 쓰기까지, 🧪 시험으로 확인).
+           model 이 비면 qwen3:8b(Apache 2.0 — 상업 이용 가능, 메모리 16GB 기준). 8GB 면 qwen3:4b.
 """
+import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import urllib.request
 
 import kit
 
-ENGINES = ('claude', 'codex', 'gemini')
-NAMES = {'claude': 'Claude Code', 'codex': 'Codex (ChatGPT)', 'gemini': 'Gemini CLI'}
+ENGINES = ('claude', 'codex', 'gemini', 'ollama')
+NAMES = {'claude': 'Claude Code', 'codex': 'Codex (ChatGPT)', 'gemini': 'Gemini CLI', 'ollama': '로컬 AI (Ollama)'}
 INSTALL = {'claude': 'npm install -g @anthropic-ai/claude-code',
            'codex': 'npm install -g @openai/codex  (그다음 codex login)',
-           'gemini': 'npm install -g @google/gemini-cli  (그다음 gemini 한 번 실행해 로그인)'}
+           'gemini': 'npm install -g @google/gemini-cli  (그다음 gemini 한 번 실행해 로그인)',
+           'ollama': 'https://ollama.com 에서 받아 설치 → 명령 창에서 ollama pull qwen3:8b'}
 GEMINI_APPROVALS = ('auto_edit', 'yolo')
+OLLAMA_URL = 'http://127.0.0.1:11434'
+OLLAMA_MODEL = 'qwen3:8b'
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def settings(cfg=None):
     s = dict(kit.section('ai', {}, cfg) or {})
     engine = s.get('engine') if s.get('engine') in ENGINES else 'claude'
     approval = s.get('gemini_approval') if s.get('gemini_approval') in GEMINI_APPROVALS else 'auto_edit'
-    return {'engine': engine, 'model': str(s.get('model') or '').strip(), 'gemini_approval': approval}
+    url = str(s.get('ollama_url') or '').strip().rstrip('/') or OLLAMA_URL
+    return {'engine': engine, 'model': str(s.get('model') or '').strip(), 'gemini_approval': approval,
+            'ollama_url': url, 'ollama_test': s.get('ollama_test') is True}
+
+
+def ollama_models(url=OLLAMA_URL, timeout=1.5):
+    """켜진 Ollama 에 받아 둔 모델 이름들 — 꺼져 있거나 없으면 None."""
+    try:
+        with urllib.request.urlopen(url.rstrip('/') + '/api/tags', timeout=timeout) as r:
+            return [m.get('name') for m in json.loads(r.read().decode('utf-8')).get('models') or []]
+    except (OSError, ValueError):
+        return None
 
 
 def set_engine(engine, via='허브'):
@@ -55,15 +77,32 @@ def exe(engine):
 
 
 def status(cfg=None):
-    """허브 화면용 — 고른 엔진과 엔진마다 깔렸는지."""
+    """허브 화면용 — 고른 엔진과 엔진마다 깔렸는지. Ollama 는 켜져 있고 모델이 받아져 있어야 '깔림'."""
     s = settings(cfg)
-    return dict(s, name=NAMES[s['engine']],
-                engines=[{'id': e, 'name': NAMES[e], 'installed': bool(exe(e)), 'install': INSTALL[e]} for e in ENGINES])
+    engines = []
+    for e in ENGINES:
+        row = {'id': e, 'name': NAMES[e], 'installed': bool(exe(e)), 'install': INSTALL[e]}
+        if e == 'ollama':
+            models = ollama_models(s['ollama_url'])
+            want = s['model'] if s['engine'] == 'ollama' and s['model'] else OLLAMA_MODEL
+            row['installed'] = bool(models) and any(m == want or m.split(':')[0] == want for m in models)
+            row['models'] = models or []
+            if models is not None and not row['installed']:
+                row['install'] = '명령 창에서 ollama pull %s' % want
+        engines.append(row)
+    return dict(s, name=NAMES[s['engine']], engines=engines)
 
 
 def _shell(path):
     # .cmd(npm 설치)는 cmd.exe 를 거쳐야 뜬다. 인자는 단순한 것만 넘기고 프롬프트는 표준 입력으로.
     return os.name == 'nt' and not str(path).lower().endswith('.exe')
+
+
+def _console_python():
+    """ollama_agent.py 를 돌릴 파이썬 — 트레이는 pythonw 라 출력이 보이는 콘솔판 python 으로."""
+    exe_ = sys.executable or 'python'
+    con = os.path.join(os.path.dirname(exe_), 'python.exe')
+    return con if os.path.basename(exe_).lower() == 'pythonw.exe' and os.path.isfile(con) else exe_
 
 
 def _model(args, model):
@@ -73,9 +112,18 @@ def _model(args, model):
 def agent_cmd(engine, workdir, s=None):
     """일을 하는 AI 를 workdir 에서 띄울 명령 — (argv, shell, 알릴 말). 프롬프트는 표준 입력으로 넘긴다."""
     s = s or settings()
+    if engine == 'ollama':
+        if ollama_models(s['ollama_url']) is None:
+            raise RuntimeError('로컬 AI(Ollama)가 꺼져 있거나 없습니다 — %s' % INSTALL['ollama'])
+        python = _console_python()
+        argv = [python, '-u', os.path.join(HERE, 'ollama_agent.py'), '--model', s['model'] or OLLAMA_MODEL,
+                '--url', s['ollama_url'], '--python', python] + (['--test'] if s['ollama_test'] else [])
+        note = ('' if s['ollama_test'] else
+                '로컬 AI 는 파일 쓰기까지만 합니다(설정 ai.ollama_test = false) — 시험은 카드의 🧪 시험으로 해 주세요')
+        return argv, False, note
     path = exe(engine)
     if engine not in ('codex', 'gemini'):
-        raise ValueError('허브가 직접 띄우는 엔진은 codex · gemini 입니다 (claude 는 디스패치 대화로)')
+        raise ValueError('허브가 직접 띄우는 엔진은 codex · gemini · ollama 입니다 (claude 는 디스패치 대화로)')
     if not path:
         raise RuntimeError('%s 가 이 PC 에 없습니다 — %s' % (NAMES[engine], INSTALL[engine]))
     if engine == 'codex':
@@ -102,6 +150,10 @@ def agent_prompt(engine, text, s=None):
 
 def text(prompt, engine, model='', timeout=1800):
     """글만 쓰는 일 — 답 글을 돌려준다. 실패하면 RuntimeError. claude 는 부르는 쪽(agent.run_claude)이 따로 한다."""
+    if engine == 'ollama':
+        import ollama_agent
+        return ollama_agent.chat(settings()['ollama_url'], model or OLLAMA_MODEL,
+                                 [{'role': 'user', 'content': prompt}], timeout=timeout)
     path = exe(engine)
     if engine not in ('codex', 'gemini'):
         raise ValueError('text() 는 codex · gemini 용입니다')

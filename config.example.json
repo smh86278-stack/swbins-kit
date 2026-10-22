@@ -103,11 +103,14 @@
   ],
 
   "ai": {
-    "_설명": "AI 고르기 — 🛠 말로 부탁하기 · 🩹 고쳐 달라기 · 주간 보고 초안(weekly_report.engine)에 쓸 AI. 이 PC 에 그 명령줄 도구가 깔려 있고 로그인돼 있어야 한다. claude = Claude Code(디스패치 대화를 거쳐 권한을 묻는다 — 메일·대화로 일 맡기기는 Claude 전용), codex = Codex CLI(ChatGPT 계정, npm install -g @openai/codex 뒤 codex login — 허브 폴더 안에서만 쓰는 샌드박스로 돈다), gemini = Gemini CLI(npm install -g @google/gemini-cli). 허브 화면 「말로 부탁하기」 위 선택칸으로도 바꾼다. model 은 비면 그 도구의 기본값.",
+    "_설명": "AI 고르기 — 🛠 말로 부탁하기 · 🩹 고쳐 달라기 · 주간 보고 초안(weekly_report.engine)에 쓸 AI. 이 PC 에 그 명령줄 도구가 깔려 있고 로그인돼 있어야 한다. claude = Claude Code(디스패치 대화를 거쳐 권한을 묻는다 — 메일·대화로 일 맡기기는 Claude 전용), codex = Codex CLI(ChatGPT 계정, npm install -g @openai/codex 뒤 codex login — 허브 폴더 안에서만 쓰는 샌드박스로 돈다), gemini = Gemini CLI(npm install -g @google/gemini-cli), ollama = 로컬 AI(무료·PC 밖으로 안 나감, https://ollama.com 설치 뒤 ollama pull qwen3:8b — Claude·Codex 보다 약해 간단한 일에 맞다). 허브 화면 「말로 부탁하기」 위 선택칸으로도 바꾼다. model 은 비면 그 도구의 기본값(ollama 는 qwen3:8b, 메모리 8GB 면 qwen3:4b).",
     "_gemini_approval_설명": "auto_edit = 파일 고치기만 저절로(시험 실행은 못 함 — 카드의 🧪 시험으로 확인), yolo = 명령도 묻지 않고 실행(샌드박스 없음 — 이 PC 를 믿을 때만)",
+    "_ollama_설명": "ollama_url = Ollama 주소(보통 그대로). ollama_test = true 면 로컬 AI 가 만든 자동화를 허브가 시험 실행(runner.py --test)하고 실패하면 다시 고치게 한다(최대 3번) — 모델이 만든 코드를 묻지 않고 돌리니 기본은 false(쓰기까지만, 🧪 시험으로 확인). 고친 파일의 원래 내용은 data.local\\ai-backup 에 남는다.",
     "engine": "claude",
     "model": "",
-    "gemini_approval": "auto_edit"
+    "gemini_approval": "auto_edit",
+    "ollama_url": "http://127.0.0.1:11434",
+    "ollama_test": false
   },
 
   "dispatch": {

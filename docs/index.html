@@ -295,12 +295,14 @@ params {&quot;dry_run&quot;: true} 면 robocopy /L(목록만) 로 돌리고 지�
 }</pre></details>
 </section>
 <section id="cfg-ai"><h3>AI 고르기 (Claude Code · Codex · Gemini) <code>ai</code></h3>
-<p>AI 고르기 — 🛠 말로 부탁하기 · 🩹 고쳐 달라기 · 주간 보고 초안(weekly_report.engine)에 쓸 AI. 이 PC 에 그 명령줄 도구가 깔려 있고 로그인돼 있어야 한다. claude = Claude Code(디스패치 대화를 거쳐 권한을 묻는다 — 메일·대화로 일 맡기기는 Claude 전용), codex = Codex CLI(ChatGPT 계정, npm install -g @openai/codex 뒤 codex login — 허브 폴더 안에서만 쓰는 샌드박스로 돈다), gemini = Gemini CLI(npm install -g @google/gemini-cli). 허브 화면 「말로 부탁하기」 위 선택칸으로도 바꾼다. model 은 비면 그 도구의 기본값.</p>
+<p>AI 고르기 — 🛠 말로 부탁하기 · 🩹 고쳐 달라기 · 주간 보고 초안(weekly_report.engine)에 쓸 AI. 이 PC 에 그 명령줄 도구가 깔려 있고 로그인돼 있어야 한다. claude = Claude Code(디스패치 대화를 거쳐 권한을 묻는다 — 메일·대화로 일 맡기기는 Claude 전용), codex = Codex CLI(ChatGPT 계정, npm install -g @openai/codex 뒤 codex login — 허브 폴더 안에서만 쓰는 샌드박스로 돈다), gemini = Gemini CLI(npm install -g @google/gemini-cli), ollama = 로컬 AI(무료·PC 밖으로 안 나감, https://ollama.com 설치 뒤 ollama pull qwen3:8b — Claude·Codex 보다 약해 간단한 일에 맞다). 허브 화면 「말로 부탁하기」 위 선택칸으로도 바꾼다. model 은 비면 그 도구의 기본값(ollama 는 qwen3:8b, 메모리 8GB 면 qwen3:4b).</p>
 <p>auto_edit = 파일 고치기만 저절로(시험 실행은 못 함 — 카드의 🧪 시험으로 확인), yolo = 명령도 묻지 않고 실행(샌드박스 없음 — 이 PC 를 믿을 때만)</p>
-<details><summary>자세한 동작 (tools/macro-hub/aicli.py)</summary><pre>AI 고르기 — Claude Code · Codex(ChatGPT) · Gemini CLI. 표준 라이브러리만.
+<p>ollama_url = Ollama 주소(보통 그대로). ollama_test = true 면 로컬 AI 가 만든 자동화를 허브가 시험 실행(runner.py --test)하고 실패하면 다시 고치게 한다(최대 3번) — 모델이 만든 코드를 묻지 않고 돌리니 기본은 false(쓰기까지만, 🧪 시험으로 확인). 고친 파일의 원래 내용은 data.local\ai-backup 에 남는다.</p>
+<details><summary>자세한 동작 (tools/macro-hub/aicli.py)</summary><pre>AI 고르기 — Claude Code · Codex(ChatGPT) · Gemini CLI · 로컬 AI(Ollama). 표준 라이브러리만.
 
 설정 config.local.json 의 &quot;ai&quot;:
-    {&quot;engine&quot;: &quot;claude&quot; | &quot;codex&quot; | &quot;gemini&quot;, &quot;model&quot;: &quot;&quot;, &quot;gemini_approval&quot;: &quot;auto_edit&quot; | &quot;yolo&quot;}
+    {&quot;engine&quot;: &quot;claude&quot; | &quot;codex&quot; | &quot;gemini&quot; | &quot;ollama&quot;, &quot;model&quot;: &quot;&quot;, &quot;gemini_approval&quot;: &quot;auto_edit&quot; | &quot;yolo&quot;,
+     &quot;ollama_url&quot;: &quot;http://127.0.0.1:11434&quot;, &quot;ollama_test&quot;: false}
 
 AI 를 쓰는 곳은 두 가지다.
 - 글만 쓰는 일(주간 보고 초안·발표 자료) → text(prompt) 가 답 글만 돌려받는다. 파일·명령은 못 건드리게 띄운다.
@@ -311,12 +313,17 @@ AI 를 쓰는 곳은 두 가지다.
            웹 자동화가 돌게 네트워크는 연다. 프롬프트는 표준 입력으로(따옴표·줄바꿈이 명령줄에서 깨지지 않게).
   gemini : gemini -p --approval-mode auto_edit — 파일 고치기만 저절로, 명령 실행(시험)은 못 한다. &#x27;yolo&#x27; 로 바꾸면
            명령도 묻지 않고 돈다(샌드박스 없음 — 이 PC 를 믿을 때만). 프롬프트는 표준 입력으로(-p 뒤에 덧붙는다 — -p 문구는 영문, cmd.exe 를 거쳐도 깨지지 않게).
-명령줄 옵션은 codex-cli 0.63 의 `codex exec --help`, Gemini CLI 문서 docs/cli/cli-reference.md(2026-10) 기준.</pre></details>
+명령줄 옵션은 codex-cli 0.63 의 `codex exec --help`, Gemini CLI 문서 docs/cli/cli-reference.md(2026-10) 기준.
+  ollama : 무료·PC 밖으로 안 나감. 로컬 모델은 스스로 파일·명령을 못 다뤄 ollama_agent.py 가 손발이 된다 —
+           모델이 돌려준 파일을 macros.local 안에만 쓰고, ollama_test 가 켜져 있을 때만 시험 실행(기본은 쓰기까지, 🧪 시험으로 확인).
+           model 이 비면 qwen3:8b(Apache 2.0 — 상업 이용 가능, 메모리 16GB 기준). 8GB 면 qwen3:4b.</pre></details>
 <details><summary>설정 견본</summary><pre>{
   &quot;ai&quot;: {
     &quot;engine&quot;: &quot;claude&quot;,
     &quot;model&quot;: &quot;&quot;,
-    &quot;gemini_approval&quot;: &quot;auto_edit&quot;
+    &quot;gemini_approval&quot;: &quot;auto_edit&quot;,
+    &quot;ollama_url&quot;: &quot;http://127.0.0.1:11434&quot;,
+    &quot;ollama_test&quot;: false
   }
 }</pre></details>
 </section>

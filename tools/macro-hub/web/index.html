@@ -494,7 +494,7 @@ $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';
 let chatUp=false;
-// AI 고르기 — claude 는 디스패치 대화로(권한 묻기·허용 도구), codex·gemini 는 허브가 직접 띄워 실행 기록에 진행을 보인다(aicli.py)
+// AI 고르기 — claude 는 디스패치 대화로(권한 묻기·허용 도구), codex·gemini·ollama 는 허브가 직접 띄워 실행 기록에 진행을 보인다(aicli.py)
 let ai={engine:'claude',engines:[]};
 const direct=()=>ai.engine!=='claude';
 function drawAi(){
@@ -502,7 +502,8 @@ function drawAi(){
   for(const e of ai.engines){const o=el('option','',e.name+(e.installed?'':' (설치 필요)'));o.value=e.id;o.selected=e.id===ai.engine;s.append(o)}
   const cur=ai.engines.find(e=>e.id===ai.engine)||{};
   $('#aiName').textContent=cur.name||'';
-  $('#aiNote').textContent=!cur.installed&&direct()?'— 아직 이 PC 에 없어요: '+cur.install:(ai.engine==='gemini'&&ai.gemini_approval!=='yolo'?'(Gemini 는 파일 고치기까지만 — 시험은 카드의 🧪 시험으로)':'');
+  $('#aiNote').textContent=!cur.installed&&direct()?'— 아직 이 PC 에 없어요: '+cur.install:(ai.engine==='gemini'&&ai.gemini_approval!=='yolo'?'(Gemini 는 파일 고치기까지만 — 시험은 카드의 🧪 시험으로)':
+    ai.engine==='ollama'?'(무료 · PC 밖으로 안 나감 — Claude·Codex 보다 약해서 간단한 일에 맞아요'+(ai.ollama_test?'':', 시험은 카드의 🧪 시험으로')+')':'');
   $('#askDirect').hidden=!direct();$('#askOn').hidden=direct()||!chatUp;$('#askOff').hidden=direct()||chatUp;
   $('#askBtn').textContent=direct()?(cur.name||'AI')+' 로 만들기':(chatUp?'대화로 부탁하기':'부탁 글 복사');
 }

@@ -314,7 +314,7 @@ AI_TIMEOUT = 1800     # 말로 부탁하기·고쳐 달라기를 Codex·Gemini �
 
 
 def start_ai_run(what, prompt):
-    """🛠 말로 부탁하기 · 🩹 고쳐 달라기를 고른 AI(codex·gemini)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
+    """🛠 말로 부탁하기 · 🩹 고쳐 달라기를 고른 AI(codex·gemini·ollama)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
     도구 실행(tool)이라 실행 기록 파일·실패 알림 메일에는 넣지 않는다. 프롬프트는 표준 입력으로."""
     s = aicli.settings()
     argv, shell, note = aicli.agent_cmd(s['engine'], HERE, s)
@@ -1494,7 +1494,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, dict(ask_chat(text), text=text))
             except Exception as e:
                 return self._send(502, {'error': str(e), 'text': text})
-        if path == '/api/ai':                         # AI 고르기 {"engine": "claude"|"codex"|"gemini"} — config.local.json ai.engine
+        if path == '/api/ai':                         # AI 고르기 {"engine": "claude"|"codex"|"gemini"|"ollama"} — config.local.json ai.engine
             try:
                 aicli.set_engine(str(body.get('engine') or ''), via='허브 화면')
             except ValueError as e:
