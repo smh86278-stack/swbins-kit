@@ -630,14 +630,16 @@ $('#delBtn').onclick = async () => {                       // 대화 지우기 �
 let clearUndoUntil = 0;                                    // 전체 지우기 직후 10초 안에 🧹 를 다시 누르면 되돌린다
 $('#clearBtn').onclick = async () => {
   try {
-    if (Date.now() < clearUndoUntil) {
-      clearUndoUntil = 0; await api('/api/clear', {undo: true}); toast('되돌렸습니다'); poll(true); return;
+    if (Date.now() < clearUndoUntil) {                     // 지운 뒤 목록이 바로 안 바뀐 줄 알고 다시 누르면 되돌아가 '지웠다가 다시 생긴다'(2026-10-23) — 묻는다
+      clearUndoUntil = 0;
+      if (!confirm('방금 지운 대화를 되돌릴까요?')) return;
+      await api('/api/clear', {undo: true}); toast('되돌렸습니다'); poll(true); return;
     }
     if (!confirm('대화를 모두 목록에서 지울까요?\n\n· 메일함의 메일은 그대로 남습니다.\n· 일하는 중인 대화와, 6시간 안의 확인 기다리는 대화는 남깁니다.\n· 지운 대화에 새 글이 오면 다시 보입니다.')) return;
     const r = await api('/api/clear', {});
     sel = null; cur = null; showNew(); poll(true);
     clearUndoUntil = Date.now() + 10000;
-    toast('지웠습니다' + (r.left ? ' — 남은 대화 ' + r.left + '개' : '') + ' · 10초 안에 🧹 를 다시 누르면 되돌립니다');
+    toast('지웠습니다' + (r.left ? ' — 남은 대화 ' + r.left + '개' : '') + ' · 되돌리려면 10초 안에 🧹');
   } catch (e) { toast(e.message); }
 };
 
