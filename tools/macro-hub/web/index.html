@@ -123,6 +123,10 @@ body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0
 .app-pane{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:8px}
 .app-pane textarea{width:100%;box-sizing:border-box;font:12.5px/1.5 ui-monospace,Consolas,monospace;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 9px;resize:vertical}
 .app-shot{max-width:100%;border:1px solid var(--line);border-radius:10px;cursor:zoom-in}
+.app-ver{font-size:12.5px;border-bottom:1px solid var(--line);padding:3px 0}
+.app-ver button{font-size:11.5px;padding:2px 8px}
+.app-diff{max-height:340px;overflow:auto;background:var(--code);color:var(--codetext);border-radius:10px;padding:8px 10px;font-size:11.5px;margin:0;white-space:pre-wrap}
+.app-diff .d-add{color:#7ee2a8}.app-diff .d-del{color:#ff9a9a}.app-diff .d-hunk{color:#9db4ff}
 .tier{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--accentsoft);color:var(--accent);margin-left:4px}
 .mk-adv{border-top:1px dashed var(--line);padding-top:8px}
 .mk-adv>summary{cursor:pointer;font-weight:700;font-size:12.5px;color:var(--muted);margin-bottom:8px}
@@ -540,6 +544,18 @@ function afterAi(r){   // 설계서·만들기·고치기를 보낸 뒤 — 직�
   if(r&&r.run){toast(engineName()+' 가 시작했어요 — 오른쪽 실행 기록에서 진행을 봐요')}
   else toast('대화로 보냈어요 — 디스패치 대화에서 진행을 봐요');
 }
+function drawDiff(out,x,v){   // 버전 → 지금 바뀐 곳(통합 diff) — 더한 줄 초록·뺀 줄 빨강
+  out.replaceChildren();out.hidden=false;
+  const head=[];
+  if(x.added.length)head.push('➕ 새 파일: '+x.added.join(', '));
+  if(x.removed.length)head.push('➖ 없어진 파일: '+x.removed.join(', '));
+  if(!x.changed.length&&!head.length)head.push('이 버전과 지금이 같아요.');
+  out.append(document.createTextNode(v.at+' 「'+v.label+'」 → 지금\n'+(head.length?head.join('\n')+'\n':'')));
+  for(const c of x.changed){
+    out.append(el('b','','\n✎ '+c.path+'  +'+c.plus+' −'+c.minus+'\n'));
+    for(const ln of c.diff.split('\n').slice(2)){
+      const s=el('span',ln.startsWith('+')?'d-add':ln.startsWith('-')?'d-del':ln.startsWith('@@')?'d-hunk':'',ln+'\n');out.append(s)}}
+}
 function appActions(a){
   const wrap=el('div'),acts=el('div','app-acts'),pane=el('div','app-pane');pane.hidden=true;
   const show=(fill)=>{pane.replaceChildren();pane.hidden=false;fill(pane)};
@@ -558,6 +574,24 @@ function appActions(a){
     const go=el('button','pri','고쳐 줘');go.onclick=guard(async()=>{afterAi(await api('/api/apps/ai',{id:a.id,step:'change',what:ta.value}))});
     const row=el('div','row');row.append(el('small','mk-note grow','설계서도 같이 고치고 검사까지 해요'),go);p.append(ta,row);ta.focus()}));
   b('🔍 검사','진짜 브라우저로 열어 오류·시나리오·스크린샷을 봐요',async()=>{await api('/api/apps/check',{id:a.id});toast('검사를 시작했어요 — 실행 기록에서 결과를 봐요')});
+  b('🕘 버전','고칠 때마다 남은 버전 — 바뀐 곳 보기·되돌리기',async()=>{
+    const {versions}=await api('/api/apps/history?id='+encodeURIComponent(a.id));
+    show(p=>{
+      const head=el('div','row'),save=el('button','','지금 저장');
+      save.onclick=guard(async()=>{const r=await api('/api/apps/snapshot',{id:a.id,label:prompt('이 버전 이름 (비우면 「직접 저장」)')||''});
+        toast(r.version?'지금 모습을 남겼어요':'마지막 버전과 같아서 따로 남기지 않았어요');acts.querySelector('[data-k=ver]').click()});
+      head.append(el('small','mk-note grow','AI 에게 맡기기 전·후, 설계서를 고치기 전, 되돌리기 전에 저절로 남아요. 되돌려도 앱에 넣은 데이터는 그대로예요.'),save);
+      p.append(head);
+      if(!versions.length)p.append(el('small','mk-note','아직 남은 버전이 없어요.'));
+      const out=el('pre','app-diff');out.hidden=true;
+      for(const v of versions){
+        const r=el('div','row app-ver');
+        const d=el('button','','바뀐 곳'),back=el('button','','되돌리기');
+        d.onclick=guard(async()=>{const x=await api('/api/apps/diff?id='+encodeURIComponent(a.id)+'&v='+v.id);drawDiff(out,x,v)});
+        back.onclick=guard(async()=>{if(!confirm(v.at+' 「'+v.label+'」 으로 되돌릴까요?\n지금 모습도 버전으로 남아서 다시 돌아올 수 있어요.'))return;
+          const x=await api('/api/apps/restore',{id:a.id,v:v.id});toast(x.files+'개 파일로 되돌렸어요');acts.querySelector('[data-k=ver]').click()});
+        r.append(el('span','mk-note',v.at.slice(5,16)),el('span','grow',v.label||'(설명 없음)'),el('small','mk-note',v.files+'개 파일'),d,back);p.append(r)}
+      p.append(out)})}).dataset.k='ver';
   if(a.shot)b('📷 마지막 검사 화면','',()=>show(p=>{const img=el('img','app-shot');img.src='/api/apps/shot?id='+encodeURIComponent(a.id)+'&t='+a.shot;
     img.onclick=()=>window.open(img.src,'_blank','noopener');p.append(img)}));
   wrap.append(acts,pane);return wrap;

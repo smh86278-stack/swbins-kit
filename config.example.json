@@ -114,9 +114,10 @@
   },
 
   "apps": {
-    "_설명": "나만의 앱 — 이 PC 에서만 도는 작은 앱·게임(허브 🛠 만들기 화면의 ✨ 나만의 앱). 앱마다 http://<id>.localhost:<port>/ 로 따로 격리돼 허브·다른 앱 데이터에 손대지 못하고 바깥 주소로 자료를 내보내지 못한다. 견본은 tools\\macro-hub\\apps\\, 내 앱은 tools\\macro-hub\\apps.local\\<id>\\(app.json·index.html), 데이터는 data.local\\apps\\<id>\\. 앱이 쓰려는 권한(db 등)은 허브에서 허락해야 동작한다. enabled=false 면 앱 서버를 띄우지 않는다.",
+    "_설명": "나만의 앱 — 이 PC 에서만 도는 작은 앱·게임(허브 🛠 만들기 화면의 ✨ 나만의 앱). 앱마다 http://<id>.localhost:<port>/ 로 따로 격리돼 허브·다른 앱 데이터에 손대지 못하고 바깥 주소로 자료를 내보내지 못한다. 견본은 tools\\macro-hub\\apps\\, 내 앱은 tools\\macro-hub\\apps.local\\<id>\\(app.json·index.html), 데이터는 data.local\\apps\\<id>\\. 앱이 쓰려는 권한(db 등)은 허브에서 허락해야 동작한다. enabled=false 면 앱 서버를 띄우지 않는다. history_keep = 앱마다 남길 버전 수(AI 에게 맡기기 전·후·설계서 고치기 전·되돌리기 전에 저절로 남고, 🕘 버전에서 바뀐 곳 보기·되돌리기 — 오래된 것부터 지움).",
     "enabled": true,
-    "port": 8631
+    "port": 8631,
+    "history_keep": 30
   },
 
   "dispatch": {

@@ -72,6 +72,7 @@ sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
 import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
+import apphistory  # noqa: E402  (✨ 앱 버전·되돌리기)
 import aicli  # noqa: E402  (AI 고르기 — Claude Code · Codex · Gemini CLI)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
@@ -324,9 +325,15 @@ def start_ai_run(what, prompt, app_id=None, check=True):
     if app_id and s['engine'] == 'ollama':
         argv += ['--app', app_id] + ([] if check else ['--only', 'spec.md'])
     run = Run('ai:' + what, '%s — %s' % (what, aicli.NAMES[s['engine']]), {'kind': 'ai'}, tool=True)
-    if app_id and check and (s['engine'] == 'codex' or (s['engine'] == 'gemini' and s['gemini_approval'] != 'yolo')
-                             or (s['engine'] == 'ollama' and not s['ollama_test'])):
-        run.after = lambda: start_app_check(app_id) if run.status == 'ok' else None
+    if app_id:
+        hub_checks = check and (s['engine'] == 'codex' or (s['engine'] == 'gemini' and s['gemini_approval'] != 'yolo')
+                                or (s['engine'] == 'ollama' and not s['ollama_test']))
+
+        def after():
+            app_snapshot(app_id, '%s 뒤 (%s)' % (what, run.status))     # 실패·멈춤이어도 무엇을 바꿨는지 남긴다
+            if hub_checks and run.status == 'ok':
+                start_app_check(app_id)
+        run.after = after
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
     try:
         run.proc = subprocess.Popen(argv, cwd=HERE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -1131,8 +1138,22 @@ def start_app_check(app_id):
     return run
 
 
+def app_snapshot(app_id, label):
+    """앱 폴더를 버전으로 남긴다(apphistory) — 같은 내용이면 건너뛴다. 남긴 버전|None. 견본 앱은 남기지 않는다."""
+    app = apphost.find(app_id)
+    if not app or app['builtin']:
+        return None
+    keep = (kit.section('apps', {}) or {}).get('history_keep') or apphistory.KEEP
+    try:
+        return apphistory.snapshot(app['dir'], label, keep)
+    except OSError as e:
+        print('앱 버전을 남기지 못했습니다:', app_id, e, file=sys.stderr)
+        return None
+
+
 def app_ai(step, app_id, what=''):
-    """설계서 쓰기·만들기·말로 고치기를 고른 AI 로 — claude 는 디스패치 대화, 나머지는 허브가 직접."""
+    """설계서 쓰기·만들기·말로 고치기를 고른 AI 로 — claude 는 디스패치 대화, 나머지는 허브가 직접.
+    맡기기 전에 지금 모습을 버전으로 남긴다(되돌리기용)."""
     app = apphost.find(app_id)
     if not app:
         raise ValueError('없는 앱입니다')
@@ -1140,6 +1161,7 @@ def app_ai(step, app_id, what=''):
         raise ValueError('견본 앱은 고치지 않습니다 — 새 앱을 만드세요')
     text = app_prompt(step, app, what)
     label = {'spec': '앱 설계서', 'build': '앱 만들기', 'change': '앱 고치기'}[step]
+    app_snapshot(app_id, '%s 전%s' % (label, (' — ' + what.strip()[:40]) if (what or '').strip() else ''))
     engine = aicli.settings()['engine']
     if engine == 'codex' and step != 'spec':
         text += ('\n(샌드박스 때문에 검사 명령이 브라우저를 못 띄우면 그 실패는 코드 문제가 아니니 고치려 하지 말고 넘어가 — '
@@ -1423,6 +1445,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {'text': f.read()})
             except OSError:
                 return self._send(200, {'text': ''})
+        if u.path in ('/api/apps/history', '/api/apps/diff'):   # 🕘 버전 목록 ?id= · 바뀐 곳 ?id=&v=[&to=]
+            app = apphost.find((q.get('id') or [''])[0])
+            if not app:
+                return self._send(404, {'error': '없는 앱입니다'})
+            if u.path == '/api/apps/history':
+                return self._send(200, {'versions': apphistory.history(app['dir'])})
+            try:
+                return self._send(200, apphistory.diff(app['dir'], (q.get('v') or [''])[0], (q.get('to') or [None])[0]))
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
         if u.path == '/api/apps/shot':                # 마지막 🔍 검사 스크린샷 ?id=
             app = apphost.find((q.get('id') or [''])[0])
             shot = os.path.join(app['dir'], '.check', 'check.png') if app else ''
@@ -1554,9 +1586,24 @@ class Handler(BaseHTTPRequestHandler):
             app = apphost.find(str(body.get('id') or ''))
             if not app or app['builtin']:
                 return self._send(400, {'error': '내 앱만 고칠 수 있습니다'})
+            app_snapshot(app['id'], '설계서 직접 고치기 전')
             with open(os.path.join(app['dir'], 'spec.md'), 'w', encoding='utf-8', newline='\n') as f:
                 f.write(str(body.get('text') or ''))
             return self._send(200, {'ok': True})
+        if path == '/api/apps/snapshot':              # 🕘 지금 저장 {"id", "label"}
+            v = app_snapshot(str(body.get('id') or ''), str(body.get('label') or '').strip() or '직접 저장')
+            return self._send(200, {'ok': True, 'version': v})
+        if path == '/api/apps/restore':               # 🕘 되돌리기 {"id", "v"} — 되돌리기 전 모습도 버전으로 남는다
+            app = apphost.find(str(body.get('id') or ''))
+            if not app or app['builtin']:
+                return self._send(400, {'error': '내 앱만 되돌릴 수 있습니다'})
+            try:
+                saved, n = apphistory.restore(app['dir'], str(body.get('v') or ''),
+                                              (kit.section('apps', {}) or {}).get('history_keep') or apphistory.KEEP)
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            audit('앱 되돌림', app['id'], str(body.get('v')))
+            return self._send(200, {'ok': True, 'files': n, 'saved': saved})
         if path == '/api/apps/check':                 # 🔍 검사 {"id"}
             try:
                 return self._send(200, {'ok': True, 'run': start_app_check(str(body.get('id') or '')).id})

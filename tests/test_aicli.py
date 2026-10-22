@@ -137,7 +137,7 @@ class FakeTool(unittest.TestCase):
     def test_app_build_checked_by_hub_after(self):
         """앱 만들기 — Codex·Gemini(auto_edit)는 끝나면 허브가 검사, Gemini yolo 는 스스로 검사하니 안 함, 설계서 단계는 안 함."""
         import macrohub
-        checked = []
+        checked, snaps = [], []
         for engine, approval, check, want in (('codex', 'auto_edit', True, True), ('gemini', 'auto_edit', True, True),
                                               ('gemini', 'yolo', True, False), ('codex', 'auto_edit', False, False)):
             cmd = fake_tool(self.tmp, engine)
@@ -145,15 +145,16 @@ class FakeTool(unittest.TestCase):
             with mock.patch.object(aicli, 'exe', lambda e: cmd), mock.patch.object(aicli, 'settings', lambda cfg=None: s), \
                     mock.patch.object(macrohub, 'broadcast', lambda *a: None), \
                     mock.patch.object(macrohub, 'audit', lambda *a, **k: None), \
-                    mock.patch.object(macrohub, 'start_app_check', lambda app_id: checked.append(app_id)):
+                    mock.patch.object(macrohub, 'start_app_check', lambda app_id: checked.append((engine, approval))), \
+                    mock.patch.object(macrohub, 'app_snapshot', lambda app_id, label: snaps.append(label)):
                 run = macrohub.start_ai_run('앱 만들기', '부탁', 'clients', check=check)
                 for _ in range(100):
                     if run.ended:
                         break
                     time.sleep(0.1)
                 time.sleep(0.3)
-            self.assertEqual(bool(getattr(run, 'after', None)), want, (engine, approval, check))
-        self.assertEqual(checked, ['clients', 'clients'])
+        self.assertEqual(checked, [('codex', 'auto_edit'), ('gemini', 'auto_edit')])
+        self.assertEqual(snaps, ['앱 만들기 뒤 (ok)'] * 4)                     # 끝나면 늘 버전을 남긴다
 
 
 class FakeOllama:
