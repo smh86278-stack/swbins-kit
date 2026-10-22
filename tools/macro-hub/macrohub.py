@@ -17,6 +17,8 @@
 import argparse
 import ast
 import atexit
+import base64
+import binascii
 import ctypes
 import ctypes.wintypes as wt
 import datetime
@@ -33,7 +35,7 @@ import time
 import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DIR_EXAMPLE = os.path.join(HERE, 'macros')
@@ -42,6 +44,7 @@ DIR_BUILTIN = os.path.join(HERE, 'builtin')
 F_STATE = os.path.join(HERE, 'state.local.json')
 F_RUNS = os.path.join(HERE, 'runs.jsonl')
 RUNNER = os.path.join(HERE, 'runner.py')
+EXPORTS = os.path.join(HERE, 'data.local', 'exports')     # ✨ 앱 exe 내보내기
 def _pick_python(exe):
     """허브용 파이썬 — 개발 PC 는 .venv, 설치본(WorkKitSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
     for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
@@ -73,6 +76,7 @@ import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
 import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
 import apphistory  # noqa: E402  (✨ 앱 버전·되돌리기)
+import apppack  # noqa: E402  (✨ 앱 내보내기·가져오기 — zip · HTML 한 장 · exe)
 import aicli  # noqa: E402  (AI 고르기 — Claude Code · Codex · Gemini CLI)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
@@ -1455,6 +1459,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, apphistory.diff(app['dir'], (q.get('v') or [''])[0], (q.get('to') or [None])[0]))
             except ValueError as e:
                 return self._send(400, {'error': str(e)})
+        if u.path == '/api/apps/export':              # 📦 내보내기 받기 ?id=&fmt=zip|html — 브라우저가 파일로 받는다
+            app = apphost.find((q.get('id') or [''])[0])
+            if not app:
+                return self._send(404, {'error': '없는 앱입니다'})
+            try:
+                if (q.get('fmt') or ['zip'])[0] == 'html':
+                    name, data = apppack.export_html(app)
+                    data, ctype = data.encode('utf-8'), 'text/html; charset=utf-8'
+                else:
+                    name, data = apppack.export_zip(app)
+                    ctype = 'application/zip'
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            audit('앱 내보냄', app['id'], name)
+            self.send_response(200)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Content-Disposition', "attachment; filename*=UTF-8''%s" % quote(name))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Content-Security-Policy', 'sandbox')   # 받은 HTML 이 허브 출처에서 돌지 않게
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if u.path == '/api/apps/shot':                # 마지막 🔍 검사 스크린샷 ?id=
             app = apphost.find((q.get('id') or [''])[0])
             shot = os.path.join(app['dir'], '.check', 'check.png') if app else ''
@@ -1604,6 +1632,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {'error': str(e)})
             audit('앱 되돌림', app['id'], str(body.get('v')))
             return self._send(200, {'ok': True, 'files': n, 'saved': saved})
+        if path == '/api/apps/exe':                   # 📦 exe 만들기 {"id"} — data.local\exports 에 만들고 폴더를 연다
+            app = apphost.find(str(body.get('id') or ''))
+            if not app:
+                return self._send(400, {'error': '없는 앱입니다'})
+            try:
+                out = apppack.export_exe(app, EXPORTS)
+            except (ValueError, RuntimeError, OSError) as e:
+                return self._send(400, {'error': str(e)})
+            audit('앱 exe 만듦', app['id'], os.path.basename(out))
+            try:
+                subprocess.Popen(['explorer', '/select,', out])
+            except OSError:
+                pass
+            return self._send(200, {'ok': True, 'path': out})
+        if path == '/api/apps/import':                # 📥 zip 가져오기 {"id", "name", "data": base64}
+            try:
+                app = apppack.import_zip(base64.b64decode(str(body.get('data') or '')), str(body.get('id') or ''),
+                                         str(body.get('name') or ''))
+            except (ValueError, binascii.Error) as e:
+                return self._send(400, {'error': str(e)})
+            app_snapshot(app['id'], '가져옴')
+            audit('앱 가져옴', app['id'])
+            return self._send(200, {'ok': True, 'id': app['id'], 'permissions': app['permissions']})
         if path == '/api/apps/check':                 # 🔍 검사 {"id"}
             try:
                 return self._send(200, {'ok': True, 'run': start_app_check(str(body.get('id') or '')).id})

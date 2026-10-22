@@ -8,5 +8,6 @@
 | `chart.umd.js` | chart.js@4.4.1 `dist/chart.umd.js` | MIT (`LICENSE-chartjs.txt`) |
 | `phaser.min.js` | phaser@3.80.1 `dist/phaser.min.js` | MIT (`LICENSE-phaser.txt`) |
 | `app-kit.css` | 키트가 직접 만든 기본 꾸밈 | 키트와 같음 |
+| `sql-wasm.js` · `sql-wasm.wasm` | sql.js@1.10.3 `dist/` — **앱이 아니라 HTML 한 장 내보내기에만** 쓴다(브라우저에서 SQLite). `/_lib` 로는 js 만 나간다 | MIT (`LICENSE-sqljs.txt`) |
 
 2026-10-22 에 cdn.jsdelivr.net/npm 에서 받았다. 버전을 올릴 때는 같은 이름으로 바꿔 넣고 이 표를 고친다.

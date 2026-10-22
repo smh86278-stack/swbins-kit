@@ -260,6 +260,8 @@ pre#log .ln{animation:fadein .35s ease both}
         <textarea id="appWhat" rows="3" placeholder="무엇을 만들까요? (예: 거래처 이름·담당자·연락처·마지막 연락일을 적고, 30일 넘게 연락 안 한 곳을 위에 빨갛게)"></textarea>
         <div class="row"><small class="mk-note grow">비워 두면 템플릿 그대로 만들어요. 설계서는 다 쓴 뒤 확인하고 「이대로 만들기」를 눌러요.</small>
           <button id="appCreate" class="pri">만들기 시작</button></div>
+        <div class="row"><small class="mk-note grow">다른 사람이 보낸 앱 zip 이 있으면 — 위에 앱 이름·주소 이름을 적고</small>
+          <label class="btn-like"><input type="file" id="appZip" accept=".zip" hidden><span id="appZipBtn" class="mk-note" style="cursor:pointer;text-decoration:underline">📥 zip 가져오기</span></label></div>
       </details>
       <div id="appList"></div>
       <small class="mk-note" id="appsOff" hidden>나만의 앱 서버가 꺼져 있어요(설정 <code>apps.enabled</code> · 포트 <code>apps.port</code>).</small>
@@ -592,6 +594,13 @@ function appActions(a){
           const x=await api('/api/apps/restore',{id:a.id,v:v.id});toast(x.files+'개 파일로 되돌렸어요');acts.querySelector('[data-k=ver]').click()});
         r.append(el('span','mk-note',v.at.slice(5,16)),el('span','grow',v.label||'(설명 없음)'),el('small','mk-note',v.files+'개 파일'),d,back);p.append(r)}
       p.append(out)})}).dataset.k='ver';
+  b('📦 내보내기','다른 PC·사람에게 — zip · HTML 한 장 · exe',()=>show(p=>{
+    const q='/api/apps/export?id='+encodeURIComponent(a.id)+'&fmt=';
+    const row=el('div','app-acts'),zip=el('button','','🗜 zip (키트로 가져오기)'),html=el('button','','📄 HTML 한 장'),exe=el('button','','🪟 exe ⭐');
+    zip.onclick=()=>{location.href=q+'zip'};html.onclick=()=>{location.href=q+'html'};
+    exe.onclick=guard(async()=>{exe.disabled=true;try{const r=await api('/api/apps/exe',{id:a.id});toast('exe 를 만들었어요 — 폴더를 열었어요')}finally{exe.disabled=false}});
+    row.append(zip,html,exe);
+    p.append(row,el('small','mk-note','zip 은 다른 PC 키트의 「📥 zip 가져오기」로 그대로 앱이 돼요. HTML 한 장·exe 는 허브 없이 도는 복사본이라 데이터가 그 PC 브라우저에 따로 쌓이고, AI·자동화 실행·알림은 안 돼요. exe 는 서명이 없어 처음엔 Windows 가 한 번 물을 수 있어요.'))}));
   if(a.shot)b('📷 마지막 검사 화면','',()=>show(p=>{const img=el('img','app-shot');img.src='/api/apps/shot?id='+encodeURIComponent(a.id)+'&t='+a.shot;
     img.onclick=()=>window.open(img.src,'_blank','noopener');p.append(img)}));
   wrap.append(acts,pane);return wrap;
@@ -603,6 +612,14 @@ async function createApp(){
   $('#appName').value=$('#appId').value=$('#appWhat').value='';$('#appNew').open=false;loadApps();
 }
 $('#appCreate').onclick=guard(createApp);
+$('#appZip').onchange=guard(async()=>{
+  const f=$('#appZip').files[0];if(!f)return;
+  const id=($('#appId').value.trim()||f.name.replace(/\.zip$/i,'').replace(/-[\d.]+$/,'')).toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/^-+|-+$/g,'');
+  const buf=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
+  const r=await api('/api/apps/import',{id,name:$('#appName').value.trim(),data:btoa(bin)});
+  toast('「'+r.id+'」 앱을 가져왔어요'+(r.permissions.length?' — 쓰려는 권한을 확인하고 허락해 주세요':''));
+  $('#appZip').value='';$('#appName').value=$('#appId').value='';$('#appNew').open=false;loadApps();
+});
 async function loadApps(){
   let d;try{d=await api('/api/apps')}catch(e){return}
   const sel=$('#appTpl'),cur=sel.value;sel.replaceChildren();
