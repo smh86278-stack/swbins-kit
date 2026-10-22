@@ -317,13 +317,15 @@ AI_TIMEOUT = 1800     # 말로 부탁하기·고쳐 달라기를 Codex·Gemini �
 def start_ai_run(what, prompt, app_id=None, check=True):
     """🛠 말로 부탁하기 · 🩹 고쳐 달라기 · ✨ 앱 만들기를 고른 AI(codex·gemini·ollama)로 허브 폴더에서 직접 돌린다 — 진행은 실행 기록·로그로 본다.
     도구 실행(tool)이라 실행 기록 파일·실패 알림 메일에는 넣지 않는다. 프롬프트는 표준 입력으로.
-    app_id 가 있으면 로컬 AI 는 그 앱 폴더만 고치고, 스스로 검사를 못 돌리는 AI 가 끝나면 허브가 🔍 검사를 이어 돌린다."""
+    app_id 가 있으면 로컬 AI 는 그 앱 폴더만 고치고, 스스로 검사를 못 돌리는 AI 가 끝나면 허브가 🔍 검사를 이어 돌린다.
+    Codex 는 샌드박스(허브 폴더 안만 쓰기)라 크롬이 임시 폴더에 못 써 검사가 막힐 수 있어 늘 허브가 한 번 더 검사한다."""
     s = aicli.settings()
     argv, shell, note = aicli.agent_cmd(s['engine'], HERE, s)
     if app_id and s['engine'] == 'ollama':
         argv += ['--app', app_id] + ([] if check else ['--only', 'spec.md'])
     run = Run('ai:' + what, '%s — %s' % (what, aicli.NAMES[s['engine']]), {'kind': 'ai'}, tool=True)
-    if app_id and check and ((s['engine'] == 'gemini' and s['gemini_approval'] != 'yolo') or (s['engine'] == 'ollama' and not s['ollama_test'])):
+    if app_id and check and (s['engine'] == 'codex' or (s['engine'] == 'gemini' and s['gemini_approval'] != 'yolo')
+                             or (s['engine'] == 'ollama' and not s['ollama_test'])):
         run.after = lambda: start_app_check(app_id) if run.status == 'ok' else None
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
     try:
@@ -1138,7 +1140,11 @@ def app_ai(step, app_id, what=''):
         raise ValueError('견본 앱은 고치지 않습니다 — 새 앱을 만드세요')
     text = app_prompt(step, app, what)
     label = {'spec': '앱 설계서', 'build': '앱 만들기', 'change': '앱 고치기'}[step]
-    if aicli.settings()['engine'] != 'claude':
+    engine = aicli.settings()['engine']
+    if engine == 'codex' and step != 'spec':
+        text += ('\n(샌드박스 때문에 검사 명령이 브라우저를 못 띄우면 그 실패는 코드 문제가 아니니 고치려 하지 말고 넘어가 — '
+                 '끝나면 허브가 검사를 한 번 더 돌린다)')
+    if engine != 'claude':
         return {'ok': True, 'run': start_ai_run('%s · %s' % (label, app['name']), text, app_id, check=step != 'spec').id, 'text': text}
     return dict(ask_chat(text), text=text)
 

@@ -134,6 +134,27 @@ class FakeTool(unittest.TestCase):
         self.assertIn('GOT 자동화 허브에 자동화 만들어줘 — 공지 확인', text)   # 프롬프트가 표준 입력으로 갔다
         self.assertIn('Codex', run.name)
 
+    def test_app_build_checked_by_hub_after(self):
+        """앱 만들기 — Codex·Gemini(auto_edit)는 끝나면 허브가 검사, Gemini yolo 는 스스로 검사하니 안 함, 설계서 단계는 안 함."""
+        import macrohub
+        checked = []
+        for engine, approval, check, want in (('codex', 'auto_edit', True, True), ('gemini', 'auto_edit', True, True),
+                                              ('gemini', 'yolo', True, False), ('codex', 'auto_edit', False, False)):
+            cmd = fake_tool(self.tmp, engine)
+            s = {'engine': engine, 'model': '', 'gemini_approval': approval, 'ollama_url': '', 'ollama_test': False}
+            with mock.patch.object(aicli, 'exe', lambda e: cmd), mock.patch.object(aicli, 'settings', lambda cfg=None: s), \
+                    mock.patch.object(macrohub, 'broadcast', lambda *a: None), \
+                    mock.patch.object(macrohub, 'audit', lambda *a, **k: None), \
+                    mock.patch.object(macrohub, 'start_app_check', lambda app_id: checked.append(app_id)):
+                run = macrohub.start_ai_run('앱 만들기', '부탁', 'clients', check=check)
+                for _ in range(100):
+                    if run.ended:
+                        break
+                    time.sleep(0.1)
+                time.sleep(0.3)
+            self.assertEqual(bool(getattr(run, 'after', None)), want, (engine, approval, check))
+        self.assertEqual(checked, ['clients', 'clients'])
+
 
 class FakeOllama:
     """/api/tags · /api/chat(스트림) 만 흉내 내는 가짜 Ollama — answers 를 차례로 답한다."""
