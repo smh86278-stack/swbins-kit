@@ -1,0 +1,17 @@
+:root { --bg: #fbf8f4; --panel: #fff; --text: #2b2b33; --muted: #8a8794; --line: #ece6dd; --accent: #8a7cf0; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1d1c22; --panel: #26252d; --text: #ecebf2; --muted: #9a98a6; --line: #36343e; --accent: #a99cff; }
+}
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, "Malgun Gothic", sans-serif; }
+main { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 4px; font-size: 22px; }
+.hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+form { display: flex; gap: 8px; }
+input { flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; }
+button { padding: 8px 14px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+ul { list-style: none; padding: 0; margin: 16px 0 0; }
+li { display: flex; gap: 8px; align-items: center; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+li span { flex: 1; word-break: break-all; }
+li time { color: var(--muted); font-size: 12px; }
+li button { background: transparent; color: var(--muted); padding: 2px 6px; }
+#err { color: #d0473b; background: color-mix(in srgb, #d0473b 10%, transparent); padding: 8px 12px; border-radius: 10px; }

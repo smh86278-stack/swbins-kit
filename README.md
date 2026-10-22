@@ -28,6 +28,7 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
 | 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama·codex·gemini)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
 | 🧠 AI 고르기 | 「말로 부탁하기」·「고쳐 달라기」·주간 보고 초안을 **Claude Code · Codex(ChatGPT) · Gemini CLI · 로컬 AI(Ollama)** 중 이 PC 에 깔린 것으로. Codex·Gemini·Ollama 는 허브가 직접 띄워 실행 기록에서 진행을 보여 준다(Codex 는 허브 폴더 안에서만 쓰는 샌드박스). 로컬 AI 는 무료이고 PC 밖으로 안 나간다 — 모델이 돌려준 파일을 내 자동화 폴더에만 쓰고, 시험 실행은 `ai.ollama_test` 를 켰을 때만(`ollama_agent.py`). 메일·대화로 일 맡기기는 권한 묻기 때문에 Claude 전용 — `tools\macro-hub\aicli.py` | `ai` |
+| ✨ 나만의 앱 | 이 PC 에서만 도는 작은 앱·게임(🛠 만들기 화면). 앱마다 `http://<id>.localhost:8631/` 로 따로 격리돼 허브·다른 앱 데이터에 손대지 못하고 바깥 주소로 자료를 못 내보낸다. 앱이 쓰려는 권한(이 앱 전용 DB 등)은 허브에서 허락해야 동작 — 견본 `apps\sample-notes`, 내 앱 `apps.local\<id>\` (`tools\macro-hub\apphost.py`) | `apps` |
 | 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
 | 🚚 PC 이전 | PC 를 바꿀 때 Claude Code 대화 기록·키트 설정·저장소의 커밋 안 한 작업물·환경변수 값을 암호 걸린 `.7z` 하나로 묶고 새 PC 에서 풀어 넣는다 — [tools\pc-migrate\README.md](tools/pc-migrate/README.md) | `migrate` |
 

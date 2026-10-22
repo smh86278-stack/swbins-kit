@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>메모장 견본</title>
+<link rel="stylesheet" href="style.css">
+<script src="/_app.js"></script>
+</head>
+<body>
+<main>
+  <h1>📝 메모장</h1>
+  <p class="hint">나만의 앱 견본 — 메모는 이 앱 전용 DB 에만 저장돼요.</p>
+  <form id="add">
+    <input id="text" placeholder="메모를 적고 Enter" autocomplete="off" required>
+    <button>추가</button>
+  </form>
+  <p id="err" hidden></p>
+  <ul id="list"></ul>
+</main>
+<script src="src/main.js"></script>
+</body>
+</html>

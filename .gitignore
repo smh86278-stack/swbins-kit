@@ -23,6 +23,7 @@ tools/dispatch-chat/company.json
 tools/macro-hub/data.local/
 tools/macro-hub/macros.local/
 macros.local/
+tools/macro-hub/apps.local/
 runs.jsonl
 state.json
 notify.jsonl

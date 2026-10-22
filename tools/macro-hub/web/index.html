@@ -97,7 +97,7 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .hidebar{display:block;width:100%;margin-top:6px;border:1px dashed var(--line)!important;background:transparent!important;box-shadow:none!important;color:var(--muted);font-size:12px;border-radius:10px;padding:4px}
 .hidebar:hover{color:var(--accent)}
 /* ---------- 🛠 만들기(?view=make) — 허브는 돌리기, 만들기는 따로. 같은 화면에서 칸만 바꿔 보인다 ---------- */
-body:not(.view-make) #makeBox,body:not(.view-make) [data-view=make],body.view-make [data-view=hub]{display:none!important}
+body:not(.view-make) #makeBox,body:not(.view-make) #appsBox,body:not(.view-make) [data-view=make],body.view-make [data-view=hub]{display:none!important}
 body.view-make .hero,body.view-make #macroStack{display:none}
 body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0 auto}
 /* 나만의 자동화 — 처음 보는 사람도 겁먹지 않게 '보여 주기'·'말로 부탁하기' 두 장만 크게, 개발 도구는 🧰 고급 도구에 접어 둔다 */
@@ -113,6 +113,11 @@ body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0
 .mk-note{color:var(--muted);font-size:11px}
 .mk-off{font-size:11.5px;color:var(--muted);background:var(--soft);border-radius:10px;padding:6px 10px}
 .mk-off[hidden]{display:none}
+.app-card{border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:var(--panel);display:flex;flex-direction:column;gap:6px}
+.app-card .mk-head small{display:block}
+.app-perm{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px}
+.app-perm label{display:flex;gap:4px;align-items:center}
+.app-err{color:var(--bad,#c0392b);font-size:12px}
 .mk-adv{border-top:1px dashed var(--line);padding-top:8px}
 .mk-adv>summary{cursor:pointer;font-weight:700;font-size:12.5px;color:var(--muted);margin-bottom:8px}
 .mk-adv>summary small{font-weight:400;margin-left:4px}
@@ -233,6 +238,12 @@ pre#log .ln{animation:fadein .35s ease both}
       </div>
       <button class="hidebar" id="toolHidBar" hidden></button>
       </details>
+    </section>
+    <section class="box" id="appsBox">
+      <h2>✨ 나만의 앱</h2>
+      <p class="mk-intro">이 PC 에서만 도는 작은 앱·게임. 앱마다 따로 격리돼 허브와 다른 앱의 데이터에 손대지 못하고, 바깥 주소로 자료를 내보내지 못해요.</p>
+      <div id="appList"></div>
+      <small class="mk-note" id="appsOff" hidden>나만의 앱 서버가 꺼져 있어요(설정 <code>apps.enabled</code> · 포트 <code>apps.port</code>).</small>
     </section>
     <section class="box">
       <h2>실행 기록 · 로그</h2>
@@ -508,6 +519,32 @@ function drawAi(){
   $('#askBtn').textContent=direct()?(cur.name||'AI')+' 로 만들기':(chatUp?'대화로 부탁하기':'부탁 글 복사');
 }
 async function loadAi(){try{ai=await api('/api/ai');drawAi()}catch(e){}}
+// ✨ 나만의 앱 — 목록·권한 허락·열기(앱은 <id>.localhost:8631, 허브와 다른 출처 — apphost.py)
+async function loadApps(){
+  let d;try{d=await api('/api/apps')}catch(e){return}
+  const box=$('#appList');box.replaceChildren();$('#appsOff').hidden=!!d.port;
+  if(d.port&&!d.apps.length)box.append(el('small','mk-note','아직 앱이 없어요.'));
+  for(const a of d.apps){
+    const c=el('div','app-card'),h=el('div','mk-head');
+    const t=el('div');t.append(el('b','',a.name+(a.builtin?' (견본)':'')),el('small','',(a.desc||'')+' · v'+a.version));
+    const open=el('button',a.error||a.pending.length?'':'pri','열기');open.style.marginLeft='auto';
+    open.onclick=()=>window.open(a.url,'_blank','noopener');open.disabled=!!a.error;
+    h.append(el('span','mk-ico',a.icon),t,open);c.append(h);
+    if(a.error)c.append(el('div','app-err','⚠ '+a.error));
+    if(a.permissions.length){
+      const p=el('div','app-perm');p.append(el('span','mk-note','이 앱이 쓰려는 것:'));
+      for(const k of a.permissions){
+        const l=el('label'),cb=el('input');cb.type='checkbox';cb.checked=a.approved.includes(k);
+        cb.onchange=guard(async()=>{
+          const want=[...p.querySelectorAll('input')].filter(x=>x.checked).map(x=>x.dataset.k);
+          await api('/api/apps/approve',{id:a.id,perms:want});toast(a.name+' 권한을 바꿨어요');loadApps()});
+        cb.dataset.k=k;l.append(cb,document.createTextNode(a.perm_names[k]+(a.ready.includes(k)?'':' (준비 중)')));p.append(l)}
+      c.append(p);
+      if(a.pending.length)c.append(el('small','mk-note','체크해서 허락해야 그 기능이 동작해요.'));
+    }
+    box.append(c)}
+}
+loadApps();
 $('#aiSel').onchange=guard(async()=>{ai=await api('/api/ai',{engine:$('#aiSel').value});drawAi();toast(($('#aiSel').selectedOptions[0]||{}).textContent+' 로 맡깁니다')});
 async function checkChat(){
   try{await fetch(CHAT_URL+'api/state',{mode:'no-cors',cache:'no-store',signal:AbortSignal.timeout(2500)});chatUp=true}catch(e){chatUp=false}

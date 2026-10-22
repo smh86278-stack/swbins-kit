@@ -71,6 +71,7 @@ _spec.loader.exec_module(pl)
 sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
+import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
 import aicli  # noqa: E402  (AI 고르기 — Claude Code · Codex · Gemini CLI)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
@@ -1331,6 +1332,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(204, b'', 'image/x-icon')
         if u.path == '/api/macros':
             return self._send(200, [macro_view(m) for m in discover()])
+        if u.path == '/api/apps':                     # ✨ 나만의 앱 목록 — 권한·허락·주소
+            return self._send(200, {'port': APPS_PORT, 'apps': apphost.list_view(APPS_PORT) if APPS_PORT else []})
         if u.path == '/api/deleted':                  # 지운 내 자동화(되살리기용)
             return self._send(200, deleted_macros())
         if u.path == '/api/runs':
@@ -1418,6 +1421,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/stop':
             return self._send(200, {'ok': stop_run(int(body.get('run', 0)))})
+        if path == '/api/apps/approve':               # ✨ 앱 권한 허락·거두기 {"id", "perms": [...]} — 빈 목록이면 모두 거둠
+            perms = body.get('perms')
+            try:
+                if not isinstance(perms, list):
+                    raise ValueError('perms 는 목록이어야 합니다')
+                ok = apphost.approve(str(body.get('id') or ''), [str(p) for p in perms])
+            except ValueError as e:
+                return self._send(400, {'error': str(e)})
+            audit('앱 권한', str(body.get('id') or ''), ', '.join(ok) or '모두 거둠')
+            return self._send(200, {'ok': True, 'approved': ok})
         if path == '/api/enable':
             if not set_enabled(body.get('id', ''), bool(body.get('enabled'))):
                 return self._send(404, {'error': 'no such macro'})
@@ -1584,6 +1597,25 @@ def shutdown_children():
         kill_tree(rec['proc'])
 
 
+APPS_PORT = None    # ✨ 나만의 앱 서버가 뜬 포트(못 떴으면 None)
+
+
+def start_apphost(hub_port):
+    """✨ 나만의 앱 — 허브와 다른 포트, 앱마다 <id>.localhost 출처(apphost.py). 설정 apps.enabled=false 면 안 띄운다."""
+    global APPS_PORT
+    cfg = kit.section('apps', {}) or {}
+    if cfg.get('enabled') is False:
+        return
+    port = int(cfg.get('port') or apphost.PORT)
+    try:
+        srv = apphost.make_server(port, hub_port)
+    except OSError as e:
+        print('나만의 앱 서버(%d)를 띄우지 못했습니다:' % port, e, file=sys.stderr)
+        return
+    APPS_PORT = port
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+
 def start_services(host='127.0.0.1', port=8630):
     """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 자동화)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
     load_state()
@@ -1607,6 +1639,8 @@ def start_services(host='127.0.0.1', port=8630):
         print('창 이벤트 훅 실패 — 창 트리거가 동작하지 않습니다:', e, file=sys.stderr)
     threading.Thread(target=trigger_loop, daemon=True).start()
     threading.Thread(target=service_loop, daemon=True).start()
+
+    start_apphost(port)
 
     if host in ('127.0.0.1', 'localhost'):
         Handler.allowed_hosts = frozenset(['127.0.0.1:%d' % port, 'localhost:%d' % port])

@@ -1,0 +1,8 @@
+{
+  "name": "메모장 견본",
+  "icon": "📝",
+  "kind": "app",
+  "version": "1.0.0",
+  "desc": "나만의 앱 견본 — 이 앱 전용 DB 에 메모를 저장한다(db 권한)",
+  "permissions": ["db"]
+}
