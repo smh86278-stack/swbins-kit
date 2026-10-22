@@ -633,7 +633,7 @@ $('#clearBtn').onclick = async () => {
     if (Date.now() < clearUndoUntil) {
       clearUndoUntil = 0; await api('/api/clear', {undo: true}); toast('되돌렸습니다'); poll(true); return;
     }
-    if (!confirm('대화를 모두 목록에서 지울까요?\n\n· 메일함의 메일은 그대로 남습니다.\n· 일하는 중이거나 확인을 기다리는 대화는 남깁니다.\n· 지운 대화에 새 글이 오면 다시 보입니다.')) return;
+    if (!confirm('대화를 모두 목록에서 지울까요?\n\n· 메일함의 메일은 그대로 남습니다.\n· 일하는 중인 대화와, 6시간 안의 확인 기다리는 대화는 남깁니다.\n· 지운 대화에 새 글이 오면 다시 보입니다.')) return;
     const r = await api('/api/clear', {});
     sel = null; cur = null; showNew(); poll(true);
     clearUndoUntil = Date.now() + 10000;

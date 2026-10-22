@@ -988,7 +988,7 @@ class Box:
         for t in build_threads(msgs, *local_jobs()):
             if t["key"] in hidden:
                 continue
-            if cleared and (t.get("ts") or 0) <= cleared and t.get("status") not in ACTIVE_STATUSES:
+            if cleared and (t.get("ts") or 0) <= cleared and not kept_on_clear(t, cleared):
                 continue
             t["urgent"] = t["key"] in urgent
             out.append(t)
@@ -1017,6 +1017,15 @@ def hide_thread(key):
 
 
 ACTIVE_STATUSES = ("sent", "queued", "running", "confirm")   # 전체 지우기에서 남기는 대화 — 일하는 중이거나 내 확인을 기다린다
+WORKING_STATUSES = ("queued", "running")                     # 이건 언제나 남긴다
+STALE_SEC = 6 * 3600   # 보냄·확인 기다림도 지우기 6시간 전보다 오래됐으면 같이 지운다 — 시험하다 남은 옛 대화가 안 지워져 '지우기가 안 된다'(2026-10-22 사용자)
+
+
+def kept_on_clear(t, cleared):
+    status = t.get("status")
+    if status in WORKING_STATUSES:
+        return True
+    return status in ACTIVE_STATUSES and (t.get("ts") or 0) > cleared - STALE_SEC
 
 
 def load_cleared():
