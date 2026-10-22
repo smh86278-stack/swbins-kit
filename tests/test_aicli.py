@@ -23,7 +23,7 @@ FAKE = r'''import sys
 sys.stdout.reconfigure(encoding="utf-8")
 args = sys.argv[1:]
 data = sys.stdin.buffer.read().decode("utf-8")
-if "-o" in args:
+if "-o" in args and args[args.index("-o") + 1].endswith(".md"):   # codex 의 답 파일만 — gemini 의 '-o text' 는 출력 형식
     open(args[args.index("-o") + 1], "w", encoding="utf-8").write("ANSWER:" + data)
 print("ARGS " + " ".join(args[:2]))
 print("GOT " + data.splitlines()[0])
