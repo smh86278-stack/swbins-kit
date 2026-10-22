@@ -38,6 +38,19 @@ START_DIR = os.path.join(os.environ.get('APPDATA', ''), 'Microsoft', 'Windows', 
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\%s' % APP_ID
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 
+
+def desktop_dir():
+    """진짜 바탕화면 폴더 — OneDrive 백업을 켠 PC 는 ~\\OneDrive\\Desktop 이라 ~\\Desktop 이 없다(그대로 쓰면 바로가기 저장 실패)."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x10, None, 0, buf) == 0 and buf.value:   # CSIDL_DESKTOPDIRECTORY
+            return buf.value
+    except (OSError, AttributeError):
+        pass
+    return os.path.join(os.path.expanduser('~'), 'Desktop')
+
+
 # 다시 깔거나 지울 때 남기는 사용자 파일(설치 폴더 기준)
 KEEP = ['config.local.json', 'tools/macro-hub/state.local.json', 'tools/macro-hub/secrets.local.json',
         'tools/macro-hub/runs.jsonl', 'tools/macro-hub/data.local', 'tools/macro-hub/macros.local',
@@ -113,7 +126,7 @@ def make_shortcuts(target, desktop):
             _ps_shortcut(os.path.join(START_DIR, APP_NAME + ' 제거.lnk'), py, '"%s"' % os.path.join(target, 'uninstall.py'),
                          target, icon, '키트를 이 PC 에서 지운다')]
     if desktop:
-        desk = os.path.join(os.path.expanduser('~'), 'Desktop', APP_NAME + '.lnk')
+        desk = os.path.join(desktop_dir(), APP_NAME + '.lnk')
         cmds.append(_ps_shortcut(desk, pyw, '"%s"' % os.path.join(hub, 'launcher.py'), hub, icon, APP_NAME))
     r = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ' '.join(cmds)],
                        capture_output=True, creationflags=NO_WINDOW, timeout=60)

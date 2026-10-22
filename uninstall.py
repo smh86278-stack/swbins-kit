@@ -21,7 +21,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LOCAL = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
 BACKUP_DIR = os.path.join(LOCAL, APP_ID + '-설정백업')
 START_DIR = os.path.join(os.environ.get('APPDATA', ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs', APP_NAME)
-DESKTOP_LNK = os.path.join(os.path.expanduser('~'), 'Desktop', APP_NAME + '.lnk')
+def _desktop_dir():
+    """진짜 바탕화면 폴더 — OneDrive 백업을 켠 PC 는 ~\\OneDrive\\Desktop (installer\\install_main.py desktop_dir 와 같게)."""
+    buf = ctypes.create_unicode_buffer(260)
+    try:
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x10, None, 0, buf) == 0 and buf.value:   # CSIDL_DESKTOPDIRECTORY
+            return buf.value
+    except (OSError, AttributeError):
+        pass
+    return os.path.join(os.path.expanduser('~'), 'Desktop')
+
+
+DESKTOP_LNK = os.path.join(_desktop_dir(), APP_NAME + '.lnk')
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\%s' % APP_ID
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 NO_WINDOW = 0x08000000
