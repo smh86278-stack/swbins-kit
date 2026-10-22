@@ -255,13 +255,25 @@ ipcMain.on('rail-menu', (e, tab) => {                                      // �
 });
 
 // 창을 맨 앞으로 — show()·focus() 만으로는 윈도우의 '포커스 가로채기 방지'에 걸려 보임·포커스 상태인데도
-// 다른 창 뒤에 깔린다(트레이를 눌러도 '안 뜸'). 잠깐 맨 위 고정을 걸었다 풀면 그 자리에 남는다
+// 다른 창 뒤에 깔린다(트레이를 눌러도 '안 뜸'). 맨 위 고정은 사용자가 다른 창을 누를 때(blur)까지 둔다 — 0.3초 만에 풀었더니
+// 앞 창이던 IDE 가 1초 안에 제 창을 다시 올려 덮었다. 뜨자마자 오는 blur(다른 앱의 숨은 창이 포커스를 가져감)는 무시하고,
+// 포커스를 끝내 못 받으면 15초 뒤 푼다
+let pin = null;
+function unpin() {
+  if (!pin) return;
+  clearTimeout(pin.timer);
+  if (win && !win.isDestroyed()) { win.removeListener('blur', pin.onBlur); win.setAlwaysOnTop(false); }
+  pin = null;
+}
 function front() {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
+  unpin();
+  const at = Date.now();
+  pin = { onBlur: () => { if (Date.now() - at > 1500) unpin(); else if (win && !win.isDestroyed()) win.focus(); }, timer: setTimeout(unpin, 15000) };
+  win.on('blur', pin.onBlur);
   win.setAlwaysOnTop(true);
   win.show(); win.focus(); win.moveTop();
-  setTimeout(() => { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false); }, 300);
 }
 
 function create(page) {
@@ -290,6 +302,7 @@ function create(page) {
     saveState();
     if (quitting) return;
     e.preventDefault();
+    unpin();
     win.hide();
   });
   // 트레이 「자동화 허브 열기」가 숨은 창에 보내는 신호 — electron.exe 를 또 띄워 넘겨받는(second-instance) 0.2~0.4초 없이 바로.
