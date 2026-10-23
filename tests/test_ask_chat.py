@@ -22,6 +22,7 @@ TOKEN = 'tok-123'
 class FakeChat(http.server.BaseHTTPRequestHandler):
     sent = []
     folders = ['hub', 'docs']
+    user = 'me@kit.test'
 
     def log_message(self, *a):
         pass
@@ -36,7 +37,7 @@ class FakeChat(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/api/state':
-            return self._json(200, {'threads': [], 'folders': self.folders})
+            return self._json(200, {'threads': [], 'folders': self.folders, 'user': self.user})
         page = ("<script>\nconst TOKEN = '%s';\n</script>" % TOKEN).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Length', str(len(page)))
@@ -56,19 +57,34 @@ class AskChat(unittest.TestCase):
     def setUpClass(cls):
         cls.srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeChat)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
-        cls.old = (macrohub.CHAT_URL, macrohub.audit)
+        cls.old = (macrohub.CHAT_URL, macrohub.audit, macrohub.kit.section)
         macrohub.CHAT_URL = 'http://127.0.0.1:%d' % cls.srv.server_address[1]
         macrohub.audit = lambda *a, **k: None
+        real = macrohub.kit.section
+        macrohub.kit.section = lambda name, default=None: {'user': 'Me@Kit.test'} if name == 'mail' else real(name, default)
 
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown()
         cls.srv.server_close()
-        macrohub.CHAT_URL, macrohub.audit = cls.old
+        macrohub.CHAT_URL, macrohub.audit, macrohub.kit.section = cls.old
 
     def setUp(self):
         FakeChat.sent.clear()
         FakeChat.folders = ['hub', 'docs']
+        FakeChat.user = 'me@kit.test'
+
+    def test_other_messenger_on_port_is_refused(self):
+        """2026-10-23: 같은 PC 의 다른 메신저(다른 계정)가 8620 을 쓰면 부탁이 그쪽 게이트웨이 기본 폴더로 갔다 — 보내지 않는다."""
+        FakeChat.user = 'someone@other.test'
+        with self.assertRaises(RuntimeError) as cm:
+            macrohub.ask_chat('부탁')
+        self.assertIn('someone@other.test', str(cm.exception))
+        self.assertEqual(FakeChat.sent, [])
+        FakeChat.user = ''
+        with self.assertRaises(RuntimeError):
+            macrohub.ask_chat('부탁')
+        self.assertEqual(FakeChat.sent, [])
 
     def test_sends_write_to_hub_folder(self):
         res = macrohub.ask_chat('자동화 허브에 자동화 만들어줘 — 공지 확인\n언제: 30분마다')

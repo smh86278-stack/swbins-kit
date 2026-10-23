@@ -1104,6 +1104,20 @@ def ask_prompt(what, when=''):
             % (what, ('\n언제: %s 자동 실행' % when.strip()) if (when or '').strip() else '', build_steps()))
 
 
+def chat_mismatch(state):
+    """그 포트의 대화 앱이 이 키트의 메일함으로 보내는가 — 아니면 이유(보내지 않는다), 맞으면 ''.
+    같은 PC 에 다른 메신저(다른 계정·다른 게이트웨이)가 8620 을 쓰고 있으면 부탁이 그쪽 게이트웨이의 기본 작업 폴더에서
+    돌아 버린다(2026-10-23 실측: 키트 앱 만들기 부탁이 남의 메신저로 갈 뻔했다). 키트 게이트웨이가 읽는 mail.user 와 대화 앱의 계정이 같아야 한다."""
+    mine = str((kit.section('mail', {}) or {}).get('user') or '').strip().lower()
+    theirs = str(state.get('user') or '').strip().lower()
+    if not mine:
+        return '키트 메일 계정(mail.user)이 없어 디스패치로 보낼 수 없습니다 — 설정을 마치거나 AI 를 Codex·Gemini·Ollama 로 고르세요'
+    if theirs != mine:
+        return ('%s 의 대화 앱이 이 키트 계정(%s)이 아니라 %s 로 보냅니다 — 다른 메신저가 그 포트를 쓰고 있어요. '
+                '키트 대화는 환경변수 DISPATCH_CHAT_PORT 로 다른 포트에 띄우세요' % (CHAT_URL, mine, theirs or '(설정 없음)'))
+    return ''
+
+
 def ask_chat(text):
     """🛠 만들기 「말로 부탁하기」 — 부탁 글을 디스패치 대화로 바로 보낸다(쓰기 지시, 작업 폴더 hub 가 있으면 거기).
     대화 앱 POST 는 시작할 때마다 새로 만드는 토큰을 화면(GET /)에만 심어 둔다 — 같은 PC 의 허브가 그 화면을 읽어 토큰을 얻는다.
@@ -1117,9 +1131,13 @@ def ask_chat(text):
         with urllib.request.urlopen(CHAT_URL + '/', timeout=3) as r:
             page = r.read().decode('utf-8', 'replace')
         with urllib.request.urlopen(CHAT_URL + '/api/state', timeout=3) as r:
-            folders = json.loads(r.read().decode('utf-8')).get('folders') or []
+            state = json.loads(r.read().decode('utf-8'))
     except OSError:
         raise RuntimeError('디스패치 대화가 꺼져 있습니다 — 설정 dispatch.enabled 를 켜고 허브를 다시 시작하세요')
+    why = chat_mismatch(state)
+    if why:
+        raise RuntimeError(why)
+    folders = state.get('folders') or []
     m = re.search(r"const TOKEN = '([^']+)'", page)
     if not m:
         raise RuntimeError('대화 화면에서 접속 토큰을 찾지 못했습니다')
