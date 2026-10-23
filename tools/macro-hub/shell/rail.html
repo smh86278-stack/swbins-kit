@@ -31,6 +31,9 @@ button.drag{opacity:.4}
 button.popped::after{content:'↗';position:absolute;top:2px;left:7px;font-size:11px;font-weight:700;color:var(--accent)}
 button.popped{opacity:.75}
 body.drop{background:color-mix(in srgb,var(--accent) 18%,var(--bg));box-shadow:inset 0 0 0 2px var(--accent)}  /* 떼어 낸 창을 끌어 올림 — 놓으면 붙는다 */
+/* 「진한 사이드바」 테마 — 허브 화면 사이드바와 같은 남색(라이트·다크 상관없이). main 이 /api/look 의 theme 을 data-theme 으로 넘긴다 */
+:root[data-theme="navy"]{--bg:#0f1b2d;--text:#ffffff;--muted:#c7d2e0;--accent:#ffffff;--on:#1c2c44;--hover:#1c2c44;--line:#22344f}
+:root[data-theme="navy"] .me{background:#0f766e}
 </style>
 </head>
 <body>
@@ -50,7 +53,8 @@ body.drop{background:color-mix(in srgb,var(--accent) 18%,var(--bg));box-shadow:i
 const btns = [...document.querySelectorAll('button[data-tab]')];
 const tabs = document.getElementById('tabs');
 btns.forEach(b => b.onclick = () => window.rail.select(b.dataset.tab));
-window.rail.onRail(({ active, badge, order = [], popped = [], drop = false }) => {
+window.rail.onRail(({ active, badge, order = [], popped = [], drop = false, theme = 'basic' }) => {
+  document.documentElement.dataset.theme = theme;
   document.body.classList.toggle('drop', drop);
   btns.forEach(b => { b.hidden = !order.includes(b.dataset.tab); });   // 💬 는 대화가 떠 있을 때만 — 안 보이는 탭은 main 이 순서에서 뺀다
   if (!drag) {                                            // 기억한 순서대로 줄 세우기 + Ctrl+숫자 안내

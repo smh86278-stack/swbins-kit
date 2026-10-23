@@ -52,8 +52,11 @@ function applyMode(mode) {
   paint();
 }
 nativeTheme.on('updated', paint);
+let lookTheme = 'basic';                                                  // 꾸미기 색 테마(basic·navy·pastel) — 아이콘 줄이 「진한 사이드바」면 남색으로
+function applyLook(lk) { const t = lk && lk.theme; if (t && t !== lookTheme) { lookTheme = t; sendRail(); } }
 async function fetchMode() {
   try { applyMode((await (await fetch(HUB + '/api/theme', { signal: AbortSignal.timeout(1500) })).json()).mode); } catch (_) {}
+  try { applyLook((await (await fetch(HUB + '/api/look', { signal: AbortSignal.timeout(1500) })).json()).look); } catch (_) {}
 }
 async function watchMode() {
   for (;;) {
@@ -68,7 +71,7 @@ async function watchMode() {
         while ((i = buf.indexOf('\n\n')) >= 0) {
           const ev = buf.slice(0, i); buf = buf.slice(i + 2);
           if (!ev.startsWith('data: ')) continue;
-          try { const m = JSON.parse(ev.slice(6)); if (m.t === 'theme') applyMode(m.mode); } catch (_) {}
+          try { const m = JSON.parse(ev.slice(6)); if (m.t === 'theme') applyMode(m.mode); if (m.t === 'look') applyLook(m.look); } catch (_) {}
         }
       }
     } catch (_) {}
@@ -122,7 +125,7 @@ function tabFor(url) {                                                    // 주
 }
 const toUrl = page => (/^https?:/.test(page) ? page : HUB + page);
 
-function sendRail() { if (win) win.webContents.send('rail', { active, badge, order: ORDER(), popped: Object.keys(popped), drop: !!dropTab }); }
+function sendRail() { if (win) win.webContents.send('rail', { active, badge, order: ORDER(), popped: Object.keys(popped), drop: !!dropTab, theme: lookTheme }); }
 function layout() {
   if (!win) return;
   const [w, h] = win.getContentSize();
