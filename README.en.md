@@ -6,6 +6,8 @@ A self-hosted, tray-resident automation hub that runs repetitive office work on 
 Company-specific values live in a single `config.local.json`, so the same kit works at any company.
 The UI and docs are in Korean — see [README.md](README.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
+![Hub home — today's summary, failure banner, automation table](docs/images/ui-hub-light.png)
+
 ## What it does
 
 - **Scheduled jobs** without Task Scheduler — recurring mail, folder tidy, backups, site/port/certificate/disk monitors,

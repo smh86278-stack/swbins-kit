@@ -18,22 +18,20 @@
 
 ## 화면
 
-<!--
-TODO(스크린샷): 아래 파일을 docs/images/ 에 넣고 이 주석을 풀 것. 회사 이름·메일 주소·사내 주소가 화면에 보이지 않게 찍는다.
-  docs/images/hub-home.png     허브 첫 화면 (http://127.0.0.1:8630/) — 내 자동화 카드·펫
-  docs/images/ops.png          운영 화면 (/ops) — ⏰ 예약 작업 탭
-  docs/images/make.png         🛠 만들기 화면 — 보여 주기·말로 부탁하기·갤러리
-  docs/images/app-builder.png  ✨ 나만의 앱 — 설계서 → 만들기 → 자동 검사 결과
-  docs/images/chat.png         디스패치 대화(메신저) 화면
-  docs/images/demo.gif         (선택) 녹화 → 시험 실행 → 예약까지 30초 데모
+![허브 첫 화면 — 오늘 요약·실패 알림·자동화 표](docs/images/ui-hub-light.png)
 
-| 허브 | 운영 화면 |
-|---|---|
-| ![허브 첫 화면](docs/images/hub-home.png) | ![운영 화면](docs/images/ops.png) |
-| ![만들기](docs/images/make.png) | ![나만의 앱](docs/images/app-builder.png) |
--->
+<details>
+<summary>색 테마 3종 · 만들기 · 운영 화면 더 보기</summary>
 
-_스크린샷 준비 중 — 화면 구성은 아래 [주요 기능](#주요-기능)과 [`docs/GUIDE.md`](docs/GUIDE.md) 참고._
+| | 기본 | 진한 사이드바 | 다크 |
+|---|---|---|---|
+| 자동화 | <img src="docs/images/ui-hub-light.png" width="260" alt="자동화 · 기본"> | <img src="docs/images/ui-hub-navy.png" width="260" alt="자동화 · 진한 사이드바"> | <img src="docs/images/ui-hub-dark.png" width="260" alt="자동화 · 다크"> |
+| 만들기 | <img src="docs/images/ui-make-light.png" width="260" alt="만들기 · 기본"> | <img src="docs/images/ui-make-navy.png" width="260" alt="만들기 · 진한 사이드바"> | <img src="docs/images/ui-make-dark.png" width="260" alt="만들기 · 다크"> |
+| 운영 | <img src="docs/images/ui-ops-light.png" width="260" alt="운영 · 기본"> | <img src="docs/images/ui-ops-navy.png" width="260" alt="운영 · 진한 사이드바"> | <img src="docs/images/ui-ops-dark.png" width="260" alt="운영 · 다크"> |
+
+</details>
+
+화면 구성은 아래 [주요 기능](#주요-기능)과 [`docs/GUIDE.md`](docs/GUIDE.md) 참고.
 
 ## 설치 — 3단계
 
