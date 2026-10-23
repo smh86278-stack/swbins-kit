@@ -202,8 +202,8 @@ def register(target, autostart, version, desktop=True, files=None):
             except OSError:
                 pass
     size_kb = 0
-    for root, _dirs, files in os.walk(target):
-        for f in files:
+    for root, _dirs, names in os.walk(target):           # 'files'(기억할 목록)와 이름이 겹치지 않게
+        for f in names:
             try:
                 size_kb += os.path.getsize(os.path.join(root, f)) // 1024
             except OSError:

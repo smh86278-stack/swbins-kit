@@ -81,5 +81,26 @@ class RemoveStale(unittest.TestCase):
         self.assertEqual(im.kit_files(['runtime/python.exe', 'tools/', 'tools/a.py', 'README.md']), ['README.md', 'tools/a.py'])
 
 
+class RegisterKeepsList(unittest.TestCase):
+    def test_register_writes_the_given_file_list(self):
+        """2026-10-23: register 의 폴더 크기 세기가 같은 이름 'files' 를 써서 목록이 마지막 폴더 파일 이름으로 덮였다."""
+        import types
+        from unittest import mock
+
+        class Key:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        fake = types.SimpleNamespace(HKEY_CURRENT_USER=0, REG_SZ=1, REG_DWORD=4, CreateKey=lambda *a: Key(),
+                                     SetValueEx=lambda *a: None, DeleteValue=lambda *a: None)
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(sys.modules, {'winreg': fake}):
+            touch(root, 'tools/proc-live/README.md')
+            im.register(root, True, '9.9.9', True, ['README.md', 'tools/a.py'])
+            with open(os.path.join(root, 'install.json'), encoding='utf-8') as f:
+                self.assertEqual(json.load(f)['files'], ['README.md', 'tools/a.py'])
+
+
 if __name__ == '__main__':
     unittest.main()
