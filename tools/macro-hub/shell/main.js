@@ -39,7 +39,7 @@ const NAMES = { hub: TITLE, make: '자동화 만들기', chat: '디스패치 대
 
 // 화면 모드(자동·라이트·다크) — 허브가 기억한다(/api/theme). 창 테두리(nativeTheme)와 배경색(web/theme.css 의 --bg)을 맞추고,
 // 허브 /events 를 들어 화면에서 바꾸면 바로 따라간다. 허브가 꺼져 있으면 5초마다 다시 붙는다. 아이콘 줄은 prefers-color-scheme 로 따라온다.
-const BG = { light: '#f7f4fc', dark: '#1a1826' };
+const BG = { light: '#f7f7f8', dark: '#111214' };
 const bg = () => (nativeTheme.shouldUseDarkColors ? BG.dark : BG.light);
 function paint() {
   if (!win) return;

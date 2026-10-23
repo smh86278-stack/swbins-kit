@@ -117,16 +117,22 @@ def ui_mode():
     return m if m in UI_MODES else 'auto'
 
 
-# 꾸미기(🎨) — 색 테마·내 강조색·첫 화면 배치. 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 속성으로 심는다.
-# 색은 theme.css 의 :root[data-theme=…], 내 색은 inline --accent·--accent2, 배치는 index.html 의 [data-hero] 등.
-LOOK_THEMES = ('pastel', 'navy', 'mint', 'mono', 'sunset')
-LOOK_DEFAULT = {'theme': 'pastel', 'accent': '', 'accent2': '', 'hero': 'show', 'cols': '2', 'swap': False, 'dense': False}
+# 화면 꾸미기 — 색 테마·내 강조색·화면 펫 무대·촘촘하게. 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 속성으로 심는다.
+# 색은 theme.css 의 :root[data-theme=…], 내 색은 inline --accent·--accent2, 펫 무대는 index.html 의 [data-hero].
+# basic(기본) · navy(진한 사이드바) · pastel(예전 모양). 2026-10 에 없앤 mint·mono·sunset 은 기본으로 읽는다. 펫 무대는 기본 숨김.
+# cols·swap 은 예전 두 칸 배치용 — 지금 화면은 쓰지 않지만 저장된 값과 API 는 그대로 받는다.
+LOOK_THEMES = ('basic', 'navy', 'pastel')
+LOOK_DEFAULT = {'theme': 'basic', 'accent': '', 'accent2': '', 'hero': 'hide', 'cols': '2', 'swap': False, 'dense': False}
 LOOK_CHOICES = {'theme': LOOK_THEMES, 'hero': ('show', 'small', 'hide'), 'cols': ('2', '1')}
 HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
 def look():
-    return dict(LOOK_DEFAULT, **{k: v for k, v in (state.get('look') or {}).items() if k in LOOK_DEFAULT})
+    lk = dict(LOOK_DEFAULT, **{k: v for k, v in (state.get('look') or {}).items() if k in LOOK_DEFAULT})
+    for k, choices in LOOK_CHOICES.items():      # 없어진 테마 등 예전 값 — 기본으로
+        if lk[k] not in choices:
+            lk[k] = LOOK_DEFAULT[k]
+    return lk
 
 
 def clean_look(body):
@@ -159,7 +165,7 @@ def look_attrs(lk=None):
             css.append('%s:light-dark(%s,color-mix(in srgb,%s 72%%,white))' % (var, c, c))
     if lk['accent']:
         c = lk['accent']
-        css.append('--accentsoft:light-dark(color-mix(in srgb,%s 13%%,white),color-mix(in srgb,%s 24%%,#1a1826))' % (c, c))
+        css.append('--accentsoft:light-dark(color-mix(in srgb,%s 12%%,white),color-mix(in srgb,%s 22%%,#18191c))' % (c, c))
     return attrs + (' style="%s"' % ';'.join(css) if css else '')
 
 

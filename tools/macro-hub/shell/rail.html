@@ -5,24 +5,24 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>자동화 허브</title>
 <style>
-/* 자동화 허브 창 왼쪽 아이콘 줄 — 카카오톡 PC 처럼 세로 아이콘으로 화면을 오간다. 색은 web/theme.css 파스텔과 같다(허브가 꺼져 있어도 그려야 해서 옮겨 옴). */
+/* 자동화 허브 창 왼쪽 아이콘 줄 — 카카오톡 PC 처럼 세로 아이콘으로 화면을 오간다. 색은 web/theme.css 기본 테마(흰 + 파랑, 다크)와 같다
+   (허브가 꺼져 있어도 그려야 해서 옮겨 옴). 라이트·다크는 창이 nativeTheme 으로 맞춘다. */
 :root{color-scheme:light dark;--rail:64px;
-  --bg:light-dark(#efe9f9,#14121f);--text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#9a94b3,#8781a0);
-  --accent:light-dark(#8a72ee,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--hover:light-dark(#e3dbf6,#221f33);
-  --line:light-dark(#e2d9f3,#2b2740);--bad:light-dark(#e05a76,#f58aa0)}
+  --bg:light-dark(#ffffff,#18191c);--text:light-dark(#18181b,#ececee);--muted:light-dark(#52525b,#a1a1aa);
+  --accent:light-dark(#1d4ed8,#5b8cff);--onaccent:light-dark(#ffffff,#0b1020);--on:light-dark(#eff3fe,#23283a);--hover:light-dark(#f4f4f5,#222328);
+  --line:light-dark(#e4e4e7,#2a2b30);--bad:light-dark(#b91c1c,#f87171)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;user-select:none}
 body{width:var(--rail);background:var(--bg);border-right:1px solid var(--line);color:var(--muted);
-  font:11px/1.2 "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column;align-items:center;padding:12px 0 10px;gap:6px}
-.me{width:40px;height:40px;border-radius:15px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;margin-bottom:10px}
+  font:11px/1.2 "IBM Plex Sans KR","Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column;align-items:center;padding:12px 0 10px;gap:6px}
+.me{width:36px;height:36px;border-radius:8px;background:var(--accent);display:grid;place-items:center;margin-bottom:12px}
 .me img{width:26px;height:26px;object-fit:contain}
-button{all:unset;cursor:pointer;width:52px;padding:7px 0 5px;border-radius:14px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;color:var(--muted)}
+button{all:unset;cursor:pointer;width:52px;padding:7px 0 5px;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;color:var(--muted)}
 button:hover{background:var(--hover);color:var(--text)}
-button.on{color:var(--accent)}
-button.on svg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
+button.on{color:var(--accent);background:var(--on);font-weight:600}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 button[hidden]{display:none}
-svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .badge{position:absolute;top:2px;right:6px;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;
   font-size:10.5px;font-weight:700;line-height:17px;text-align:center}
 .badge[hidden]{display:none}

@@ -30,6 +30,10 @@ class CleanSchedule(unittest.TestCase):
         self.assertEqual(macrohub.clean_schedule([{'at': '09:30'}])[0], [{'type': 'schedule', 'at': '09:30', 'days': 'daily'}])
         self.assertEqual(macrohub.clean_schedule([{'at': '18:00', 'days': 'TUE'}])[0][0]['days'], 'tue')
 
+    def test_removed_theme_reads_as_basic(self):
+        macrohub.state['look'] = {'theme': 'mint', 'hero': 'big'}       # 2026-10 에 없앤 테마·잘못된 값 — 기본으로
+        self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('basic', 'hide'))
+
     def test_rejects(self):
         for bad in ([], [{}], [{'every': '30s'}], [{'every': 'x'}], [{'at': '9:30'}], [{'at': '24:00'}],
                     [{'at': '09:30', 'days': 'tuz'}], [{'at': '09:30', 'days': 'mon-'}], 'nope'):
@@ -490,10 +494,10 @@ class LookCustom(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def test_default_and_attrs(self):
-        self.assertEqual(macrohub.look()['theme'], 'pastel')
+        self.assertEqual(macrohub.look()['theme'], 'basic')
         a = macrohub.look_attrs()
-        self.assertIn('data-theme="pastel"', a)
-        self.assertIn('data-hero="show"', a)
+        self.assertIn('data-theme="basic"', a)
+        self.assertIn('data-hero="hide"', a)                            # 화면 펫 무대는 기본 숨김
         self.assertNotIn('style=', a)                                  # 내 색이 없으면 style 도 없다
 
     def test_clean_and_custom_color(self):
@@ -506,6 +510,10 @@ class LookCustom(unittest.TestCase):
         self.assertIn('--accent:light-dark(#aa3366,', a)
         self.assertIn('--accentsoft:', a)
 
+    def test_removed_theme_reads_as_basic(self):
+        macrohub.state['look'] = {'theme': 'mint', 'hero': 'big'}       # 2026-10 에 없앤 테마·잘못된 값 — 기본으로
+        self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('basic', 'hide'))
+
     def test_rejects(self):
         for bad in ({'theme': 'neon'}, {'hero': 'big'}, {'cols': '3'}, {'accent': 'red'},
                     {'accent': '#12345'}, {'accent2': '" onload="x'}):
@@ -517,10 +525,10 @@ class LookCustom(unittest.TestCase):
         with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f:
             f.write('<html lang="ko" data-mode="__MODE__"><script>const TOKEN=\'__TOKEN__\'</script>')
         self.addCleanup(os.remove, f.name)
-        macrohub.state['look'] = {'theme': 'mint', 'hero': 'hide'}
+        macrohub.state['look'] = {'theme': 'pastel', 'hero': 'show'}
         page = macrohub.render_page(f.name)
-        self.assertIn('data-theme="mint"', page)
-        self.assertIn('data-hero="hide"', page)
+        self.assertIn('data-theme="pastel"', page)                     # 예전 모양
+        self.assertIn('data-hero="show"', page)
         self.assertNotIn('__MODE__', page)
 
 

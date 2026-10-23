@@ -1,112 +1,194 @@
 /* 자동화 허브 공통 테마 — 허브 첫 화면(index.html)과 운영 화면(ops.html)이 함께 쓴다.
-   파스텔(라일락·핑크·민트) + 둥근 모서리 + 촘촘한 목록. 색을 바꾸려면 여기 :root 만 고친다.
+   무채색 바탕 + 강조색 하나 + 선 아이콘. 화면 코드는 한 벌이고, 색 테마는 아래 변수(토큰)만 바꾼다.
    색은 light-dark(라이트, 다크) 한 쌍 — 어느 쪽을 쓸지는 <html data-mode> 가 정한다:
    auto = Windows 설정을 따름 · light · dark. 모드는 허브가 기억하고(state['theme'], 단추는 theme.js) 페이지에 심어 준다.
+   색 테마는 <html data-theme> — basic(기본, 흰+파랑) · navy(진한 사이드바, 남색+청록) · pastel(예전 모양).
    창 배경(shell/main.js BG)도 --bg 의 두 값과 맞춰 둔다. */
 :root{color-scheme:light dark;
+  --font:"IBM Plex Sans KR","Segoe UI","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  --mono:Consolas,"D2Coding",ui-monospace,monospace;
+  --bg:light-dark(#f7f7f8,#111214);
+  --side:light-dark(#ffffff,#18191c);--side-text:light-dark(#3f3f46,#c4c4c9);--side-line:light-dark(#e4e4e7,#2a2b30);
+  --side-on:var(--accentsoft);--side-on-text:var(--accent);--side-brand:var(--text);
+  --solid:light-dark(#ffffff,#18191c);--panel:var(--solid);--soft:light-dark(#f4f4f5,#222328);
+  --text:light-dark(#18181b,#ececee);--muted:light-dark(#52525b,#a1a1aa);
+  --line:light-dark(#e4e4e7,#2a2b30);--line2:light-dark(#f0f0f2,#222328);
+  --accent:light-dark(#1d4ed8,#5b8cff);--accent2:var(--accent);--accentsoft:light-dark(#eff3fe,#23283a);--onaccent:light-dark(#ffffff,#0b1020);
+  --input:light-dark(#ffffff,#18191c);--input-line:light-dark(#d4d4d8,#3a3b42);--off:light-dark(#d4d4d8,#3f4046);
+  --alert-bg:light-dark(#fff1f0,#2a1517);--alert-text:light-dark(#9f1d14,#ffb4ab);
+  --ok:light-dark(#15803d,#4ade80);--warn:light-dark(#b45309,#fbbf24);--bad:light-dark(#b91c1c,#f87171);--info:var(--accent);
+  --code:light-dark(#18181b,#0b0c0e);--codetext:light-dark(#e4e4e7,#d4d4d8);
+  --shadow:0 1px 2px light-dark(rgba(0,0,0,.04),rgba(0,0,0,.3));--shadow2:0 10px 28px light-dark(rgba(15,23,42,.14),rgba(0,0,0,.55));
+  --hero1:var(--solid);--hero2:var(--solid);--hero3:var(--solid);--petglow:light-dark(#f4f4f5,#2a2b30);--glass:transparent;
+  --r:8px;--r-sm:6px;--r-btn:6px;
+}
+/* 진한 사이드바 — 남색 사이드바 + 청록 강조. 사이드바는 라이트·다크 모두 어둡다 */
+:root[data-theme=navy]{
+  --bg:light-dark(#f4f6f8,#0f141b);
+  --side:light-dark(#0f1b2d,#0b1220);--side-text:#c7d2e0;--side-line:light-dark(#22344f,#1c2a3f);
+  --side-on:light-dark(#1c2c44,#16243a);--side-on-text:#ffffff;--side-brand:#ffffff;
+  --solid:light-dark(#ffffff,#151b24);--soft:light-dark(#eef2f6,#1b2330);
+  --text:light-dark(#0f172a,#e5eaf1);--muted:light-dark(#475569,#9aa7b8);
+  --line:light-dark(#e2e8f0,#253041);--line2:light-dark(#eef2f6,#1b2330);
+  --accent:light-dark(#0f766e,#2bb3a3);--accentsoft:light-dark(#e6f4f2,#123330);--onaccent:light-dark(#ffffff,#04201d);
+  --input:light-dark(#ffffff,#151b24);--input-line:light-dark(#cbd5e1,#2f3b4d);--off:light-dark(#cbd5e1,#3a4556);
+  --alert-bg:light-dark(#fef2f2,#2a1517);--alert-text:light-dark(#991b1b,#ffb4ab);
+  --petglow:light-dark(#eef2f6,#1b2330)}
+/* 예전 모양 — 2026-10 까지의 파스텔(라일락·핑크) 둥근 모양. 「꾸미기」에서 고를 수 있게 남겨 둔다 */
+:root[data-theme=pastel]{
+  --font:"Segoe UI","Malgun Gothic",sans-serif;
   --bg:light-dark(#f7f4fc,#1a1826);--bg2:light-dark(#fde9f3,#2a1f33);--bg3:light-dark(#e6f1ff,#1c2236);
+  --side:light-dark(#ffffffcc,#232033cc);--side-text:light-dark(#5b5575,#c9c3e0);--side-line:light-dark(#ebe4f6,#363150);
   --panel:light-dark(#ffffffe6,#232033e6);--solid:light-dark(#fff,#252236);--soft:light-dark(#f3effb,#2c2840);
-  --text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#8781a0,#9a94b3);--line:light-dark(#ebe4f6,#363150);
-  --accent:light-dark(#8a72ee,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--accentsoft:light-dark(#eee9ff,#332c52);--onaccent:light-dark(#fff,#1d1830);
-  --ok:light-dark(#2fa57d,#5fd3a6);--warn:light-dark(#d98a2b,#f2b067);--bad:light-dark(#e05a76,#f58aa0);--info:light-dark(#4f8fe6,#82b4ff);
+  --text:light-dark(#2f2b45,#ece8fa);--muted:light-dark(#6f6990,#a59fbe);--line:light-dark(#ebe4f6,#363150);--line2:light-dark(#f3effb,#2c2840);
+  --accent:light-dark(#7a60e6,#b0a0ff);--accent2:light-dark(#ef8fbf,#f2a3c8);--accentsoft:light-dark(#eee9ff,#332c52);--onaccent:light-dark(#fff,#1d1830);
+  --input:var(--soft);--input-line:var(--line);--off:var(--line);
+  --ok:light-dark(#1f8a66,#5fd3a6);--warn:light-dark(#b8701d,#f2b067);--bad:light-dark(#c8405e,#f58aa0);--info:light-dark(#3f7fd6,#82b4ff);
   --code:light-dark(#221f33,#14121e);--codetext:light-dark(#e3def5,#ddd8f0);
   --shadow:0 2px 10px light-dark(rgba(110,90,170,.08),rgba(0,0,0,.3));--shadow2:0 8px 22px light-dark(rgba(110,90,170,.16),rgba(0,0,0,.45));
   --hero1:light-dark(#fde4f0,#2e2238);--hero2:light-dark(#ece5ff,#272443);--hero3:light-dark(#dff1ff,#1f2a3d);
   --petglow:light-dark(#ffffffd0,#c9bbff55);--glass:light-dark(#ffffff88,#ffffff14);
-  --r:16px;--r-sm:11px;
-}
-/* 🎨 꾸미기 — 색 테마(<html data-theme>, 허브가 심는다). pastel 은 위 :root 그대로. 내 강조색은 <html style> 이 이긴다 */
-:root[data-theme=navy]{
-  --bg:light-dark(#f4f6fb,#141824);--bg2:light-dark(#e3ebfb,#1a2236);--bg3:light-dark(#e4f4fb,#16242c);
-  --soft:light-dark(#eef1f8,#1f2536);--line:light-dark(#dde3f0,#2c3550);
-  --accent:light-dark(#2f5bd3,#7aa2ff);--accent2:light-dark(#1f9fd0,#5cc8f0);--accentsoft:light-dark(#e4ebfd,#232f4f);
-  --hero1:light-dark(#e3ebfb,#1b2338);--hero2:light-dark(#eaf0ff,#1d2540);--hero3:light-dark(#e3f5fb,#18272f)}
-:root[data-theme=mint]{
-  --bg:light-dark(#f3faf7,#13201c);--bg2:light-dark(#dff5ec,#17291f);--bg3:light-dark(#e2f4f7,#14262a);
-  --soft:light-dark(#ecf6f2,#1a2a25);--line:light-dark(#d6ebe2,#27403a);
-  --accent:light-dark(#139a72,#4fd1a5);--accent2:light-dark(#2ea9bd,#6fd3e0);--accentsoft:light-dark(#ddf4ea,#1d3a30);
-  --hero1:light-dark(#dff5ec,#19302a);--hero2:light-dark(#e8f7f1,#1a2d2a);--hero3:light-dark(#e0f3f6,#172a2e)}
-:root[data-theme=mono]{
-  --bg:light-dark(#f6f6f7,#161618);--bg2:light-dark(#ececee,#1e1e22);--bg3:light-dark(#f0f0f2,#1b1b1f);
-  --soft:light-dark(#f0f0f2,#212126);--line:light-dark(#e2e2e6,#2f2f36);
-  --accent:light-dark(#3b3b46,#d6d6e0);--accent2:light-dark(#6b6b7a,#a0a0b0);--accentsoft:light-dark(#e9e9ee,#2a2a31);--onaccent:light-dark(#fff,#16161a);
-  --hero1:light-dark(#ededf0,#1f1f24);--hero2:light-dark(#f2f2f4,#222228);--hero3:light-dark(#e9e9ec,#1d1d22)}
-:root[data-theme=sunset]{
-  --bg:light-dark(#fdf7f2,#221a16);--bg2:light-dark(#fde6d8,#2e1f18);--bg3:light-dark(#fff1d9,#2a2214);
-  --soft:light-dark(#f9efe8,#2a211c);--line:light-dark(#f1e0d4,#3e2f27);
-  --accent:light-dark(#df5f34,#ff9a6b);--accent2:light-dark(#e99a1f,#ffc66b);--accentsoft:light-dark(#fde7dc,#3a2a22);
-  --hero1:light-dark(#fde3d3,#2f2019);--hero2:light-dark(#fff0dc,#2c2418);--hero3:light-dark(#ffe9e0,#2f221d)}
+  --r:16px;--r-sm:11px;--r-btn:99px}
+:root[data-theme=pastel] body{background:radial-gradient(900px 420px at 0% -10%,var(--bg2),transparent 60%),radial-gradient(800px 420px at 100% 0%,var(--bg3),transparent 55%),var(--bg)}
+:root[data-theme=pastel] button.pri,:root[data-theme=pastel] a.btn.pri,:root[data-theme=pastel] .brand .logo{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent}
+:root[data-theme=pastel] nav.side{backdrop-filter:blur(14px)}
 :root[data-mode=light]{color-scheme:light}
 :root[data-mode=dark]{color-scheme:dark}
 html.mode-anim *,html.mode-anim *::before,html.mode-anim *::after{transition:background-color .3s,border-color .3s,color .3s!important}
 
-/* 화면 모드 단추 (☀ · 🌙 · 자동) — theme.js 가 채운다 */
-.modesw{display:inline-flex;gap:2px;padding:2px;border-radius:99px;background:var(--soft);border:1px solid var(--line)}
-.modesw button{border:0;background:transparent;padding:2px 9px;font-size:12px;line-height:1.5;color:var(--muted);box-shadow:none}
-.modesw button:hover{transform:none;color:var(--accent)}
-.modesw button.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onaccent);box-shadow:var(--shadow)}
-
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;color:var(--text);font:13px/1.5 "Segoe UI","Malgun Gothic",sans-serif;min-height:100vh;
-  background:radial-gradient(900px 420px at 0% -10%,var(--bg2),transparent 60%),
-             radial-gradient(800px 420px at 100% 0%,var(--bg3),transparent 55%),var(--bg)}
-::selection{background:color-mix(in srgb,var(--accent) 28%,transparent)}
+body{margin:0;color:var(--text);font:14px/1.5 var(--font);min-height:100vh;background:var(--bg)}
+::selection{background:color-mix(in srgb,var(--accent) 24%,transparent)}
 ::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 28%,var(--line));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 35%,transparent);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
+a{color:var(--accent)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-3px}
 
-/* 🎨 꾸미기 창 — theme.js HubLook */
-.lookpanel{position:fixed;top:52px;right:16px;z-index:60;width:min(340px,calc(100vw - 32px));background:var(--solid);border:1px solid var(--line);
-  border-radius:var(--r);box-shadow:var(--shadow2);padding:12px 14px}
-.lookpanel h3{font-size:12px;color:var(--muted);margin:10px 0 6px;font-weight:800}
-.lookpanel h3:first-child{margin-top:0}
-.lookpanel .lrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.lookpanel .sw{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--line)}
-.lookpanel .sw.on{border-color:var(--text);box-shadow:0 0 0 2px var(--solid) inset}
-.lookpanel .seg button{padding:3px 10px;font-size:12px}
-.lookpanel .seg button.on{background:var(--accentsoft);border-color:var(--accent);color:var(--accent)}
-.lookpanel input[type=color]{width:34px;height:26px;border:1px solid var(--line);border-radius:8px;padding:0 2px;background:var(--soft);cursor:pointer}
-.lookpanel label{font-size:12px;display:inline-flex;align-items:center;gap:5px}
+/* ---------- 틀: 왼쪽 사이드바 + 본문 (theme.js HubNav 가 사이드바를 채운다) ---------- */
+.app{display:flex;min-height:100vh}
+nav.side{width:232px;flex:none;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side);border-right:1px solid var(--side-line);
+  padding:18px 12px 12px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 18px;color:var(--side-brand);text-decoration:none}
+.brand .logo{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-weight:700;font-size:13px;background:var(--accent);color:var(--onaccent);flex:none}
+.brand b{font-weight:700;font-size:15px}
+.side a.nav-i{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;color:var(--side-text);text-decoration:none;white-space:nowrap}
+.side a.nav-i svg.i{width:18px;height:18px}
+.side a.nav-i:hover{background:color-mix(in srgb,var(--side-on) 70%,transparent)}
+.side a.nav-i[aria-current=page]{background:var(--side-on);color:var(--side-on-text);font-weight:600}
+.side a.nav-i:focus-visible,.side button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.side .spacer{flex:1 1 12px}
+.side .divider{height:1px;background:var(--side-line);margin:8px 10px}
+.themebox{border-top:1px solid var(--side-line);padding:12px 10px 6px;display:flex;flex-direction:column;gap:8px}
+.themebox .lbl{font-size:12px;color:var(--side-text)}
+.themebox .sws{display:flex;gap:6px;align-items:center}
+.themebox .tsw{width:40px;height:40px;border-radius:8px;padding:0;display:grid;place-items:center;border:2px solid var(--side-line);cursor:pointer}
+.themebox .tsw span{width:16px;height:16px;border-radius:50%;display:block}
+.themebox .tsw[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--side) inset}
+.themebox .tname{font-size:12.5px;font-weight:600;color:var(--side-brand)}
+.themebox .lookbtn{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--side-text);padding:6px 0;border-radius:6px}
+.themebox .lookbtn:hover{color:var(--side-brand)}
+.conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--side-text);padding:4px 10px 0}
+.conn .ct::after{content:'허브 연결 끊김'}
+#dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none}
+#dot.on{background:var(--ok)}
+#dot.on+.ct::after{content:'허브 연결됨'}
+.content{flex:1;min-width:0;padding:26px 32px 40px;display:flex;flex-direction:column;gap:16px}
+/* 좁은 창·허브 창 안 — 사이드바를 위쪽 한 줄로. 허브 창은 왼쪽 아이콘 줄(shell/rail.html)과 겹치는 메뉴를 숨긴다 */
+@media (max-width:860px){
+  .app{flex-direction:column}
+  nav.side{width:auto;height:auto;flex-direction:row;align-items:center;padding:8px 12px;gap:2px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--side-line);z-index:30}
+  .brand{padding:0 10px 0 2px}.brand b{display:none}
+  .side a.nav-i{padding:6px 9px;font-size:13px;gap:6px}.side a.nav-i svg.i{width:16px;height:16px}
+  .side .spacer{flex:1 0 6px}.side .divider{display:none}
+  .themebox{flex-direction:row;align-items:center;border:0;padding:0 0 0 6px;gap:6px}
+  .themebox .lbl,.themebox .tname,.themebox .lookbtn span{display:none}
+  .themebox .tsw{width:26px;height:26px;border-radius:6px}.themebox .tsw span{width:10px;height:10px}
+  .themebox .lookbtn{padding:5px}
+  .conn{padding:0 4px}.conn .ct{display:none}
+  .content{padding:16px 14px 28px;gap:12px}
+}
+.in-app [data-app-hide]{display:none!important}
 
-/* ---------- 상단 ---------- */
-.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 16px;position:sticky;top:0;z-index:20;
-  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
-.top h1{font-size:15px;margin:0;font-weight:800;letter-spacing:.2px}
-.top a.nav{color:var(--muted);text-decoration:none;font-weight:700;padding:4px 10px;border-radius:99px;transition:background .2s,color .2s}
-.top a.nav:hover{color:var(--accent);background:var(--accentsoft)}
-.in-app .top [data-app-hide]{display:none!important}               /* 허브 창 안 — 왼쪽 아이콘 줄과 겹치는 메뉴(theme.js) */
-@media (max-width:600px){.top{padding:6px 10px;gap:6px}.top select{max-width:120px}}
-.logo{width:28px;height:28px;border-radius:10px;display:grid;place-items:center;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent)}
-.logo svg{width:16px;height:16px}
-.sub{color:var(--muted);font-size:12px}
+/* ---------- 본문 머리: 한 줄 요약 · 검색 · 주 단추 ---------- */
+.pagehead{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.pagehead .ttl{flex:1 1 260px;min-width:0}
+.pagehead h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.pagehead .sub{margin:4px 0 0}
+.sub{color:var(--muted);font-size:13px}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:var(--r-sm);min-width:220px;background:var(--input);border:1px solid var(--input-line);color:var(--muted)}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.search input{border:0!important;outline:0;background:transparent!important;color:var(--text);font:inherit;flex:1;min-width:0;padding:0!important;box-shadow:none!important}
+@media (max-width:600px){.search{min-width:0;flex:1 1 160px}.pagehead h1{font-size:19px}}
+/* 실패 알림 띠 — 오늘 실패한 자동화가 있을 때만 */
+.alert{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--r);background:var(--alert-bg);color:var(--alert-text)}
+.alert[hidden]{display:none}
+.alert .grow{flex:1 1 220px;min-width:0}
+.alert button{background:transparent;color:inherit;border:1px solid currentColor;height:32px;font-weight:600}
+.alert button:hover{background:color-mix(in srgb,currentColor 8%,transparent);color:inherit}
+.alert button.x{border:0;width:32px;padding:0;display:grid;place-items:center}
 
 /* ---------- 입력 · 단추 ---------- */
-input[type=text],input:not([type]),input[type=number],input[type=time],select{background:var(--soft);color:var(--text);border:1px solid var(--line);
-  border-radius:var(--r-sm);padding:5px 9px;font:inherit;min-width:0;transition:border-color .2s,box-shadow .2s}
-input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
-button{background:var(--solid);color:var(--text);border:1px solid var(--line);border-radius:99px;padding:5px 13px;cursor:pointer;font:inherit;font-weight:700;
-  transition:transform .15s,background .2s,border-color .2s,box-shadow .2s,color .2s}
-button:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
-button:active{transform:translateY(1px) scale(.97)}
-button.pri{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:var(--onaccent);
-  box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 30%,transparent)}
-button.pri:hover{color:var(--onaccent);box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 40%,transparent)}
+input[type=text],input[type=search],input:not([type]),input[type=number],input[type=time],select,textarea{background:var(--input);color:var(--text);border:1px solid var(--input-line);
+  border-radius:var(--r-sm);padding:6px 10px;font:inherit;font-size:13.5px;min-width:0;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+button,a.btn,label.btn{background:var(--solid);color:var(--text);border:1px solid var(--input-line);border-radius:var(--r-btn);padding:5px 12px;cursor:pointer;font:inherit;font-size:13px;font-weight:500;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;line-height:1.4;transition:background .15s,border-color .15s,color .15s}
+button:hover,a.btn:hover,label.btn:hover{background:var(--soft)}
+button:focus-visible,a.btn:focus-visible,input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.55;cursor:default}
+button.pri,a.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--onaccent);font-weight:600}
+button.pri:hover,a.btn.pri:hover{background:color-mix(in srgb,var(--accent) 86%,#000);border-color:transparent;color:var(--onaccent)}
+button.big,a.btn.big{height:38px;padding:0 16px;font-size:14px}
 button.bad{color:var(--bad)}button.bad:hover{border-color:var(--bad)}
+button.icon{width:30px;height:30px;padding:0}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+button.ghost:hover{color:var(--text);background:var(--soft)}
 
-/* ---------- 상태 칩 ---------- */
-.chip{display:inline-block;font-size:11px;font-weight:700;border-radius:99px;padding:1px 9px;white-space:nowrap;
-  background:var(--soft);color:var(--muted);border:1px solid transparent}
-.chip.ok,.s-ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
-.chip.bad,.s-fail{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
-.chip.warn,.s-stopped,.s-timeout{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn)}
-.chip.run,.s-running{background:color-mix(in srgb,var(--info) 15%,transparent);color:var(--info)}
+/* 켜짐 스위치 — <input type=checkbox role=switch> 그 자체를 그린다(키보드·화면 낭독기 그대로) */
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;color:var(--muted)}
+.switch input{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:10px;background:var(--off);position:relative;cursor:pointer;margin:0;flex:none;transition:background .2s;border:0;padding:0}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0003;transition:transform .2s}
+.switch input:checked{background:var(--accent)}.switch input:checked::after{transform:translateX(16px)}
+
+/* ---------- 상태 ---------- */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:4px;padding:1px 7px;white-space:nowrap;
+  background:var(--soft);color:var(--muted);text-decoration:none}
+.chip.ok,.s-ok{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok)}
+.chip.bad,.s-fail,.s-timeout{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad)}
+.chip.warn,.s-stopped{background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn)}
+.chip.run,.s-running{background:var(--accentsoft);color:var(--info)}
 .s-running{animation:breathe 1.6s ease-in-out infinite}
-@keyframes breathe{50%{opacity:.55}}
+@keyframes breathe{50%{opacity:.6}}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;background:#a1a1aa}
+.dot.ok{background:var(--ok)}.dot.fail{background:var(--bad)}.dot.run{background:var(--accent);animation:breathe 1.6s ease-in-out infinite}.dot.stop{background:var(--warn)}
 
-code{font-family:Consolas,monospace;font-size:12px;background:var(--soft);padding:1px 6px;border-radius:6px}
-.empty{color:var(--muted);padding:8px 2px;font-size:12.5px}
-#toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:9px 15px;border-radius:14px;opacity:0;transform:translateY(10px);
-  transition:opacity .25s,transform .25s;pointer-events:none;max-width:min(520px,80vw);box-shadow:var(--shadow2);z-index:50}
-#toast.show{opacity:.96;transform:none}
+code{font-family:var(--mono);font-size:12.5px;background:var(--soft);padding:1px 6px;border-radius:4px}
+.empty{color:var(--muted);padding:10px 2px;font-size:13px}
+#toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:10px 15px;border-radius:var(--r);opacity:0;transform:translateY(10px);
+  transition:opacity .25s,transform .25s;pointer-events:none;max-width:min(520px,80vw);box-shadow:var(--shadow2);z-index:80;font-size:13.5px}
+#toast.show{opacity:.97;transform:none}
+
+/* 펼침 메뉴(더 보기) — theme.js HubMenu */
+.menu{position:fixed;z-index:70;min-width:170px;background:var(--solid);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow2);padding:4px}
+.menu button{display:flex;width:100%;justify-content:flex-start;border:0;background:transparent;padding:7px 10px;border-radius:5px;font-size:13px}
+.menu button:hover,.menu button:focus-visible{background:var(--soft);outline:none}
+.menu button.bad{color:var(--bad)}
+
+/* 화면 꾸미기 창 — theme.js HubLook */
+.lookpanel{position:fixed;z-index:60;width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;background:var(--solid);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow2);padding:14px 16px}
+.lookpanel h3{font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600}
+.lookpanel h3:first-child{margin-top:0}
+.lookpanel .lrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lookpanel .seg{display:inline-flex;gap:0;border:1px solid var(--input-line);border-radius:var(--r-sm);overflow:hidden;flex-wrap:nowrap}
+.lookpanel .seg button{border:0;border-radius:0;padding:5px 11px;font-size:12.5px;background:transparent}
+.lookpanel .seg button+button{border-left:1px solid var(--input-line)}
+.lookpanel .seg button[aria-pressed=true]{background:var(--accentsoft);color:var(--accent);font-weight:600}
+.lookpanel .seg button .swd{width:10px;height:10px;border-radius:50%;display:inline-block}
+.lookpanel input[type=color]{width:34px;height:26px;border:1px solid var(--input-line);border-radius:6px;padding:0 2px;background:var(--input);cursor:pointer}
+.lookpanel label{font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+.lookpanel select{max-width:100%}
+.lookpanel .note{font-size:12px;color:var(--muted);margin:6px 0 0}

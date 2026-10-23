@@ -145,11 +145,11 @@ def section_html(key, title, src, conf):
 
 
 CSS = """
-:root{--bg:#f7f4fc;--panel:#fff;--text:#2f2b45;--muted:#6f6990;--line:#e6dff3;--accent:#7a60e6;--code:#f1edfa}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#1a1826;--panel:#232033;--text:#ece8fa;--muted:#a59fbe;--line:#363150;--accent:#b0a0ff;--code:#2c2840}}
-:root[data-theme="dark"]{--bg:#1a1826;--panel:#232033;--text:#ece8fa;--muted:#a59fbe;--line:#363150;--accent:#b0a0ff;--code:#2c2840}
+:root{--bg:#f7f7f8;--panel:#fff;--text:#18181b;--muted:#52525b;--line:#e4e4e7;--accent:#1d4ed8;--code:#f4f4f5}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111214;--panel:#18191c;--text:#ececee;--muted:#a1a1aa;--line:#2a2b30;--accent:#5b8cff;--code:#222328}}
+:root[data-theme="dark"]{--bg:#111214;--panel:#18191c;--text:#ececee;--muted:#a1a1aa;--line:#2a2b30;--accent:#5b8cff;--code:#222328}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 "Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 "IBM Plex Sans KR","Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
 .wrap{max-width:920px;margin:0 auto;padding:24px 16px 64px}
 header{padding:28px 0 8px}
 h1{font-size:26px;margin:0 0 6px}h2{font-size:20px;margin:36px 0 10px;padding-top:8px;border-top:1px solid var(--line)}
