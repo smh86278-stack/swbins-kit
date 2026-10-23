@@ -61,4 +61,4 @@ CI runs `tests\verify.ps1` on GitHub Actions `windows-latest` with real-browser 
 
 ## License
 
-No license has been chosen yet. Bundled third-party libraries keep their own licenses (`tools/macro-hub/apps-lib/LICENSE-*.txt`).
+MIT — [LICENSE](LICENSE). Bundled third-party libraries keep their own licenses (`tools/macro-hub/apps-lib/LICENSE-*.txt`).

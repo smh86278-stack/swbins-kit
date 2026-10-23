@@ -144,7 +144,7 @@ tests/                           unittest · verify.ps1
 
 ## 라이선스
 
-저장소 전체 라이선스는 아직 정하지 않았다(LICENSE 파일 없음 — 정하기 전까지는 열람만 허용되는 것으로 본다).
+저장소 전체 라이선스: MIT — [LICENSE](LICENSE).
 동봉한 서드파티 라이브러리는 각자의 라이선스를 따른다 — Preact·htm·Chart.js·Phaser·sql.js
 ([`tools/macro-hub/apps-lib/`](tools/macro-hub/apps-lib/) 의 `LICENSE-*.txt`), 기본 펫 그림은
 [`tools/macro-hub/web/skins/plush/LICENSE.txt`](tools/macro-hub/web/skins/plush/LICENSE.txt).
