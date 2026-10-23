@@ -32,3 +32,12 @@ powershell -ExecutionPolicy Bypass -File tests\verify.ps1   커밋 전 — py_co
 - 테스트는 허브를 띄우지 않고 메일을 보내지 않는다. 메일 경로는 `send=`·`ready=` 같은 인자나 monkeypatch 로 막는다.
 - 한글이 든 `.ps1` 은 **UTF-8 BOM 필수**(PS 5.1 은 BOM 이 없으면 CP949 로 읽어 문자열이 깨진다).
 - 큰 HTML·JSON 은 셸 heredoc 말고 편집 도구로 쓴다(따옴표가 뭉개진다).
+
+## 설치 파일 · 릴리스
+
+```
+1. VERSION 을 새 버전으로 고쳐 커밋 (빌드는 git archive HEAD — 커밋 안 한 것은 빠진다)
+2. 설치 시험: installer\dist\WorkKitSetup-<버전>.exe /S → runtime\pythonw.exe tools\macro-hub\launcher.py --background → 8630 확인 → runtime\python.exe uninstall.py --yes
+   (Git Bash 는 /S 를 경로로 바꾼다 — PowerShell Start-Process 로. 남는 %LOCALAPPDATA%\WorkKit-설정백업 은 시험 로그뿐이면 지운다)
+3. <PyInstaller 있는 파이썬> installer\release.py v<버전> notes.md   빌드 → 태그 push → GitHub 릴리스 + 설치 파일 첨부 → dist 엔 최신 하나만
+```
