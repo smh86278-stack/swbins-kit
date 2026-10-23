@@ -11,6 +11,7 @@
 """
 import datetime
 import os
+import re
 import shutil
 import stat
 import time
@@ -51,6 +52,9 @@ def _under(path, base):
 def refuse_reason(folder, env=None):
     """정리하면 안 되는 폴더면 이유를, 괜찮으면 '' 를 돌려준다."""
     env = os.environ if env is None else env
+    if re.fullmatch(r'\s*[A-Za-z]:\s*', str(folder)):
+        # 'D:' 는 그 드라이브의 '현재 폴더'라 abspath 가 엉뚱한 폴더로 바꾼다 — 사람은 드라이브 맨 위를 뜻한 것
+        return '드라이브 맨 위(%s)는 정리하지 않습니다' % folder
     p = _norm(folder)
     drive, rest = os.path.splitdrive(p)
     if not rest.strip('\\/'):

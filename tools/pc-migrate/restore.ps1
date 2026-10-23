@@ -116,6 +116,8 @@ if (Test-Path -LiteralPath $kl) {
     Write-Host "[키트 설정 → $KitDir]" -ForegroundColor Cyan
     if (-not (Test-Path -LiteralPath $KitDir)) { Write-Warning "키트 폴더가 없습니다 — 키트를 먼저 설치하거나 -KitDir 로 위치를 주세요: $KitDir" }
     else {
+        # FullName 은 긴 이름으로 온다 — -Source 가 8.3 짧은 이름(C:\Users\RUNNER~1\…)이면 앞부분 길이가 달라 상대 경로가 어긋난다
+        $kl = (Get-Item -LiteralPath $kl).FullName.TrimEnd('\')
         foreach ($f in Get-ChildItem -LiteralPath $kl -Recurse -File) {
             Copy-KeepExisting $f.FullName (Join-Path $KitDir $f.FullName.Substring($kl.Length + 1))
         }

@@ -35,4 +35,9 @@ jobs:
 
       - name: verify (py_compile + unittest)
         shell: powershell
+        env:
+          # 체크아웃(D:)과 같은 드라이브에 임시 폴더를 둔다 — 실제 설치에선 실패 화면·백업이 키트 폴더 아래(같은 드라이브)라,
+          # 시험의 임시 폴더만 C: 에 있으면 os.path.relpath 가 드라이브가 달라 실패한다
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\verify.ps1
