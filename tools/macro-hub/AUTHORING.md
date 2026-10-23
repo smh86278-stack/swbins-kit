@@ -72,11 +72,14 @@ def run(ctx):
 | `ctx.page` · `ctx.browser_context` | Chrome(Playwright). 자동화마다 프로필이 따로라 **로그인이 남는다** — 처음 한 번은 사람이 로그인해야 할 수 있다 |
 | `ctx.window(제목정규식, exclude=)` · `ctx.window_handles()` · `ctx.start(명령)` | 데스크톱 창(pywinauto UIA). 띄우기 전 `window_handles()` 를 `exclude` 로 넘겨 사람의 창을 잡지 않게 |
 | `ctx.click(컨트롤)` · `ctx.set_text(컨트롤, 글)` | 마우스·키보드 없이 먼저 시도 |
-| `ctx.params` · `ctx.secret(키)` · `ctx.data_dir` | 입력값 · 비밀값 · 이 자동화 전용 폴더(지난번 값 저장 등) |
+| `ctx.params` · `ctx.param(키)` · `ctx.secret(키)` · `ctx.data_dir` | 입력값(사전 · 글자 하나) · 비밀값 · 이 자동화 전용 폴더(지난번 값 저장 등) |
 | `ctx.log(...)` · `ctx.notify(제목, 글)` | 로그 · 알림(트레이·허브 화면) |
 | `ctx.for_real(설명)` · `ctx.dry_run` | 되돌릴 수 없는 동작 앞 — 시험이면 False |
 | `import kit` → `kit.send_mail(받는사람, 제목, 본문)` · `kit.alert(제목, 본문)` | 메일 · 알림(설정된 메일 계정·알림 출구로) — 보내기는 `for_real` 안에 |
 
+**실패하면**: 오류로 끝나면 허브가 그 순간 화면(웹은 Chrome, 데스크톱은 전체 화면)을 `data.local\failshots\` 에 남기고 실패 알림 메일에 붙인다 —
+고치러 왔다면 로그의 `📸 실패한 순간 화면을 남겼습니다: …` 줄의 그림을 먼저 열어 본다. 오류를 삼키지 말고 그대로 올려야 찍힌다.
+**녹화 스크립트**(kind script)의 `param("칸")` 은 META params 의 값, `secret("키")` 는 비밀값이다 — 고칠 때 값을 코드에 다시 박지 않는다.
 **웹 요령**: 선택자는 `get_by_role` · `get_by_text` · `get_by_label` 을 먼저(화면 글자가 바뀌지 않는 한 오래 간다). 화면을 모르면
 시험 중에 `ctx.log(page.content()[:3000])` 이나 `page.screenshot(path=os.path.join(ctx.data_dir, 'shot.png'))` 로 보고 고친다(다 고치면 지운다).
 **데스크톱 요령**: 허브 「🧰 고급 도구 → 요소 찍기·구조 보기」가 만드는 코드를 쓴다. UWP 앱(계산기 등)은 `process` 조건을 주지 않는다.

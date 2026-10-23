@@ -235,6 +235,9 @@ def _discover_files():
             'service': bool(meta.get('service')),
             'motion': default_motion(meta),
             'owns': meta.get('owns') or [],
+            'chain': [str(s if isinstance(s, str) else (s or {}).get('id')) for s in meta.get('chain') or []]
+            if meta.get('kind') == 'chain' else [],
+            'keep_going': bool(meta.get('keep_going')),
             'timeout': int(meta.get('timeout', 0 if meta.get('service') else 600)),
             'cooldown': int(meta.get('cooldown', 10)),
             'valid': bool(meta) or True,
@@ -266,12 +269,14 @@ class Run:
         self.motion_default = None       # 일반 자동화는 META 의 일 종류, 상시 자동화는 None(평소엔 지켜보기만)
         self.motion = None
         self.motion_until = None         # ctx.motion(hold=) 로 잠깐만 보일 때 끝나는 시각(ms)
+        self.shot = None                 # 📸 실패한 순간 화면(data.local\failshots\*.png) — runner 의 '@@failshot' 줄
 
     def summary(self):
         return {'id': self.id, 'macro': self.macro, 'name': self.name, 'trigger': self.trigger.get('kind', 'manual'),
                 'detail': self.trigger.get('detail', ''), 'started': int(self.started * 1000),
                 'ended': int(self.ended * 1000) if self.ended else None,
-                'status': self.status, 'code': self.code, 'tool': self.tool}
+                'status': self.status, 'code': self.code, 'tool': self.tool,
+                'shot': os.path.basename(self.shot) if self.shot else None}
 
 
 runs = deque(maxlen=300)
@@ -291,13 +296,13 @@ def kill_tree(proc):
         pass
 
 
-def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=False, timeout=600, motion=None):
+def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=False, timeout=600, motion=None, extra=None):
     trigger = trigger or {'kind': 'manual'}
     if running_run(macro_id) and not tool:
         return None, '이미 실행 중입니다'
     run = Run(macro_id, name or macro_id, trigger, tool)
     run.motion = run.motion_default = motion
-    ctx = {'macro': macro_id, 'params': params or {}, 'trigger': trigger}
+    ctx = dict(extra or {}, macro=macro_id, params=params or {}, trigger=trigger)
     if trigger.get('kind') == 'test':
         ctx['dry_run'] = True                    # 시험 실행 — ctx.for_real() 로 감싼 동작은 건너뛴다(runner.py --test 와 같게)
     env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', PYTHONUNBUFFERED='1',
@@ -311,7 +316,8 @@ def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=Fa
         runs.append(run)
         runs_by_id[run.id] = run
     broadcast({'t': 'run', 'run': run.summary()})
-    threading.Thread(target=_pump, args=(run,), daemon=True).start()
+    run.pump = threading.Thread(target=_pump, args=(run,), daemon=True)
+    run.pump.start()
     threading.Thread(target=_watch, args=(run, timeout), daemon=True).start()
     return run, None
 
@@ -388,6 +394,11 @@ def _pump(run):
         if line.startswith(MOTION_PREFIX):
             _set_motion(run, line[len(MOTION_PREFIX):])
             continue
+        if line.startswith(runner.FAILSHOT_PREFIX):     # 📸 — runner 가 사람이 읽는 줄은 따로 냈다
+            shot = failshot_file(os.path.basename(line[len(runner.FAILSHOT_PREFIX):].strip()))
+            if shot:
+                run.shot = shot
+            continue
         if line.startswith(NOTIFY_PREFIX):          # ctx.notify() — 알림으로 바꾸고 로그에는 사람이 읽는 형태로 남긴다
             try:
                 n = json.loads(line[len(NOTIFY_PREFIX):])
@@ -410,6 +421,8 @@ def _watch(run, timeout):
         run.status = 'timeout'
         kill_tree(run.proc)
         run.code = run.proc.wait()
+    if getattr(run, 'pump', None):               # 마지막 줄(📸 '@@failshot' 등)까지 읽은 뒤에 기록·알림을 남긴다
+        run.pump.join(timeout=3)
     run.ended = time.time()
     if run.status == 'running':
         run.status = 'stopped' if run.stopping else ('ok' if run.code == 0 else 'fail')
@@ -421,6 +434,8 @@ def _watch(run, timeout):
         broadcast({'t': 'log', 'run': run.id, 'line': run.lines[-1]})
     elif not run.tool:
         rec = dict(run.summary(), tail=list(run.lines)[-30:])
+        if run.shot:
+            rec['shot_file'] = run.shot              # 실패 알림 메일이 붙인다(alertmail.deliver)
         try:
             with open(F_RUNS, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + '\n')
@@ -429,6 +444,17 @@ def _watch(run, timeout):
         if run.status in alertmail.ALERT_STATUS:
             threading.Thread(target=_alert_mail, args=(rec,), daemon=True).start()
     broadcast({'t': 'run', 'run': run.summary()})
+
+
+FAILSHOT_NAME = re.compile(r'^[\w\-]+\.png$')
+
+
+def failshot_file(name):
+    """📸 파일 이름 → data.local\\failshots 바로 아래의 실제 경로(없거나 이상한 이름이면 None — 경로 탈출 막기)."""
+    if not isinstance(name, str) or not FAILSHOT_NAME.match(name):
+        return None
+    path = os.path.join(runner.FAILSHOT_DIR, name)
+    return path if os.path.isfile(path) else None
 
 
 def _alert_mail(rec):
@@ -557,6 +583,7 @@ def delete_macro(mid):
         return None, '지우지 못했습니다: %s' % e
     state['enabled'].pop(mid, None)
     (state.get('schedule') or {}).pop(mid, None)
+    (state.get('params') or {}).pop(mid, None)
     if mid in hidden_ids():
         state['hidden'] = sorted(hidden_ids() - {mid})
     save_state()
@@ -635,10 +662,59 @@ def run_macro(macro_id, params=None, trigger=None):
         # 기본 자동화는 for_real 로 감싸지 않아 시험이어도 진짜 메일·서버에 닿는다
         return None, '시험 실행은 내 자동화(상시 자동화 제외)만 됩니다'
     merged = {k: v for k, v in m['params'].items()}
+    merged.update(saved_params(m))                   # 카드에서 💾 기억한 값 — 예약 실행도 이 값으로
     merged.update({k: v for k, v in (params or {}).items() if k in m['params'] or not m['params']})
     name = m['name'] + (' 🧪시험' if (trigger or {}).get('kind') == 'test' else '')
+    extra = None
+    if m['kind'] == 'chain':                         # 🔗 묶음 — 단계마다 기억한 값을 runner 에 넘긴다(runner 는 state 를 읽지 않는다)
+        extra = {'chain_params': {sid: saved_params(find_macro(sid)) for sid in m['chain'] if find_macro(sid)}}
     return start_run(m['id'], merged, trigger, m['path'], name, timeout=m['timeout'],
-                     motion=None if m['service'] else m['motion'])
+                     motion=None if m['service'] else m['motion'], extra=extra)
+
+
+def saved_params(m):
+    """카드에서 기억한 입력값(state['params'][id]) — META params 에 있는 칸만."""
+    if not m:
+        return {}
+    keep = (state.get('params') or {}).get(m['id']) or {}
+    return {k: v for k, v in keep.items() if k in m['params']}
+
+
+def _like(default, text):
+    """칸 글자를 기본값과 같은 꼴로 — 숫자·참거짓 기본값이면 그 꼴로 읽고, 아니면 글자 그대로."""
+    if isinstance(default, str) or not isinstance(text, str):
+        return text
+    try:
+        v = json.loads(text)
+    except ValueError:
+        return text
+    return v if isinstance(v, type(default)) or (isinstance(default, (int, float)) and isinstance(v, (int, float))) else text
+
+
+def save_params(mid, values):
+    """💾 이 값 기억 — 카드의 입력값을 state['params'] 에 남긴다. 기본값과 같은 칸은 빼고, 다 같으면 지운다. (기억한 값, 오류)"""
+    m = find_macro(mid)
+    if not m:
+        return None, '없는 자동화입니다'
+    if not m['params']:
+        return None, '바꿀 칸이 없는 자동화입니다'
+    if not isinstance(values, dict):
+        return None, 'params 는 {이름: 값} 이어야 합니다'
+    keep = {}
+    for k, v in values.items():
+        if k in m['params']:
+            v = _like(m['params'][k], v)
+            if v != m['params'][k]:
+                keep[k] = v
+    allp = state.setdefault('params', {})
+    if keep:
+        allp[mid] = keep
+    else:
+        allp.pop(mid, None)
+    save_state()
+    audit('입력값 기억' if keep else '입력값 기본으로', mid, ', '.join(sorted(keep)))
+    broadcast({'t': 'macros'})
+    return keep, None
 
 
 # ---------------------------------------------------------------- 자동 실행 트리거
@@ -1085,11 +1161,12 @@ def fix_text(run_id):
     when = time.strftime('%Y-%m-%d %H:%M', time.localtime(r.started))
     return ('자동화 허브의 자동화가 실패했어 — 원인을 찾아 고쳐줘.\n'
             '자동화: %s\n파일: %s\n결과: %s (%s 실행%s)\n'
-            '로그 끝 %d줄:\n%s\n'
+            '로그 끝 %d줄:\n%s\n%s'
             '(사이트 화면이 바뀌어 요소를 못 찾은 거면 그 화면을 열어 보고 선택자를 고쳐 줘. 이 파일 말고는 고치지 마. '
             '로그인 만료·네트워크처럼 코드 밖 문제면 고치지 말고 그렇다고 알려 줘)\n%s'
             % (m['name'], m['path'], '시간 초과' if r.status == 'timeout' else '오류', when,
                ', 종료 코드 %s' % r.code if r.code not in (None, 0) else '', len(tail), '\n'.join(tail) or '(로그 없음)',
+               ('실패한 순간 화면: %s — 먼저 열어 봐 줘\n' % r.shot) if r.shot else '',
                build_steps()))
 
 
@@ -1201,6 +1278,133 @@ def secretize_recording(code, stem):
     return '\n'.join(out), found
 
 
+FIELD_NAME = (re.compile(r'get_by_(?:label|placeholder|title|alt_text|text)\(\s*(["\'])(.+?)\1'),
+              re.compile(r'\bname\s*=\s*(["\'])(.+?)\1'),
+              re.compile(r'locator\(\s*(["\'])(?:#|\.|\[name=["\']?)([\w\-]+)'))
+
+
+def paramize_recording(code):
+    """녹화 코드의 입력값을 카드에서 바꿀 수 있는 칸으로 — (바꾼 코드, {칸 이름: 녹화한 값}).
+    비밀번호 칸은 secretize_recording 이 먼저 secret(...) 으로 바꿔 두니 여기서는 남은 .fill("…") 만 본다.
+    칸 이름은 그 줄의 이름표(get_by_label·placeholder·role name·#id), 못 찾으면 '입력'. 같은 이름에 다른 값이면 _2·_3."""
+    params, out = {}, []
+    for line in code.split('\n'):
+        m = FILL_LINE.match(line)
+        if m:
+            try:
+                val = ast.literal_eval(m.group('lit'))
+            except (ValueError, SyntaxError):
+                val = None
+            if isinstance(val, str) and val:
+                label = next((mt.group(2) for mt in (p.search(m.group('pre')) for p in FIELD_NAME) if mt), '')
+                base = safe_name(label)[:24] or '입력'
+                key = next((k for k, v in params.items() if v == val and re.sub(r'_\d+$', '', k) == base), None)
+                if not key:
+                    key, n = base, 1
+                    while key in params:
+                        n += 1
+                        key = '%s_%d' % (base, n)
+                    params[key] = val
+                line = '%sparam(%r)%s' % (m.group('pre'), key, m.group('post'))
+        out.append(line)
+    return '\n'.join(out), params
+
+
+# ---------------------------------------------------------------- 📚 자동화 갤러리 · 🔗 묶음
+
+DIR_GALLERY = os.path.join(HERE, 'gallery')      # 견본 자동화 — 키트에 들어 있다. 「내 자동화로 복사」로 macros.local 에 사본을 만든다
+
+
+def gallery_list():
+    """갤러리 견본 목록 [{"file", "name", "desc", "steps", "params", "secrets", "hint", "target", "triggers"}]."""
+    out = []
+    for path, _ in _scan(DIR_GALLERY, False):
+        meta = runner.read_meta(path)
+        if not meta:
+            continue
+        out.append({'file': os.path.splitext(os.path.basename(path))[0], 'name': meta.get('name') or '',
+                    'desc': meta.get('desc', ''), 'steps': [str(s) for s in meta.get('steps') or []],
+                    'params': meta.get('params') or {}, 'secrets': [str(s) for s in meta.get('secrets') or []],
+                    'hint': meta.get('hint', ''), 'target': meta.get('target', ''), 'triggers': meta.get('triggers') or [],
+                    'icon': meta.get('icon', '')})
+    return out
+
+
+def copy_gallery(fname):
+    """견본 하나를 내 자동화로 복사(꺼진 채) — 이름이 겹치면 <이름>_2.py · 화면 이름에 (2). (자동화 id, 오류)"""
+    item = next((g for g in gallery_list() if g['file'] == fname), None)   # 목록에 있는 이름만 — 경로 조작 막기
+    if not item:
+        return None, '갤러리에 없는 견본입니다'
+    with open(os.path.join(DIR_GALLERY, fname + '.py'), encoding='utf-8') as f:
+        code = f.read()
+    os.makedirs(DIR_LOCAL, exist_ok=True)
+    stem, n = fname, 1
+    while os.path.exists(os.path.join(DIR_LOCAL, stem + '.py')):
+        n += 1
+        stem = '%s_%d' % (fname, n)
+    if n > 1 and item['name']:
+        old = '"name": %s' % json.dumps(item['name'], ensure_ascii=False)
+        code = code.replace(old, '"name": %s' % json.dumps('%s (%d)' % (item['name'], n), ensure_ascii=False), 1)
+    with open(os.path.join(DIR_LOCAL, stem + '.py'), 'w', encoding='utf-8', newline='\n') as f:
+        f.write(code)
+    mid = 'local/' + stem
+    audit('갤러리에서 복사', mid, '📚 ' + fname)
+    broadcast({'t': 'macros'})
+    return mid, None
+
+
+CHAIN_MAX = 20
+
+
+def new_chain(name, steps, keep_going=False, at='', days='daily'):
+    """🔗 묶음 만들기 — macros.local\\<이름>.py 에 META 만 있는 파일(kind chain). 단계는 지금 있는 자동화(상시·묶음 제외).
+    at 이 있으면 예약(⏰)도 건다 — 켜는 건 사람이 「자동 실행」으로. (자동화 id, 오류)"""
+    stem = safe_name(name)
+    if not stem:
+        return None, '묶음 이름을 입력하세요'
+    if not isinstance(steps, list) or len(steps) < 2:
+        return None, '자동화를 둘 이상 고르세요'
+    if len(steps) > CHAIN_MAX:
+        return None, '한 묶음에는 %d개까지 넣을 수 있습니다' % CHAIN_MAX
+    found = []
+    for sid in steps:
+        m = find_macro(str(sid))
+        if not m:
+            return None, '없는 자동화입니다: %s' % sid
+        if m['service'] or m['kind'] == 'chain':
+            return None, '상시 자동화·묶음은 넣을 수 없습니다: %s' % m['name']
+        found.append(m)
+    triggers = []
+    if (at or '').strip():
+        triggers, err = clean_schedule([{'at': at, 'days': days or 'daily'}])
+        if err:
+            return None, err
+    path = os.path.join(DIR_LOCAL, stem + '.py')
+    if os.path.exists(path):
+        return None, '같은 이름이 이미 있습니다'
+    keep = bool(keep_going)
+    meta = {
+        'name': name.strip(),
+        'desc': '자동화 %d개를 순서대로 — %s' % (len(found), '하나가 실패해도 끝까지' if keep else '앞이 실패하면 멈춤'),
+        'kind': 'chain',
+        'steps': [m['name'] for m in found],
+        'chain': [m['id'] for m in found],
+        'keep_going': keep,
+        'triggers': triggers,
+        'timeout': min(6 * 3600, sum(m['timeout'] or 600 for m in found) + 30 * len(found)),
+    }
+    import pprint
+    os.makedirs(DIR_LOCAL, exist_ok=True)
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# -*- coding: utf-8 -*-\n# 🔗 묶음 — 허브 🛠 만들기에서 만든 파일. chain 의 자동화를 순서대로 돌린다(runner.run_chain).\n'
+                '# 순서·「실패해도 계속」(keep_going)은 여기서 고쳐도 된다.\nMETA = %s\n'
+                % pprint.pformat(meta, sort_dicts=False, width=110))
+    mid = 'local/' + stem
+    audit('묶음 만듦', mid, ' → '.join(meta['steps']))
+    broadcast({'t': 'macros'})
+    return mid, None
+
+
 def save_secrets(values):
     """secrets.local.json 에 키를 더한다(있는 키는 덮어씀) — 값은 DPAPI 로 암호화해서. 이 PC 에만 있는 파일 — git 에서 빠져 있다."""
     try:
@@ -1250,10 +1454,13 @@ def record_web(url, name):
                     moved = ' — 비밀번호 %d개는 파일에 쓰지 않고 secrets.local.json 으로 옮겼습니다(%s)' % (len(found), ', '.join(found))
                 except (OSError, ValueError) as e:      # 못 옮기면 값 없이 저장 — 키만 남기고 사람이 넣는다
                     moved = ' — 비밀번호를 secrets.local.json 에 넣지 못했습니다(%s). %s 키에 직접 넣으세요' % (e, ', '.join(found))
+            code, fields = paramize_recording(code)      # 입력값 → 카드에서 바꿔 돌릴 칸(param("…"))
             meta = {'name': name.strip(), 'desc': '녹화 %s' % datetime.date.today(), 'kind': 'script',
-                    'target': 'web', 'triggers': [], 'timeout': 300}
+                    'target': 'web', 'params': fields, 'triggers': [], 'timeout': 300}
             with open(dest, 'w', encoding='utf-8') as f:
                 f.write('# -*- coding: utf-8 -*-\nMETA = %r\n\n%s' % (meta, code))
+            if fields:
+                moved += ' — 입력한 값 %d개(%s)는 카드에서 바꿔 돌릴 수 있는 칸이 됐습니다' % (len(fields), ', '.join(fields))
             broadcast({'t': 'note', 'text': '녹화 저장: %s%s' % (os.path.basename(dest), moved)})
         else:
             broadcast({'t': 'note', 'text': '녹화한 내용이 없어 저장하지 않았습니다'})
@@ -1347,7 +1554,9 @@ def macro_view(m):
     d.update(enabled=bool(state['enabled'].get(m['id'])), running=r.id if r else None, hidden=m['id'] in hidden_ids(),
              last=last.summary() if last else LAST_RUN.get(m['id']),
              motion=r.motion if r else d['motion'], motion_until=r.motion_until if r else None,
-             motion_default=r.motion_default if r else None)
+             motion_default=r.motion_default if r else None, saved_params=saved_params(m))
+    if m['chain']:                                   # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로)
+        d['chain_names'] = [(find_macro(s) or {}).get('name') or s for s in m['chain']]
     return d
 
 
@@ -1492,6 +1701,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, f.read(), 'image/png')
         if u.path == '/api/deleted':                  # 지운 내 자동화(되살리기용)
             return self._send(200, deleted_macros())
+        if u.path == '/api/gallery':                  # 📚 견본 자동화 목록
+            return self._send(200, gallery_list())
+        if u.path == '/api/failshot':                 # 📸 실패한 순간 화면 ?file=<이름>.png — failshots 바로 아래 것만
+            shot = failshot_file((q.get('file') or [''])[0])
+            if not shot:
+                return self._send(404, b'not found', 'text/plain')
+            with open(shot, 'rb') as f:
+                return self._send(200, f.read(), 'image/png')
         if u.path == '/api/runs':
             with lock:
                 items = [r.summary() for r in runs if not r.tool][-100:]
@@ -1700,6 +1917,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/service':                    # 운영 화면(/ops): {"id", "action": start|stop|restart|run}
             ok, msg = service_action(body.get('id', ''), body.get('action', ''))
             return self._send(200 if ok else 400, {'ok': ok, 'message': msg} if ok else {'error': msg})
+        if path == '/api/gallery/copy':               # 📚 견본을 내 자동화로 {"file"} — 꺼진 채, 이름이 겹치면 _2
+            mid, err = copy_gallery(str(body.get('file') or ''))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': mid})
+        if path == '/api/chain/new':                  # 🔗 묶음 만들기 {"name", "steps": [id…], "keep_going", "at", "days"}
+            mid, err = new_chain(str(body.get('name') or ''), body.get('steps'), bool(body.get('keep_going')),
+                                 str(body.get('at') or ''), str(body.get('days') or 'daily'))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': mid})
+        if path == '/api/params':                     # 💾 카드 입력값 기억 {"id", "params"} — 예약 실행·묶음도 이 값으로
+            keep, err = save_params(str(body.get('id') or ''), body.get('params'))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'saved': keep})
         if path == '/api/new':
             mid, err = new_macro(body.get('name', ''), body.get('kind', 'web'))
             if err:

@@ -79,6 +79,7 @@ h2::before{content:"";width:8px;height:8px;border-radius:50%;background:linear-g
 .params{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0}
 .params label{display:flex;flex-direction:column;font-size:10.5px;color:var(--muted);gap:1px}
 .params input{padding:3px 8px;font-size:12px;width:130px}
+.params label.saved{color:var(--accent)}.params>button{align-self:flex-end;font-size:12px;padding:3px 8px}
 .switch{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none;color:var(--muted)}
 .switch input{appearance:none;width:32px;height:18px;border-radius:20px;background:var(--line);position:relative;cursor:pointer;transition:background .25s;margin:0}
 .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
@@ -128,6 +129,16 @@ body.view-make main{grid-template-columns:minmax(0,1fr);max-width:920px;margin:0
 .app-diff{max-height:340px;overflow:auto;background:var(--code);color:var(--codetext);border-radius:10px;padding:8px 10px;font-size:11.5px;margin:0;white-space:pre-wrap}
 .app-diff .d-add{color:#7ee2a8}.app-diff .d-del{color:#ff9a9a}.app-diff .d-hunk{color:#9db4ff}
 .tier{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--accentsoft);color:var(--accent);margin-left:4px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.gal-card{border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;background:var(--soft)}
+.gal-card b{font-size:13px}.gal-card .desc{font-size:11.5px;color:var(--muted)}
+.gal-card ol{margin:0;padding-left:18px;font-size:11.5px}
+.gal-card .gal-need{font-size:11px;color:var(--muted)}
+.gal-card button{align-self:flex-start;font-size:12px;padding:3px 10px}
+.mk-card input[type=checkbox]{width:auto;vertical-align:middle}
+.chain-steps{margin:0;padding-left:22px;font-size:12.5px}
+.chain-steps li{padding:2px 0}.chain-steps button{font-size:11px;padding:0 6px;margin-left:6px}
+.shotbox{margin-top:6px}.shotbox img{max-width:100%;max-height:220px;border:1px solid var(--line);border-radius:10px;cursor:zoom-in;display:block;margin-top:4px}
 .mk-adv{border-top:1px dashed var(--line);padding-top:8px}
 .mk-adv>summary{cursor:pointer;font-weight:700;font-size:12.5px;color:var(--muted);margin-bottom:8px}
 .mk-adv>summary small{font-weight:400;margin-left:4px}
@@ -230,6 +241,21 @@ pre#log .ln{animation:fadein .35s ease both}
         <small class="mk-note" id="askOn">누르면 대화로 바로 보내져요. Claude 가 만든 뒤 <b>스스로 시험해 보고, 안 되면 고쳐서</b> 결과를 대화로 알려 줘요(메일 보내기·제출 같은 건 시험 때 건너뜀). 다 되면 🏠 허브 목록에 나타나요</small>
         <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있어요. 지금은 이 PC 의 Claude Code 에 같은 말로 부탁하면 됩니다 — 위 단추로 부탁 글만 복사할 수 있어요.</div>
       </div>
+      <details class="mk-card" id="galBox">
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico">📚</span><div><b>자동화 갤러리</b><small>자주 쓰는 견본을 한 번에 내 자동화로 복사 — 칸만 채우면 바로 써요</small></div></summary>
+        <div id="galList" class="gal"></div>
+      </details>
+      <details class="mk-card" id="chainBox">
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico">🔗</span><div><b>묶어 돌리기</b><small>자동화 여러 개를 순서대로 — 예: 로그인 확인 → 자료 받기 → 정리</small></div></summary>
+        <div class="row"><select id="chainPick" class="grow"></select><button id="chainAdd">＋ 넣기</button></div>
+        <ol id="chainSteps" class="chain-steps"></ol>
+        <div class="row"><input id="chainName" type="text" placeholder="묶음 이름 (예: 아침 업무 한 번에)" class="grow"></div>
+        <div class="row" style="flex-wrap:wrap"><label class="mk-note" title="끄면 앞 단계가 실패할 때 나머지를 돌리지 않아요"><input type="checkbox" id="chainKeep"> 하나가 실패해도 끝까지</label>
+          <span class="mk-note" style="margin-left:auto">⏰ 예약(선택)</span><input id="chainAt" type="time" style="width:110px">
+          <select id="chainDays"><option value="mon-fri">평일</option><option value="daily">매일</option></select>
+          <button id="chainBtn" class="pri">묶음 만들기</button></div>
+        <small class="mk-note">만든 묶음은 🏠 허브 목록에 카드로 나타나요 — 🧪 시험으로 먼저 돌려 보고, 예약을 넣었으면 「자동 실행」을 켜세요. 시각은 ⏰ 운영에서 바꿀 수 있어요.</small>
+      </details>
       <details class="mk-adv">
         <summary>🧰 고급 도구 <small>빈 자동화 파일 · 요소 찍기 · 구조 보기 · 폴더</small></summary>
       <div class="tool" data-hide="tool:new">
@@ -271,6 +297,7 @@ pre#log .ln{animation:fadein .35s ease both}
       <div class="runs" id="runs"></div>
       <div class="row"><div id="logTitle" class="grow">실행을 선택하면 로그가 보입니다</div>
         <button id="fixBtn" hidden title="실패한 내 자동화를 로그와 함께 Claude 에게 넘겨 고쳐 달라고 해요(대화가 꺼져 있으면 부탁 글 복사)">🩹 고쳐 달라기</button></div>
+      <div id="shotBox" class="shotbox" hidden></div>
       <pre id="log"></pre>
     </section>
   </div>
@@ -369,22 +396,29 @@ function macroCard(m,idx,dim){
     title.append(el('span','name',m.name),' ');
     if(m.target)title.append(el('span','badge',m.target==='web'?'웹':'데스크톱'),' ');
     if(m.service)title.append(el('span','badge svc','상시'),' ');
+    if(m.kind==='chain')title.append(el('span','badge',m.keep_going?'🔗 묶음 · 끝까지':'🔗 묶음'),' ');
     if(!m.local)title.append(el('span','badge ex','예제'));
     top.append(title);
     if(m.last&&!m.running)top.append(chip(m.last.status));
     if(m.running)top.append(chip('running'));
     c.append(top);
     if(m.desc)c.append(el('div','desc',m.desc));
-    if((m.steps||[]).length){const ol=el('ol','msteps');for(const s of m.steps)ol.append(el('li','',s));c.append(ol)}   // META steps — 무엇을 하는지 쉬운 말로
+    const steps=m.chain_names||m.steps||[];   // 묶음은 지금 이름으로(자동화 이름을 바꿨어도 맞게)
+    if(steps.length){const ol=el('ol','msteps');for(const s of steps)ol.append(el('li','',s));c.append(ol)}   // META steps — 무엇을 하는지 쉬운 말로
     if(m.triggers.length)c.append(el('div','trg','트리거: '+m.triggers.map(trgText).join(' · ')));
     const keys=Object.keys(m.params||{});
     if(keys.length){
-      const p=el('div','params');
+      // 칸 — 녹화한 입력값·견본의 설정. 고친 값은 이번 실행에만, 💾 를 누르면 기억해서 예약 실행·묶음도 그 값으로 돈다
+      const p=el('div','params'),saved=m.saved_params||{};
       for(const k of keys){
-        const l=el('label','',k),i=el('input');i.type='text';i.value=(paramVals[m.id]||{})[k]??m.params[k];
+        const l=el('label','',k),i=el('input');i.type='text';i.value=(paramVals[m.id]||{})[k]??saved[k]??m.params[k];
+        if(k in saved)l.classList.add('saved');
         i.oninput=()=>{(paramVals[m.id]=paramVals[m.id]||{})[k]=i.value};l.append(i);p.append(l);
       }
-      c.append(p);
+      const sv=el('button','','💾');sv.title='지금 칸의 값을 기억합니다 — 예약 실행·묶음도 이 값으로 돌아요 (기본값과 같은 칸은 빼고)';
+      sv.onclick=async()=>{const vals={};for(const k of keys)vals[k]=(paramVals[m.id]||{})[k]??saved[k]??m.params[k];
+        try{const r=await api('/api/params',{id:m.id,params:vals});delete paramVals[m.id];toast(Object.keys(r.saved||{}).length?m.name+' — 값을 기억했습니다':m.name+' — 모두 기본값으로 돌렸습니다')}catch(e){toast(e.message)}};
+      p.append(sv);c.append(p);
     }
     const act=el('div','row');
     if(m.running){const b=el('button','bad','중지');b.onclick=()=>api('/api/stop',{run:m.running}).catch(e=>toast(e.message));act.append(b)}
@@ -436,7 +470,7 @@ function drawRuns(){
   for(const r of runs){
     if(!showRoutine&&routine(r))continue;
     const d=el('div','run'+(r.id===sel?' sel':'')+(seenRuns.has(r.id)?'':' new'));seenRuns.add(r.id);
-    d.append(el('span','t',hm(r.started)),el('span','grow',r.name),el('span','t',r.trigger+(r.detail?' · '+r.detail:'')),chip(r.status));
+    d.append(el('span','t',hm(r.started)),el('span','grow',(r.shot?'📸 ':'')+r.name),el('span','t',r.trigger+(r.detail?' · '+r.detail:'')),chip(r.status));
     d.onclick=()=>select(r.id);box.append(d);
   }
 }
@@ -444,8 +478,16 @@ async function select(id){
   sel=id;drawRuns();
   const r=await api('/api/run?id='+id).catch(()=>null);if(!r||sel!==id)return;
   $('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
-  showFix(r);
+  showFix(r);showShot(r);
   const pre=$('#log');pre.replaceChildren();r.lines.forEach(l=>addLine(l,false));pre.scrollTop=pre.scrollHeight;
+}
+// 📸 실패한 순간 화면 — 실패하면 runner 가 data.local\failshots 에 남긴다. 누르면 새 탭에 크게
+function showShot(r){
+  const b=$('#shotBox');if(!r.shot){b.hidden=true;b.replaceChildren();return}
+  if(b.dataset.shot===r.shot&&!b.hidden)return;
+  const url='/api/failshot?file='+encodeURIComponent(r.shot),a=el('a','',' 📸 실패한 순간 화면 ('+r.shot+')');a.href=url;a.target='_blank';
+  const img=el('img');img.src=url;img.alt='실패한 순간 화면';img.onclick=()=>window.open(url,'_blank');
+  b.dataset.shot=r.shot;b.replaceChildren(a,img);b.hidden=false;
 }
 function addLine(text,animate){const s=el('div',animate?'ln':'',text||' ');$('#log').append(s)}
 
@@ -491,7 +533,7 @@ function reactToRun(r){PetMood.react(flash,r)}
 function upsertRun(r){
   if(r.tool){toolRuns.set(r.id,r)}else{const i=runs.findIndex(x=>x.id===r.id);if(i>=0)runs[i]=r;else runs.unshift(r);runs=runs.slice(0,100)}
   reactToRun(r);drawRuns();
-  if(r.id===sel){$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);showFix(r)}
+  if(r.id===sel){$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);showFix(r);showShot(r)}
   if(!r.tool)loadMacros();else updatePets();
 }
 // 🩹 고쳐 달라기 — 실패한 내 자동화(local/…)에만. 녹화한 자동화가 사이트 변경으로 깨지면 로그째 Claude 에게 넘긴다.
@@ -522,6 +564,44 @@ function connect(){
 const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
 $('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 자동화 폴더에서 편집하세요');loadMacros()});
 $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
+/* 📚 자동화 갤러리 — 견본(gallery\*.py)을 「내 자동화로 복사」 한 번에 macros.local 로(꺼진 채, 이름이 겹치면 _2) */
+async function loadGallery(){
+  let items=[];try{items=await api('/api/gallery')}catch(e){return}
+  const box=$('#galList');box.replaceChildren();
+  if(!items.length){box.append(el('div','mk-note','견본이 없습니다'));return}
+  for(const g of items){
+    const c=el('div','gal-card'),h=el('b','',(g.icon?g.icon+' ':'')+g.name);c.append(h);
+    if(g.desc)c.append(el('div','desc',g.desc));
+    if(g.steps.length){const ol=el('ol');g.steps.forEach(s=>ol.append(el('li','',s)));c.append(ol)}
+    const need=[];if(Object.keys(g.params).length)need.push('채울 칸: '+Object.keys(g.params).join(' · '));
+    if(g.secrets.length)need.push('🔒 비밀값: '+g.secrets.join(' · '));
+    if(g.triggers.length)need.push('⏰ '+g.triggers.map(trgText).join(' · ')+' (켜야 돎)');
+    if(need.length)c.append(el('div','gal-need',need.join('  /  ')));
+    const b=el('button','pri','내 자동화로 복사');
+    b.onclick=guard(async()=>{const r=await api('/api/gallery/copy',{file:g.file});
+      toast('복사했어요 ('+r.id+') — 🏠 허브 카드에서 칸을 채우고 💾 → 🧪 시험'+(g.secrets.length?' · secrets.local.json 에 '+g.secrets.join(', '):''));
+      if(g.hint)setTimeout(()=>toast('💡 '+g.hint),3600);loadMacros()});
+    c.append(b);box.append(c);
+  }
+}
+$('#galBox').addEventListener('toggle',()=>{if($('#galBox').open)loadGallery()});
+/* 🔗 묶어 돌리기 — 고른 순서대로 단계를 쌓아 묶음 파일(kind chain)을 만든다 */
+let chainSteps=[];
+function drawChain(){
+  const pick=$('#chainPick'),cur=pick.value;pick.replaceChildren(new Option('— 넣을 자동화 고르기 —',''));
+  for(const m of macros.filter(m=>!m.service&&m.kind!=='chain'))pick.append(new Option(m.name+(m.local?'':' (예제)'),m.id));
+  pick.value=cur;
+  const ol=$('#chainSteps');ol.replaceChildren();
+  chainSteps.forEach((id,i)=>{const m=macros.find(x=>x.id===id),li=el('li','',m?m.name:id);
+    const up=el('button','','↑');up.disabled=!i;up.onclick=()=>{[chainSteps[i-1],chainSteps[i]]=[chainSteps[i],chainSteps[i-1]];drawChain()};
+    const x=el('button','','✕');x.onclick=()=>{chainSteps.splice(i,1);drawChain()};li.append(up,x);ol.append(li)});
+  if(!chainSteps.length)ol.append(el('li','mk-note','아직 비었어요 — 위에서 고르고 ＋ 넣기 (둘 이상)'));
+}
+$('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)drawChain()});
+$('#chainAdd').onclick=()=>{const v=$('#chainPick').value;if(!v)return toast('넣을 자동화를 고르세요');chainSteps.push(v);drawChain()};
+$('#chainBtn').onclick=guard(async()=>{
+  const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value});
+  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';drawChain();toast('묶음을 만들었어요 ('+r.id+') — 🏠 허브 목록에서 🧪 시험해 보세요');loadMacros()});
 // 말로 부탁하기 — 대화가 켜져 있으면 허브가 바로 보낸다(/api/ask → 8620 /api/send, 쓰기 지시). 보낸 뒤 대화를 열어 진행을 보여 준다.
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';

@@ -16,6 +16,12 @@ ctx.dry_run 이 참이라 ctx.for_real('메일 보내기') 로 감싼 되돌릴 
   ctx      (기본) 모듈에 run(ctx) 가 있다. ctx 로 브라우저·창·비밀값·로그를 쓴다.
   script   녹화기(playwright codegen)가 만든 단독 스크립트. 그냥 실행한다.
 
+  chain    🔗 묶음 — META["chain"] 의 자동화 id 를 순서대로 하나씩 이 파일(runner.py)로 돌린다(run_chain).
+           앞이 실패하면 멈추고, META["keep_going"] 이 참이면 실패해도 다음으로. 하나라도 실패하면 묶음도 실패.
+
+실패한 순간 화면(📸): 자동화가 오류로 끝나면 웹은 열려 있던 Chrome 화면을, 데스크톱(target desktop)은 전체 화면을
+data.local\\failshots\\<자동화>-<시각>.png 로 남기고 '@@failshot <경로>' 줄을 낸다 — 허브가 실행 기록·실패 알림 메일에 붙인다.
+
 일의 종류(META["motion"]) — 펫 고양이가 일하는 동안 보일 모습. 없으면 target(web·desktop)을 따른다.
   web 웹 페이지 · desktop 창 조작 · write 입력 · mail 메일 · search 찾기
   실행 중에 ctx.motion("mail") 로 바꿀 수 있다. 상시 자동화는 평소엔 지켜보기만 하다가
@@ -64,6 +70,7 @@ class Ctx:
         self.trigger = raw.get('trigger') or {'kind': 'manual'}
         self.meta = meta
         self.dry_run = bool(raw.get('dry_run'))   # 시험 실행(--test) — for_real() 로 감싼 동작을 건너뛴다
+        self.chain_params = raw.get('chain_params') or {}   # 🔗 묶음 — 허브 카드에서 기억한 단계별 입력값 {자동화 id: {...}}
         self._pw = None
         self._browser_ctx = None
 
@@ -128,6 +135,12 @@ class Ctx:
             raise RuntimeError('secrets.local.json 이 없습니다 (secrets.example.json 참고)')
         except KeyError:
             raise RuntimeError("secrets.local.json 에 '%s' 가 없습니다" % key)
+
+    def param(self, key, default=''):
+        """입력값(META params — 허브 카드의 칸) 하나를 글자로. 녹화로 만든 자동화의 입력값은 param("칸 이름") 으로 바뀌어 있어
+        카드에서 값만 바꿔 돌릴 수 있다(비밀번호는 계속 secret)."""
+        v = self.params.get(key, default)
+        return '' if v is None else str(v)
 
     # --- 웹 (Playwright)
     @property
@@ -235,6 +248,213 @@ def read_meta(path):
 
 TEST_TIMEOUT_MAX = 600
 
+# ---------------------------------------------------------------- 📸 실패한 순간 화면
+
+FAILSHOT_DIR = os.path.join(HERE, 'data.local', 'failshots')
+FAILSHOT_KEEP = 60                       # 오래된 것부터 지운다 — 10분마다 실패하는 자동화가 폴더를 채우지 않게
+FAILSHOT_PREFIX = '@@failshot '
+
+
+def failshot_path(macro, now=None):
+    safe = re.sub(r'[^\w\-]+', '_', macro or 'default')
+    os.makedirs(FAILSHOT_DIR, exist_ok=True)
+    return os.path.join(FAILSHOT_DIR, '%s-%s.png' % (safe, time.strftime('%Y%m%d-%H%M%S', time.localtime(now))))
+
+
+def prune_failshots(keep=FAILSHOT_KEEP, folder=None):
+    folder = folder or FAILSHOT_DIR
+    try:
+        files = sorted((os.path.join(folder, n) for n in os.listdir(folder) if n.endswith('.png')), key=os.path.getmtime)
+    except OSError:
+        return
+    for p in files[:-keep] if keep else files:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+def grab_screen(path):
+    """전체 화면(모니터 모두)을 png 로 — pillow 가 없으면 예외(부르는 쪽이 건너뛴다)."""
+    from PIL import ImageGrab
+    ImageGrab.grab(all_screens=True).save(path)
+
+
+def _pages_of(objs):
+    """Browser·BrowserContext·Page 섞인 목록 → 열린 Page 들(나중 것이 뒤에)."""
+    out = []
+    for o in objs:
+        try:
+            if hasattr(o, 'screenshot'):
+                out.append(o)
+            elif hasattr(o, 'contexts'):
+                for c in o.contexts:
+                    out.extend(c.pages)
+            elif hasattr(o, 'pages'):
+                out.extend(o.pages)
+        except Exception:
+            continue
+    return out
+
+
+def capture_failure(macro, meta, browsers=(), grab=None):
+    """실패한 순간 화면을 남긴다 — 열린 웹 페이지가 있으면 그 화면(마지막 탭부터), 없고 데스크톱 자동화면 전체 화면.
+    남긴 경로(없으면 None). 사람이 읽는 줄과 허브가 읽는 '@@failshot' 줄을 낸다. 캡처 실패는 조용히 넘긴다."""
+    path = failshot_path(macro)
+    done = False
+    for page in reversed(_pages_of(browsers)):
+        try:
+            page.screenshot(path=path, timeout=5000)
+            done = True
+            break
+        except Exception:
+            continue
+    if not done and (meta.get('target') == 'desktop' or meta.get('failshot') == 'screen'):
+        try:
+            (grab or grab_screen)(path)
+            done = os.path.isfile(path)
+        except Exception:
+            done = False
+    if not done:
+        return None
+    prune_failshots()
+    say('📸 실패한 순간 화면을 남겼습니다: %s' % os.path.relpath(path, HERE))
+    say(FAILSHOT_PREFIX + path)
+    return path
+
+
+_SHOT = {'path': None}
+
+
+def track_playwright(macro, meta, seen):
+    """녹화 스크립트(kind script)는 브라우저를 스스로 열고, 오류가 나면 with sync_playwright() 를 빠져나가며 닫아 버린다 —
+    닫히기 직전에 화면을 찍으려고 sync_playwright 를 감싼다. 연 브라우저는 seen 에 모은다. playwright 가 없으면 아무것도 안 한다."""
+    try:
+        import playwright.sync_api as sa
+    except Exception:
+        return
+    orig = sa.sync_playwright
+
+    def watch(pw):
+        for name in ('chromium', 'firefox', 'webkit'):
+            bt = getattr(pw, name, None)
+            for fn in ('launch', 'launch_persistent_context', 'connect_over_cdp'):
+                real = getattr(bt, fn, None)
+                if real is None:
+                    continue
+
+                def wrap(*a, _real=real, **k):
+                    obj = _real(*a, **k)
+                    seen.append(obj)
+                    return obj
+                try:
+                    setattr(bt, fn, wrap)
+                except Exception:
+                    pass
+        return pw
+
+    class _Watched:
+        def __init__(self):
+            self._cm = orig()
+
+        def __enter__(self):
+            return watch(self._cm.__enter__())
+
+        def __exit__(self, et, ev, tb):
+            if et is not None and not issubclass(et, (SystemExit, KeyboardInterrupt)) and not _SHOT['path']:
+                _SHOT['path'] = capture_failure(macro, meta, seen)
+            return self._cm.__exit__(et, ev, tb)
+
+        def start(self):
+            return watch(self._cm.start())
+
+    sa.sync_playwright = _Watched
+
+
+# ---------------------------------------------------------------- 🔗 묶음
+
+CHAIN_ID = re.compile(r'^(local/)?[\w\-]+$')
+
+
+def macro_path(mid):
+    """자동화 id → 파일 경로(내 자동화면 macros.local, 아니면 macros). 이상한 id 면 None."""
+    if not isinstance(mid, str) or not CHAIN_ID.match(mid):
+        return None
+    if mid.startswith('local/'):
+        return os.path.join(HERE, 'macros.local', mid[len('local/'):] + '.py')
+    return os.path.join(HERE, 'macros', mid + '.py')
+
+
+def _kill_tree(proc):
+    try:
+        import subprocess
+        subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True, creationflags=0x08000000)
+    except OSError:
+        proc.kill()
+
+
+def run_chain(ctx, meta, popen=None):
+    """🔗 묶음 — META chain 의 자동화를 하나씩 runner.py 자식으로 돌린다. 성공(실패 없음)이면 True.
+    단계 로그는 들여 써서 그대로 흘리고, '@@' 줄(알림·펫·📸)은 허브가 읽게 그대로 둔다.
+    시험 실행이면 단계도 시험으로 — 키트 기본 자동화(for_real 로 감싸지 않음)는 건너뛴다."""
+    import subprocess
+    popen = popen or subprocess.Popen
+    steps = list(meta.get('chain') or [])
+    keep = bool(meta.get('keep_going'))
+    if not steps:
+        raise RuntimeError('묶음에 자동화가 없습니다 (META chain)')
+    ok_n = fail_n = skip_n = 0
+    total = len(steps)
+    for i, step in enumerate(steps, 1):
+        sid = step if isinstance(step, str) else (step or {}).get('id')
+        over = {} if isinstance(step, str) else dict((step or {}).get('params') or {})
+        path = macro_path(sid)
+        smeta = read_meta(path) if path and os.path.isfile(path) else None
+        name = (smeta or {}).get('name') or sid
+        why = ('없는 자동화입니다' if smeta is None else
+               '묶음 안에 묶음은 넣을 수 없습니다' if smeta.get('kind') == 'chain' else
+               '상시 자동화는 묶을 수 없습니다' if smeta.get('service') else None)
+        if why:
+            say('✖ [%d/%d] %s — %s' % (i, total, name, why))
+            fail_n += 1
+        elif ctx.dry_run and not str(sid).startswith('local/'):
+            say('🧪 시험이라 건너뜀: [%d/%d] 기본 자동화 「%s」 (진짜로 보내는 동작을 막아 두지 않았습니다)' % (i, total, name))
+            skip_n += 1
+            continue
+        else:
+            say('🔗 [%d/%d] %s 시작' % (i, total, name))
+            params = dict(smeta.get('params') or {})
+            params.update({k: v for k, v in (ctx.chain_params.get(sid) or {}).items() if k in params})
+            params.update(over)
+            sub = {'macro': sid, 'params': params, 'trigger': dict(ctx.trigger, chain=ctx.macro), 'dry_run': ctx.dry_run}
+            env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', PYTHONUNBUFFERED='1',
+                       MACROHUB_CTX=json.dumps(sub, ensure_ascii=False))
+            limit = int(smeta.get('timeout') or 600)
+            proc = popen([sys.executable, '-u', os.path.abspath(__file__), path], cwd=HERE, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            import threading
+            timer = threading.Timer(limit, _kill_tree, args=(proc,))
+            timer.daemon = True
+            timer.start()
+            for raw in iter(proc.stdout.readline, b''):
+                line = raw.decode('utf-8', 'replace').rstrip('\r\n')
+                say(line if line.startswith('@@') else '   ' + line)
+            code = proc.wait()
+            proc.stdout.close()
+            late = not timer.is_alive() and code != 0
+            timer.cancel()
+            if code == 0:
+                say('✔ [%d/%d] %s 성공' % (i, total, name))
+                ok_n += 1
+                continue
+            say('✖ [%d/%d] %s %s' % (i, total, name, '시간 초과 (%d초)' % limit if late else '실패 (종료 코드 %s)' % code))
+            fail_n += 1
+        if not keep and i < total:
+            say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
+            break
+    say('🔗 묶음 결과: %d개 중 성공 %d · 실패 %d%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else ''))
+    return fail_n == 0
+
 
 def _value(text):
     """이름=값 의 값 — 숫자·true/false·JSON 이면 그 값, 아니면 글자 그대로."""
@@ -282,17 +502,28 @@ def main():
         t.start()
     try:
         say('▶ %s 시작 (%s)' % (meta.get('name') or os.path.basename(path), ctx.trigger.get('kind', 'manual')))
-        # 녹화 스크립트(kind script)는 ctx 가 없다 — 녹화 저장 때 비밀번호를 secret("키") 로 바꿔 두니 그 함수를 넣어 준다
-        ns = runpy.run_path(path, init_globals={'secret': ctx.secret}, run_name='macro')
-        if meta.get('kind', 'ctx') == 'ctx':
-            if 'run' not in ns:
-                raise RuntimeError('자동화에 run(ctx) 함수가 없습니다')
-            ns['run'](ctx)
+        kind = meta.get('kind', 'ctx')
+        if kind == 'chain':
+            if not run_chain(ctx, meta):
+                raise SystemExit(1)
+        else:
+            if kind == 'script':
+                track_playwright(ctx.macro, meta, [])
+            # 녹화 스크립트(kind script)는 ctx 가 없다 — 녹화 저장 때 비밀번호를 secret("키"), 입력값을 param("칸") 으로 바꿔 두니 그 함수를 넣어 준다
+            ns = runpy.run_path(path, init_globals={'secret': ctx.secret, 'param': ctx.param}, run_name='macro')
+            if kind == 'ctx':
+                if 'run' not in ns:
+                    raise RuntimeError('자동화에 run(ctx) 함수가 없습니다')
+                ns['run'](ctx)
         say('■ 끝 (%.1f초)' % (time.time() - started))
     except SystemExit as e:
         code = e.code if isinstance(e.code, int) else 1
+        if code and meta.get('kind') == 'chain':
+            say('✖ 실패 (%.1f초)' % (time.time() - started))
     except BaseException:
         say(traceback.format_exc().rstrip())
+        if not _SHOT['path']:
+            _SHOT['path'] = capture_failure(ctx.macro, meta, [ctx._browser_ctx] if ctx._browser_ctx else [])
         say('✖ 실패 (%.1f초)' % (time.time() - started))
         code = 1
     finally:

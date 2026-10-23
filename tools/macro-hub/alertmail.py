@@ -83,6 +83,8 @@ def compose(rec, settings):
         '끝       %s' % _clock(rec.get('ended')),
         '종료 코드 %s' % rec.get('code'),
     ]
+    if shot_of(rec):
+        lines += ['', '📸 실패한 순간 화면을 붙였습니다 — %s' % os.path.basename(shot_of(rec))]
     tail = [str(x) for x in (rec.get('tail') or [])][-TAIL_LINES:]
     if tail:
         lines += ['', '── 마지막 로그 %d줄 ──' % len(tail)] + tail
@@ -159,9 +161,22 @@ def ask_html(rec, body, mg=None):
     return compose_html(body, ask_mailto(cfg['user'], subject, text, mg.word_for_reply(cfg, sender)))
 
 
+SHOT_MAX = 8 * 1024 * 1024      # 이보다 큰 화면 파일은 붙이지 않는다(메일 서버가 거절한다)
+
+
+def shot_of(rec):
+    """실행 기록의 📸 실패 화면 파일(있고 너무 크지 않을 때만) — 없으면 None."""
+    p = (rec or {}).get('shot_file')
+    try:
+        return p if p and os.path.isfile(p) and os.path.getsize(p) <= SHOT_MAX else None
+    except OSError:
+        return None
+
+
 def deliver(subject, body, rec=None):
-    """알림 메일을 보낸다(kit.alert — mail.alert_via 에 따라 발송 또는 INBOX 에 넣기). 실패하면 예외."""
-    kit.alert(subject, body, html=ask_html(rec, body) if rec else None)
+    """알림 메일을 보낸다(kit.alert — mail.alert_via 에 따라 발송 또는 INBOX 에 넣기). 📸 실패 화면이 있으면 첨부. 실패하면 예외."""
+    shot = shot_of(rec)
+    kit.alert(subject, body, html=ask_html(rec, body) if rec else None, attachments=[shot] if shot else None)
 
 
 _unready_logged = False
