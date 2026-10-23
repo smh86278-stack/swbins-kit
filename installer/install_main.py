@@ -8,7 +8,8 @@
 - 관리자 권한이 필요 없다 — 사용자 폴더(%LOCALAPPDATA%\\WorkKit)에 깔고 HKCU 에만 등록한다.
 - 키트 파일과 내장 파이썬(runtime\\)이 이 exe 안의 payload.zip 에 들어 있다 — 받는 PC 에 파이썬·인터넷이 없어도 된다.
 - 다시 설치(업데이트)해도 설정·기록은 그대로 둔다: config.local.json, 허브의 state/secrets/runs, data.local, macros.local.
-  zip 에 든 파일만 덮어쓰고, 내장 파이썬(runtime\\)만 통째로 갈아 끼운다.
+  zip 에 든 파일만 덮어쓰고, 내장 파이썬(runtime\\)만 통째로 갈아 끼운다. 지난 설치에 있었는데 새 버전에서 빠진 키트 파일은
+  지운다(install.json 'files' 로 기억 — 그 목록에 없던 파일·사용자 파일은 손대지 않는다).
 - 제거는 '앱 및 기능' 또는 시작 메뉴 「업무 자동화 키트 제거」(uninstall.py).
 """
 import json
@@ -57,6 +58,10 @@ KEEP = ['config.local.json', 'tools/macro-hub/state.local.json', 'tools/macro-hu
         'tools/macro-hub/shell/window.local.json', 'inbox']
 
 
+# 파일 목록을 기억하지 않던 옛 설치(0.3.1 까지)에서 업데이트할 때 지울, 그 뒤 키트에서 빠진 파일
+LEGACY_REMOVED = ['send-file.py']
+
+
 def payload_version():
     try:
         with zipfile.ZipFile(PAYLOAD) as z:
@@ -95,6 +100,7 @@ def restore_backup(target):
 
 
 def extract(target, progress):
+    """payload.zip 을 푼다. 돌려주는 값: 키트 파일 목록(runtime\\ 빼고, '/' 구분) — install.json 'files' 로 기억한다."""
     rt = os.path.join(target, 'runtime')
     if os.path.isdir(rt):
         shutil.rmtree(rt, ignore_errors=True)
@@ -104,6 +110,55 @@ def extract(target, progress):
             z.extract(name, target)
             if i % 200 == 0 or i == len(names):
                 progress(i / len(names))
+    return kit_files(names)
+
+
+def kit_files(names):
+    return sorted(n for n in names if not n.endswith('/') and not n.startswith('runtime/'))
+
+
+def installed_files(target):
+    """지난 설치가 기억한 키트 파일 목록 — 없으면(처음 설치·0.3.1 까지의 설치) None."""
+    try:
+        with open(os.path.join(target, 'install.json'), encoding='utf-8') as f:
+            files = json.load(f).get('files')
+    except (OSError, ValueError, AttributeError):
+        return None
+    return files if isinstance(files, list) else None
+
+
+def _kept(rel):
+    return any(rel == k or rel.startswith(k + '/') for k in KEEP) or rel == 'install.json' or rel.startswith('runtime/')
+
+
+def remove_stale(target, old, new):
+    """지난 버전에만 있던 키트 파일을 지운다(사용자 파일·설정·기록은 KEEP 으로 지킴). 돌려주는 값: 지운 상대 경로 목록.
+    old 가 None(목록을 기억 못 하던 옛 설치)이면 아무것도 지우지 않는다 — 무엇이 키트 파일이었는지 모르므로."""
+    if not old:
+        return []
+    root = os.path.abspath(target)
+    gone, dirs = [], set()
+    for rel in sorted(set(old) - set(new)):
+        rel = str(rel).replace('\\', '/')
+        if _kept(rel) or rel.startswith('/') or '..' in rel.split('/') or ':' in rel:
+            continue
+        path = os.path.abspath(os.path.join(root, rel))
+        if not path.startswith(root + os.sep) or not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            continue
+        gone.append(rel)
+        dirs.add(os.path.dirname(path))
+    for d in sorted(dirs, key=len, reverse=True):         # 비게 된 폴더만 위로 올라가며 지운다
+        while d.startswith(root + os.sep):
+            try:
+                os.rmdir(d)                               # 비어 있지 않으면 OSError — 거기서 멈춘다
+            except OSError:
+                break
+            d = os.path.dirname(d)
+    return gone
 
 
 def _ps_shortcut(path, target, args, workdir, icon, desc):
@@ -134,7 +189,7 @@ def make_shortcuts(target, desktop):
         raise RuntimeError('바로가기를 만들지 못했습니다: %s' % r.stderr.decode('cp949', 'replace')[-300:])
 
 
-def register(target, autostart, version, desktop=True):
+def register(target, autostart, version, desktop=True, files=None):
     import winreg
     pyw = os.path.join(target, 'runtime', 'pythonw.exe')
     launcher = os.path.join(target, 'tools', 'macro-hub', 'launcher.py')
@@ -165,7 +220,7 @@ def register(target, autostart, version, desktop=True):
         winreg.SetValueEx(k, 'NoRepair', 0, winreg.REG_DWORD, 1)
     with open(os.path.join(target, 'install.json'), 'w', encoding='utf-8') as f:
         json.dump({'version': version, 'installed': time.strftime('%Y-%m-%d %H:%M:%S'), 'desktop': bool(desktop),
-                   'autostart': bool(autostart)}, f, ensure_ascii=False, indent=1)
+                   'autostart': bool(autostart), 'files': files or []}, f, ensure_ascii=False, indent=1)
 
 
 def check_target(target):
@@ -185,17 +240,21 @@ def install(target, desktop=True, autostart=True, progress=lambda f: None, say=l
     fresh = not os.path.isfile(os.path.join(target, 'install.json'))
     version = payload_version()
     os.makedirs(target, exist_ok=True)
+    old = None if fresh else (installed_files(target) or LEGACY_REMOVED)
     if not fresh:
         say('실행 중인 키트를 끄는 중…')
         stop_running(target)
     say('파일을 푸는 중…')
-    extract(target, progress)
+    files = extract(target, progress)
+    gone = remove_stale(target, old, files)
+    if gone:
+        say('예전 버전에만 있던 파일 %d개를 지웠습니다' % len(gone))
     if restore_backup(target):
         say('예전 설정을 되돌렸습니다')
     say('바로가기 만드는 중…')
     make_shortcuts(target, desktop)
     say('등록하는 중…')
-    register(target, autostart, version, desktop)
+    register(target, autostart, version, desktop, files)
     return target, fresh
 
 
