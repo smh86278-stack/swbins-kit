@@ -69,6 +69,21 @@ tools/macro-hub/web/skins/*/
 !tools/macro-hub/web/skins/plush/
 # ↑ 기본 모습(인형, AI(SDXL)로 직접 만든 그림 — 남의 그림이 아니라 저장소에 담는다. 조건은 plush\LICENSE.txt)
 
+# 시험·도구 부산물
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+# 나만의 앱 검사 스크린샷(appcheck.py — 앱 폴더의 .check/)
+.check/
+
+# ── OS ──────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+
 # ── IDE ─────────────────────────────────────────────────────────
 .idea/
 .vscode/

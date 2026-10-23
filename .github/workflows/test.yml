@@ -1,0 +1,38 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (Python ${{ matrix.python }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    env:
+      # 실제 브라우저(Playwright)가 필요한 시험은 CI 에서 건너뛴다 — tests/test_apphost.py · test_apppack.py
+      KIT_BROWSER_TESTS: '0'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # 시험은 표준 라이브러리만 쓴다 — 허브 .venv 패키지(playwright·pywinauto·pystray·pillow)는 설치하지 않는다
+      - name: Python version
+        run: python --version
+
+      - name: verify (py_compile + unittest)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\verify.ps1

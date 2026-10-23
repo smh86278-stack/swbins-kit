@@ -18,8 +18,11 @@ Get-ChildItem -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyConti
 Write-Host ("  checked {0} files" -f $py.Count)
 
 Write-Host '== 2. python unittest'
-& python -X utf8 -m unittest discover -s tests 2>&1 | Select-Object -Last 4
-if ($LASTEXITCODE -ne 0) { $fail++ }
+# Keep the summary readable: drop interpreter ResourceWarning noise; on failure print the full report (CI needs it).
+$ut = @(& python -X utf8 -m unittest discover -s tests 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -notmatch '^sys:1: ResourceWarning' })
+$utExit = $LASTEXITCODE
+if ($utExit -ne 0) { $ut | ForEach-Object { Write-Host $_ }; $fail++ }
+else { $ut | Where-Object { $_ -match '^(Ran |OK)' } | ForEach-Object { Write-Host "  $_" } }
 Get-ChildItem -Path tests -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($fail -eq 0) { Write-Host "`nALL PASSED" -ForegroundColor Green; exit 0 }
