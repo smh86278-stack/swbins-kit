@@ -294,14 +294,46 @@ class MacroPath(unittest.TestCase):
             self.assertIsNone(runner.macro_path(bad), bad)
 
 
-class FakePage:
-    def __init__(self, fail=False):
-        self.fail = fail
-        self.shots = []
+class FakeCDP:
+    def __init__(self, page):
+        self.page = page
 
-    def screenshot(self, path, timeout=None):
-        if self.fail:
-            raise RuntimeError('closed')
+    def send(self, method, params=None):
+        if self.page.cdp_fail:
+            raise RuntimeError('cdp gone')
+        self.page.cdp_calls.append(method)
+        import base64
+        return {'data': base64.b64encode(b'\x89PNG cdp').decode()}
+
+    def detach(self):
+        pass
+
+
+class FakePageCtx:
+    def __init__(self, page):
+        self.page = page
+
+    def new_cdp_session(self, page):
+        return FakeCDP(self.page)
+
+
+class FakePage:
+    """fail=True 면 screenshot 이 늘 실패, fail_times=n 이면 처음 n 번만 실패(chrome-error 페이지의 글꼴 대기 시간 초과 흉내)."""
+    url = 'chrome-error://chromewebdata/'
+
+    def __init__(self, fail=False, fail_times=0, cdp_fail=None):
+        self.fail = fail
+        self.fail_times = fail_times
+        self.cdp_fail = fail if cdp_fail is None else cdp_fail
+        self.shots = []
+        self.calls = []
+        self.cdp_calls = []
+        self.context = FakePageCtx(self)
+
+    def screenshot(self, path, **kw):
+        self.calls.append(kw)
+        if self.fail or len(self.calls) <= self.fail_times:
+            raise RuntimeError('Timeout 5000ms exceeded.\nwaiting for fonts to load...')
         with open(path, 'wb') as f:
             f.write(b'\x89PNG fake')
         self.shots.append(path)
@@ -349,10 +381,41 @@ class FailShot(unittest.TestCase):
         self.assertTrue(path and os.path.isfile(path))
         self.assertEqual(self.cap('w', {'target': 'web'}, [], grab=grab), (None, ''))
 
-    def test_grab_failure_is_quiet(self):
+    def test_grab_failure_says_why(self):
         def grab(p):
             raise OSError('no screen')
-        self.assertEqual(self.cap('d', {'target': 'desktop'}, [], grab=grab), (None, ''))
+        path, out = self.cap('d', {'target': 'desktop'}, [], grab=grab)
+        self.assertIsNone(path)
+        self.assertEqual(out.strip(), '⚠ 실패한 순간 화면을 남기지 못했습니다 — OSError: no screen')
+
+    def test_flaky_screenshot_retried_without_animations(self):
+        page = FakePage(fail_times=1)
+        with mock.patch.object(runner.time, 'sleep', lambda s: None):
+            path, out = self.cap('m', {'target': 'web'}, [FakeContext([page])])
+        self.assertEqual(page.shots, [path])
+        self.assertEqual(len(page.calls), 2)
+        self.assertEqual(page.calls[1].get('animations'), 'disabled')
+        self.assertFalse(page.calls[1].get('full_page', True))
+        self.assertIn(runner.FAILSHOT_PREFIX + path, out)
+
+    def test_screenshot_dead_falls_back_to_cdp(self):
+        page = FakePage(fail=True, cdp_fail=False)
+        with mock.patch.object(runner.time, 'sleep', lambda s: None):
+            path, out = self.cap('m', {'target': 'web'}, [FakeContext([page])])
+        self.assertTrue(path and os.path.getsize(path) > 0)
+        self.assertEqual(page.cdp_calls, ['Page.captureScreenshot'])
+        self.assertIn('📸', out)
+
+    def test_all_capture_ways_fail_logs_one_line(self):
+        page = FakePage(fail=True)
+        with mock.patch.object(runner.time, 'sleep', lambda s: None):
+            path, out = self.cap('m', {'target': 'web'}, [FakeContext([page])])
+        self.assertIsNone(path)
+        lines = out.strip().splitlines()
+        self.assertEqual(len(lines), 1, out)
+        self.assertIn('⚠ 실패한 순간 화면을 남기지 못했습니다 — RuntimeError: cdp gone', lines[0])
+        self.assertIn('chrome-error://chromewebdata/', lines[0])
+        self.assertEqual(os.listdir(self.tmp), [])                         # 빈 파일을 남기지 않는다
 
     def test_prune_keeps_newest(self):
         for i in range(5):
@@ -375,6 +438,29 @@ class FailShot(unittest.TestCase):
         self.assertEqual(run.shot, shot)
         self.assertEqual(list(run.lines), ['줄 하나', '끝'])                # '@@failshot' 줄은 로그에 안 남는다
         self.assertEqual(run.summary()['shot'], os.path.basename(shot))
+
+    def test_summary_hides_pruned_shot(self):
+        shot = os.path.join(self.tmp, 'gone-1.png')
+        open(shot, 'wb').close()
+        run = macrohub.Run('local/x', 'x', {'kind': 'schedule'})
+        run.shot = shot
+        self.assertEqual(run.summary()['shot'], 'gone-1.png')
+        os.remove(shot)                                                    # 60장 넘어 정리됨
+        self.assertIsNone(run.summary()['shot'])
+
+    def test_last_runs_drop_missing_shot(self):
+        keep = os.path.join(self.tmp, 'keep-1.png')
+        open(keep, 'wb').close()
+        f = os.path.join(self.tmp, 'runs.jsonl')
+        with open(f, 'w', encoding='utf-8') as fh:
+            for mid, shot in (('local/a', 'keep-1.png'), ('local/b', 'gone-2.png')):
+                fh.write(json.dumps({'macro': mid, 'status': 'fail', 'shot': shot,
+                                     'shot_file': os.path.join(self.tmp, shot), 'tail': []}) + '\n')
+        with mock.patch.object(macrohub, 'F_RUNS', f), mock.patch.dict(macrohub.LAST_RUN, {}, clear=True):
+            macrohub.load_last_runs()
+            self.assertEqual(macrohub.LAST_RUN['local/a']['shot'], 'keep-1.png')
+            self.assertIsNone(macrohub.LAST_RUN['local/b']['shot'])
+            self.assertNotIn('shot_file', macrohub.LAST_RUN['local/b'])
 
     def test_failshot_file_guards(self):
         name = 'ok-1.png'

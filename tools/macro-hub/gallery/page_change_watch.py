@@ -11,20 +11,28 @@ META = {
     "target": "web",
     "motion": "search",
     "headless": True,
-    "params": {"url": "https://example.com", "selector": "h1", "mail": "no"},
-    "hint": "url 과 selector(예: h1 · .notice li · #price — 모르면 「말로 부탁하기」에 페이지 주소와 함께 물어보세요)를 넣고 「자동 실행」을 켜면 30분마다 봐요",
+    "params": {"url": "https://example.com", "selector": "p", "mail": "no"},
+    "hint": "url 과 selector(예: p · h1 · .notice li · #price — 모르면 「말로 부탁하기」에 페이지 주소와 함께 물어보세요)를 넣고 「자동 실행」을 켜면 30분마다 봐요",
     "triggers": [{"type": "schedule", "every": "30m"}],
     "timeout": 120,
 }
 
 YES = ("yes", "y", "1", "true", "on", "예", "네")
+FIND_SEC = 10        # 고른 부분을 기다리는 시간(초) — 없는 selector 로 30초씩 기다리다 시간 초과 대신 바로 알아듣는 말로
 
 
 def run(ctx):
     page = ctx.page
     url = ctx.param("url")
     page.goto(url)
-    now = " ".join(page.locator(ctx.param("selector") or "body").first.inner_text().split())[:500]
+    sel = ctx.param("selector") or "body"
+    part = page.locator(sel).first
+    try:
+        part.wait_for(state="attached", timeout=FIND_SEC * 1000)
+    except Exception:
+        raise RuntimeError("페이지에서 selector '%s' 에 맞는 부분을 찾지 못했습니다 (%d초) — 페이지가 바뀌었을 수 있어요. "
+                           "selector 를 고치세요 (모르면 body)" % (sel, FIND_SEC))
+    now = " ".join(part.inner_text().split())[:500]
     ctx.log("지금:", now[:120])
     f = os.path.join(ctx.data_dir, "last.txt")
     try:

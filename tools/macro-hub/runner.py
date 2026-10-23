@@ -73,6 +73,7 @@ class Ctx:
         self.chain_params = raw.get('chain_params') or {}   # 🔗 묶음 — 허브 카드에서 기억한 단계별 입력값 {자동화 id: {...}}
         self._pw = None
         self._browser_ctx = None
+        self._profile_lock = None
 
     # --- 기본
     def log(self, *parts):
@@ -147,17 +148,25 @@ class Ctx:
     def page(self):
         """Chrome 한 창. 로그인 상태는 자동화별 프로필(profiles\\<id>)에 남는다."""
         if self._browser_ctx is None:
-            from playwright.sync_api import sync_playwright
-            self._pw = sync_playwright().start()
             safe = re.sub(r'[^\w\-]+', '_', self.macro or 'default')
             profile = os.path.join(HERE, 'profiles', safe)
             os.makedirs(profile, exist_ok=True)
+            # 같은 프로필을 두 실행이 함께 열면 Chrome 이 TargetClosedError 만 남기고 죽는다 — 먼저 잠그고, 못 잠그면 알아듣는 말로
+            self._profile_lock = lock_profile(profile, self.macro)
+            from playwright.sync_api import sync_playwright
+            self._pw = sync_playwright().start()
             headless = bool(self.meta.get('headless', False))
             # 창이 보이면 창 크기를 그대로 쓰고(no_viewport), headless 면 화면 크기를 정해 준다 —
             # headless 에 no_viewport 를 주면 화면 크기가 없어 모든 요소가 '안 보임'이 된다(wait_for_selector 가 늘 시간 초과).
             size = {'no_viewport': True} if not headless else {'viewport': {'width': 1280, 'height': 900}}
-            self._browser_ctx = self._pw.chromium.launch_persistent_context(
-                profile, channel=self.meta.get('channel', 'chrome'), headless=headless, **size)
+            try:
+                self._browser_ctx = self._pw.chromium.launch_persistent_context(
+                    profile, channel=self.meta.get('channel', 'chrome'), headless=headless, **size)
+            except Exception as e:
+                if profile_busy_error(e):
+                    raise AlreadyRunning('브라우저 프로필(profiles\\%s)이 다른 Chrome 창에서 이미 열려 있어 시작하지 못했습니다 — '
+                                         '그 창(로그인 창·다른 실행)을 닫고 다시 돌리세요' % safe) from e
+                raise
             self._browser_ctx.set_default_timeout(int(self.meta.get('web_timeout', 30)) * 1000)
         pages = self._browser_ctx.pages
         return pages[0] if pages else self._browser_ctx.new_page()
@@ -233,6 +242,43 @@ class Ctx:
                 self._pw.stop()
         except Exception:
             pass
+        if self._profile_lock:
+            try:
+                self._profile_lock.close()               # 닫으면 잠금이 풀린다
+            except OSError:
+                pass
+            self._profile_lock = None
+
+
+class AlreadyRunning(RuntimeError):
+    """같은 자동화(같은 브라우저 프로필)가 이미 다른 곳에서 돌고 있다 — 긴 오류 대신 이 말 한 줄만 보인다."""
+
+
+PROFILE_LOCK = '.workkit-run.lock'
+
+
+def lock_profile(profile, macro=''):
+    """자동화별 브라우저 프로필을 이 실행만 쓰게 잠근다(파일 잠금 — 프로세스가 끝나면 OS 가 풀어 준다).
+    허브 실행·묶음 단계·시험 실행(--test)이 같은 자동화를 겹쳐 돌리면 뒤의 것이 AlreadyRunning 으로 멈춘다."""
+    fh = open(os.path.join(profile, PROFILE_LOCK), 'a+')
+    try:
+        if os.name == 'nt':
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        raise AlreadyRunning('이미 실행 중입니다 — 같은 자동화(%s)가 다른 곳(묶음 단계·시험 실행·다른 실행)에서 '
+                             '브라우저를 쓰고 있어요. 그 실행이 끝난 뒤 다시 돌리세요' % (macro or os.path.basename(profile)))
+    return fh
+
+
+def profile_busy_error(e):
+    """Chrome 이 프로필 잠금 때문에 바로 닫혔을 때 Playwright 가 내는 오류인가."""
+    return 'TargetClosed' in type(e).__name__ or 'has been closed' in str(e)
 
 
 def read_meta(path):
@@ -297,25 +343,82 @@ def _pages_of(objs):
     return out
 
 
+def _first_line(e):
+    text = str(e).strip().splitlines()
+    return '%s: %s' % (type(e).__name__, text[0][:160] if text else '')
+
+
+def _saved(path):
+    return os.path.isfile(path) and os.path.getsize(path) > 0
+
+
+def shot_page(page, path, pause=0.3):
+    """한 페이지를 png 로. 성공하면 None, 끝내 못 찍으면 마지막 오류.
+    page.screenshot 은 글꼴·애니메이션이 끝나기를 기다리다가 DNS 오류 같은 chrome-error 페이지에서 가끔 시간 초과로 실패한다
+    (2026-10-23 데모 녹화 — 3번에 1번꼴). 그래서 ① 그대로 ② 애니메이션 끄고 보이는 부분만 한 번 더 ③ 기다리지 않는 CDP 캡처."""
+    if getattr(page, 'is_closed', None) and page.is_closed():
+        return RuntimeError('페이지가 이미 닫혔습니다')
+    err = None
+    for kw in ({'timeout': 5000}, {'timeout': 5000, 'animations': 'disabled', 'caret': 'hide', 'full_page': False}):
+        try:
+            page.screenshot(path=path, **kw)
+            if _saved(path):
+                return None
+        except Exception as e:
+            err = e
+            time.sleep(pause)
+    try:
+        import base64
+        cdp = page.context.new_cdp_session(page)
+        try:
+            data = cdp.send('Page.captureScreenshot', {'format': 'png'})['data']
+        finally:
+            try:
+                cdp.detach()
+            except Exception:
+                pass
+        with open(path, 'wb') as f:
+            f.write(base64.b64decode(data))
+        if _saved(path):
+            return None
+    except Exception as e:
+        err = e
+    return err or RuntimeError('빈 파일')
+
+
 def capture_failure(macro, meta, browsers=(), grab=None):
     """실패한 순간 화면을 남긴다 — 열린 웹 페이지가 있으면 그 화면(마지막 탭부터), 없고 데스크톱 자동화면 전체 화면.
-    남긴 경로(없으면 None). 사람이 읽는 줄과 허브가 읽는 '@@failshot' 줄을 낸다. 캡처 실패는 조용히 넘긴다."""
+    남긴 경로(없으면 None). 사람이 읽는 줄과 허브가 읽는 '@@failshot' 줄을 낸다.
+    찍으려 했는데 못 찍었으면 조용히 넘기지 않고 왜 못 찍었는지 로그에 한 줄 남긴다(찍을 화면이 없던 웹 자동화는 아무 말 없음)."""
     path = failshot_path(macro)
     done = False
+    why = None
     for page in reversed(_pages_of(browsers)):
-        try:
-            page.screenshot(path=path, timeout=5000)
+        err = shot_page(page, path)
+        if err is None:
             done = True
             break
+        try:
+            where = page.url
         except Exception:
-            continue
+            where = ''
+        why = _first_line(err) + (' (페이지: %s)' % where if where else '')
     if not done and (meta.get('target') == 'desktop' or meta.get('failshot') == 'screen'):
         try:
             (grab or grab_screen)(path)
-            done = os.path.isfile(path)
-        except Exception:
-            done = False
+            done = _saved(path)
+            if not done:
+                why = '화면 캡처 파일이 비었습니다'
+        except Exception as e:
+            why = _first_line(e)
     if not done:
+        if os.path.isfile(path):
+            try:
+                os.remove(path)                      # 반쯤 쓴 빈 파일을 남기지 않는다
+            except OSError:
+                pass
+        if why:
+            say('⚠ 실패한 순간 화면을 남기지 못했습니다 — %s' % why)
         return None
     prune_failshots()
     say('📸 실패한 순간 화면을 남겼습니다: %s' % os.path.relpath(path, HERE))
@@ -374,6 +477,11 @@ def track_playwright(macro, meta, seen):
 # ---------------------------------------------------------------- 🔗 묶음
 
 CHAIN_ID = re.compile(r'^(local/)?[\w\-]+$')
+STEP_PREFIX = '@@step '                  # 🔗 묶음 단계의 시작·끝 — 허브가 그 자동화의 '실행 중'·'마지막 실행'으로 기록한다
+
+
+def step_mark(sid, state, **more):
+    say(STEP_PREFIX + json.dumps(dict(more, id=sid, state=state), ensure_ascii=False))
 
 
 def macro_path(mid):
@@ -423,6 +531,7 @@ def run_chain(ctx, meta, popen=None):
             continue
         else:
             say('🔗 [%d/%d] %s 시작' % (i, total, name))
+            step_mark(sid, 'start', name=name, i=i, n=total)
             params = dict(smeta.get('params') or {})
             params.update({k: v for k, v in (ctx.chain_params.get(sid) or {}).items() if k in params})
             params.update(over)
@@ -443,6 +552,7 @@ def run_chain(ctx, meta, popen=None):
             proc.stdout.close()
             late = not timer.is_alive() and code != 0
             timer.cancel()
+            step_mark(sid, 'end', status='ok' if code == 0 else 'timeout' if late else 'fail', code=code)
             if code == 0:
                 say('✔ [%d/%d] %s 성공' % (i, total, name))
                 ok_n += 1
@@ -520,6 +630,10 @@ def main():
         code = e.code if isinstance(e.code, int) else 1
         if code and meta.get('kind') == 'chain':
             say('✖ 실패 (%.1f초)' % (time.time() - started))
+    except AlreadyRunning as e:                  # 겹쳐 돌림 — 긴 오류·실패 화면 대신 한 줄
+        say('✖ %s' % e)
+        say('✖ 실패 (%.1f초)' % (time.time() - started))
+        code = 1
     except BaseException:
         say(traceback.format_exc().rstrip())
         if not _SHOT['path']:

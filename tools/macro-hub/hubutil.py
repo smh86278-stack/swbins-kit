@@ -154,3 +154,49 @@ def redact(text, values=()):
     for rx, rep in _REDACT:
         s = rx.sub(rep, s)
     return s
+
+
+def _path_rules(python=None, root=None, home=None):
+    """short_paths 의 바꿀 목록 — 긴 것부터(파이썬 실행 파일 → 파이썬 폴더 → 키트 폴더 → 사용자 폴더)."""
+    import os
+    import sys
+    rules = []
+    for exe in {python, sys.executable}:
+        if exe:
+            rules.append((os.path.normpath(exe), 'python'))
+    py_dir = None
+    if python:                                   # .venv\Scripts\python.exe → .venv · 내장 runtime\python.exe → runtime
+        py_dir = os.path.dirname(python)
+        if os.path.basename(py_dir).lower() in ('scripts', 'bin'):
+            py_dir = os.path.dirname(py_dir)
+    for pre in {sys.prefix, sys.base_prefix, py_dir}:
+        if pre:
+            rules.append((os.path.normpath(pre), '<python>'))
+    root = root or os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+    rules.append((os.path.normpath(root) + os.sep, ''))
+    home = home or os.path.expanduser('~')
+    if home and home != '~':
+        rules.append((os.path.normpath(home), '%USERPROFILE%'))
+    out = []
+    for src, rep in sorted(set(rules), key=lambda r: -len(r[0])):
+        if len(src) < 4:                         # 'C:\' 같은 짧은 것은 바꾸지 않는다
+            continue
+        for v in {src, src.replace('\\', '/'), src.replace('\\', '\\\\')}:
+            out.append((re.compile(re.escape(v), re.I), rep))
+    return out
+
+
+_PATHS = {}
+
+
+def short_paths(text, python=None, root=None, home=None):
+    """사용자에게 보이는 로그·알림에서 이 PC 의 실행 환경 경로를 줄인다 — 파이썬 실행 파일은 'python',
+    파이썬(가상 환경) 폴더는 '<python>', 키트 폴더는 상대 경로(tools\\macro-hub\\…), 사용자 폴더는 %USERPROFILE%.
+    파일 이름·줄 번호는 그대로라 디버깅에는 지장이 없다(데모 녹화 2026-10-23 — .venv 절대 경로가 실패 로그에 찍혔다)."""
+    key = (python, root, home)
+    if key not in _PATHS:
+        _PATHS[key] = _path_rules(python, root, home)
+    s = str(text)
+    for rx, rep in _PATHS[key]:
+        s = rx.sub(lambda m, r=rep: r, s)
+    return s

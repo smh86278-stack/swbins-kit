@@ -141,7 +141,7 @@ details[open]>summary.mk-head::after{transform:rotate(45deg)}
 .gal-card button{align-self:flex-start;font-size:12.5px;padding:3px 10px;margin-top:4px}
 .mk-card input[type=checkbox]{width:auto;vertical-align:middle}
 .chain-steps{margin:0;padding-left:22px;font-size:13px}
-.chain-steps li{padding:2px 0}.chain-steps button{font-size:11.5px;padding:0 7px;margin-left:6px}
+.chain-steps li{padding:2px 0}.chain-steps li.empty-step{list-style:none;margin-left:-22px}.chain-steps button{font-size:11.5px;padding:0 7px;margin-left:6px}
 .shotbox{margin-top:8px}.shotbox img{max-width:100%;max-height:220px;border:1px solid var(--line);border-radius:var(--r-sm);cursor:zoom-in;display:block;margin-top:4px}
 .mk-adv{border-top:1px solid var(--line2);padding-top:10px;margin-top:4px}
 .mk-adv>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);margin-bottom:10px}
@@ -533,7 +533,8 @@ function showShot(r){
   const b=$('#shotBox');if(!r.shot){b.hidden=true;b.replaceChildren();return}
   if(b.dataset.shot===r.shot&&!b.hidden)return;
   const url='/api/failshot?file='+encodeURIComponent(r.shot),a=el('a','','실패한 순간 화면 ('+r.shot+')');a.href=url;a.target='_blank';
-  const img=el('img');img.src=url;img.alt='실패한 순간 화면';img.onclick=()=>window.open(url,'_blank');
+  const img=el('img');img.alt='실패한 순간 화면';img.onclick=()=>window.open(url,'_blank');
+  img.onerror=()=>{b.hidden=true;b.replaceChildren();delete b.dataset.shot};img.src=url;   // 그 사이 정리로 지워졌으면 깨진 그림 대신 숨긴다
   b.dataset.shot=r.shot;b.replaceChildren(a,img);b.hidden=false;
 }
 function addLine(text,animate){const s=el('div','',text||' ');$('#log').append(s)}
@@ -661,21 +662,21 @@ async function loadGallery(){
 $('#galBox').addEventListener('toggle',()=>{if($('#galBox').open)loadGallery()});
 /* 묶어 돌리기 — 고른 순서대로 단계를 쌓아 묶음 파일(kind chain)을 만든다 */
 let chainSteps=[];
-function drawChain(){
-  const pick=$('#chainPick'),cur=pick.value;pick.replaceChildren(new Option('— 넣을 자동화 고르기 —',''));
+function drawChain(reset){
+  const pick=$('#chainPick'),cur=reset?'':pick.value;pick.replaceChildren(new Option('— 넣을 자동화 고르기 —',''));
   for(const m of macros.filter(m=>!m.service&&m.kind!=='chain'))pick.append(new Option(m.name+(m.local?'':' (예제)'),m.id));
   pick.value=cur;
   const ol=$('#chainSteps');ol.replaceChildren();
   chainSteps.forEach((id,i)=>{const m=macros.find(x=>x.id===id),li=el('li','',m?m.name:id);
     const up=el('button','','위로');up.disabled=!i;up.onclick=()=>{[chainSteps[i-1],chainSteps[i]]=[chainSteps[i],chainSteps[i-1]];drawChain()};
     const x=el('button','','빼기');x.onclick=()=>{chainSteps.splice(i,1);drawChain()};li.append(up,x);ol.append(li)});
-  if(!chainSteps.length)ol.append(el('li','mk-note','아직 비었습니다 — 위에서 고르고 넣기 (둘 이상)'));
+  if(!chainSteps.length)ol.append(el('li','mk-note empty-step','아직 비었습니다 — 위에서 고르고 넣기 (둘 이상)'));
 }
 $('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)drawChain()});
 $('#chainAdd').onclick=()=>{const v=$('#chainPick').value;if(!v)return toast('넣을 자동화를 고르세요');chainSteps.push(v);drawChain()};
 $('#chainBtn').onclick=guard(async()=>{
   const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value});
-  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';drawChain();toast('묶음을 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
+  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';$('#chainKeep').checked=false;$('#chainDays').value='mon-fri';drawChain(true);toast('묶음을 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
 // 말로 부탁하기 — 대화가 켜져 있으면 허브가 바로 보낸다(/api/ask → 8620 /api/send, 쓰기 지시). 보낸 뒤 대화를 열어 진행을 보여 준다.
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';

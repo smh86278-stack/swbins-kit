@@ -92,8 +92,10 @@ tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
 <script>
 const TOKEN = '__TOKEN__';
 HubMode.mount(null, TOKEN); HubLook.mount(null, TOKEN);
-const NAV = {sched: 'sched', svc: 'sched', feat: 'sched', agents: 'sched', set: 'set', audit: 'log'};   // 탭 → 사이드바 메뉴
-HubNav.mount('#side', {active: 'sched'});
+// 탭 → 사이드바 메뉴. 사이드바에 제 메뉴가 없는 탭(상시 서비스·기능 상태·에이전트)은 아무것도 강조하지 않는다 —
+// 예전엔 「예약」을 강조해 지금 보는 곳과 어긋났다(데모 녹화 2026-10-23)
+const NAV = {sched: 'sched', set: 'set', audit: 'log'};
+HubNav.mount('#side', {active: NAV[location.hash.slice(1)] || null, dot: true});   // 허브 화면과 같게 — 연결 상태 점, 강조는 지금 탭(show)이 정한다
 const $ = s => document.querySelector(s);
 function el(t, c, x){ const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 4000); }
@@ -402,7 +404,9 @@ const es = new EventSource('/events');
 // 허브가 다시 뜨면(토큰이 바뀜) 실시간 연결이 다시 붙는다 — 그때 /api/ping 으로 물어봐서 옛 화면(403)이면 조용히 새로 고친다.
 // D&C 창은 화면을 살려 두므로, 이게 없으면 숨김·새 기능이 F5 전까지 안 보였다(2026-10-21)
 let reopen = false;
-es.onopen = () => { if (reopen) fetch('/api/ping', {headers: {'X-Hub-Token': TOKEN}}).then(r => { if (r.status === 403) location.reload(); }).catch(() => {}); reopen = true; };
+const dot = () => document.getElementById('dot');
+es.onopen = () => { const d = dot(); if (d) d.classList.add('on'); if (reopen) fetch('/api/ping', {headers: {'X-Hub-Token': TOKEN}}).then(r => { if (r.status === 403) location.reload(); }).catch(() => {}); reopen = true; };
+es.onerror = () => { const d = dot(); if (d) d.classList.remove('on'); };
 es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); if (m.t === 'look') HubLook.apply(m.look); const on = document.querySelector('main section.on');
   if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); }
   if (on && m.t === 'audit' && on.id === 'audit') { clearTimeout(es.t); es.t = setTimeout(loadAudit, 300); } };

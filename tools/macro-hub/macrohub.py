@@ -276,13 +276,17 @@ class Run:
         self.motion = None
         self.motion_until = None         # ctx.motion(hold=) 로 잠깐만 보일 때 끝나는 시각(ms)
         self.shot = None                 # 📸 실패한 순간 화면(data.local\failshots\*.png) — runner 의 '@@failshot' 줄
+        self.parent = None               # 🔗 묶음 단계로 돈 실행이면 그 묶음의 Run (proc 은 묶음 것)
+        self.step = None                 # 🔗 묶음이면 지금 도는 단계의 Run
 
     def summary(self):
+        # 📸 화면 파일은 오래되면 지워진다(60장 넘으면 정리) — 없는 파일을 가리키면 깨진 그림 대신 표시하지 않는다
+        shot = self.shot if self.shot and os.path.isfile(self.shot) else None
         return {'id': self.id, 'macro': self.macro, 'name': self.name, 'trigger': self.trigger.get('kind', 'manual'),
                 'detail': self.trigger.get('detail', ''), 'started': int(self.started * 1000),
                 'ended': int(self.ended * 1000) if self.ended else None,
                 'status': self.status, 'code': self.code, 'tool': self.tool,
-                'shot': os.path.basename(self.shot) if self.shot else None}
+                'shot': os.path.basename(shot) if shot else None}
 
 
 runs = deque(maxlen=300)
@@ -295,6 +299,13 @@ def running_run(macro_id):
         return next((r for r in runs if r.macro == macro_id and r.status == 'running'), None)
 
 
+def busy_text(r):
+    """겹쳐 돌리려 할 때의 거절 말 — 묶음 단계로 도는 중이면 어느 묶음인지."""
+    if r.parent:
+        return '이미 실행 중입니다 — 묶음 「%s」의 단계로 도는 중이에요. 끝난 뒤 다시 돌리세요' % r.parent.name
+    return '이미 실행 중입니다'
+
+
 def kill_tree(proc):
     try:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
@@ -304,8 +315,9 @@ def kill_tree(proc):
 
 def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=False, timeout=600, motion=None, extra=None):
     trigger = trigger or {'kind': 'manual'}
-    if running_run(macro_id) and not tool:
-        return None, '이미 실행 중입니다'
+    busy = running_run(macro_id)
+    if busy and not tool:
+        return None, busy_text(busy)
     run = Run(macro_id, name or macro_id, trigger, tool)
     run.motion = run.motion_default = motion
     ctx = dict(extra or {}, macro=macro_id, params=params or {}, trigger=trigger)
@@ -394,16 +406,59 @@ def _set_motion(run, raw):
     broadcast({'t': 'motion', 'macro': run.macro, 'motion': run.motion, 'until': run.motion_until})
 
 
+def _step_start(run, info):
+    """🔗 묶음이 단계를 시작했다 — 그 자동화도 '실행 중'으로 보이게(겹쳐 돌리기 거절·카드의 실행 중 표시) 단계 Run 을 만든다."""
+    _step_end(run, {'status': 'stopped'})            # 끝 줄을 못 받은 앞 단계가 남아 있으면 닫는다
+    sid = info.get('id')
+    if not isinstance(sid, str) or not runner.CHAIN_ID.match(sid):
+        return
+    m = find_macro(sid)
+    test = run.trigger.get('kind') == 'test'
+    step = Run(sid, (m or {}).get('name') or info.get('name') or sid,
+               {'kind': 'test' if test else 'chain', 'detail': '묶음 「%s」 %s/%s 단계' % (run.name, info.get('i', '?'), info.get('n', '?')),
+                'chain': run.macro})
+    step.parent = run
+    run.step = step
+    with lock:
+        runs.append(step)
+        runs_by_id[step.id] = step
+    broadcast({'t': 'run', 'run': step.summary()})
+
+
+def _step_end(run, info):
+    """🔗 단계가 끝났다 — 결과를 그 자동화의 마지막 실행으로 남긴다(runs.jsonl 에도. 실패 알림 메일은 묶음 쪽이 보낸다)."""
+    step = run.step
+    if not step:
+        return
+    run.step = None
+    step.ended = time.time()
+    step.code = info.get('code')
+    st = info.get('status')
+    step.status = st if st in ('ok', 'fail', 'timeout', 'stopped') else 'fail'
+    _record(step, alert=False)
+    broadcast({'t': 'run', 'run': step.summary()})
+
+
 def _pump(run):
     for raw in iter(run.proc.stdout.readline, b''):
         line = raw.decode('utf-8', 'replace').rstrip('\r\n')
         if line.startswith(MOTION_PREFIX):
             _set_motion(run, line[len(MOTION_PREFIX):])
             continue
+        if line.startswith(runner.STEP_PREFIX):          # 🔗 묶음 단계 시작·끝 — 로그에는 안 남긴다(사람이 읽는 줄은 runner 가 따로 냈다)
+            try:
+                info = json.loads(line[len(runner.STEP_PREFIX):])
+            except ValueError:
+                continue
+            if isinstance(info, dict):
+                (_step_start if info.get('state') == 'start' else _step_end)(run, info)
+            continue
         if line.startswith(runner.FAILSHOT_PREFIX):     # 📸 — runner 가 사람이 읽는 줄은 따로 냈다
             shot = failshot_file(os.path.basename(line[len(runner.FAILSHOT_PREFIX):].strip()))
             if shot:
                 run.shot = shot
+                if run.step:
+                    run.step.shot = shot
             continue
         if line.startswith(NOTIFY_PREFIX):          # ctx.notify() — 알림으로 바꾸고 로그에는 사람이 읽는 형태로 남긴다
             try:
@@ -414,8 +469,13 @@ def _pump(run):
             except ValueError:
                 pass
         line = hubutil.redact(line)                 # 비밀값 가리기 — 화면·runs.jsonl·실패 알림·웹훅·고쳐 달라기 모두 이 줄을 쓴다
+        line = hubutil.short_paths(line, PYTHON)    # 이 PC 의 파이썬·키트 폴더 절대 경로 줄이기(파일 이름·줄 번호는 그대로)
         run.lines.append(line)
         broadcast({'t': 'log', 'run': run.id, 'line': line})
+        if run.step:                                # 묶음 단계 로그는 단계 실행 기록에도(들여쓰기 빼고)
+            sl = line[3:] if line.startswith('   ') else line
+            run.step.lines.append(sl)
+            broadcast({'t': 'log', 'run': run.step.id, 'line': sl})
 
 
 def _watch(run, timeout):
@@ -432,8 +492,16 @@ def _watch(run, timeout):
     run.ended = time.time()
     if run.status == 'running':
         run.status = 'stopped' if run.stopping else ('ok' if run.code == 0 else 'fail')
+    if run.step:                                 # 묶음이 단계 도중에 멈춤·시간 초과로 끝났다 — 그 단계도 같이 닫는다
+        _step_end(run, {'status': 'timeout' if run.status == 'timeout' else 'stopped', 'code': run.code})
     if getattr(run, 'after', None):              # 끝난 뒤 이어서 할 일(예: 앱을 만든 AI 가 스스로 검사 못 하면 허브가 검사)
         threading.Thread(target=run.after, daemon=True).start()
+    _record(run)
+    broadcast({'t': 'run', 'run': run.summary()})
+
+
+def _record(run, alert=True):
+    """끝난 실행을 runs.jsonl 에 남기고(허브를 다시 켜도 '마지막 실행'이 보이게) 실패면 알림 메일. 시험·도구 실행은 빼고."""
     if run.trigger.get('kind') == 'test':        # 시험 실행은 실행 기록·실패 알림 메일에 넣지 않는다 — 화면 로그로만 본다
         ok = run.status == 'ok'
         run.lines.append('🧪 시험 결과: %s' % ('성공' if ok else '실패 — 위 로그를 보고 고치세요'))
@@ -447,9 +515,9 @@ def _watch(run, timeout):
                 f.write(json.dumps(rec, ensure_ascii=False) + '\n')
         except OSError:
             pass
-        if run.status in alertmail.ALERT_STATUS:
+        LAST_RUN[run.macro] = {k: v for k, v in rec.items() if k != 'tail'}
+        if alert and run.status in alertmail.ALERT_STATUS:
             threading.Thread(target=_alert_mail, args=(rec,), daemon=True).start()
-    broadcast({'t': 'run', 'run': run.summary()})
 
 
 FAILSHOT_NAME = re.compile(r'^[\w\-]+\.png$')
@@ -480,7 +548,9 @@ def set_alert(on):
 
 def stop_run(run_id):
     run = runs_by_id.get(run_id)
-    if not run or run.status != 'running':
+    if run and run.parent and run.status == 'running':
+        run = run.parent                         # 🔗 묶음 단계는 따로 끌 프로세스가 없다 — 묶음째 멈춘다
+    if not run or run.status != 'running' or not run.proc:
         return False
     run.stopping = True
     kill_tree(run.proc)
@@ -673,6 +743,10 @@ def run_macro(macro_id, params=None, trigger=None):
     name = m['name'] + (' 🧪시험' if (trigger or {}).get('kind') == 'test' else '')
     extra = None
     if m['kind'] == 'chain':                         # 🔗 묶음 — 단계마다 기억한 값을 runner 에 넘긴다(runner 는 state 를 읽지 않는다)
+        for sid in m['chain']:                       # 단계가 이미 따로 돌고 있으면 그 단계에서 프로필 잠금으로 깨진다 — 미리 거절
+            busy = running_run(sid)
+            if busy and running_run(m['id']) is None:
+                return None, '단계 「%s」가 이미 실행 중이라 묶음을 시작하지 않았습니다 — 끝난 뒤 다시 돌리세요' % busy.name
         extra = {'chain_params': {sid: saved_params(find_macro(sid)) for sid in m['chain'] if find_macro(sid)}}
     return start_run(m['id'], merged, trigger, m['path'], name, timeout=m['timeout'],
                      motion=None if m['service'] else m['motion'], extra=extra)
@@ -1559,7 +1633,11 @@ def load_last_runs(keep=2000, limit=2 * 1024 * 1024):
     for ln in lines:
         try:
             r = json.loads(ln)
-            LAST_RUN[r['macro']] = {k: v for k, v in r.items() if k != 'tail'}
+            last = {k: v for k, v in r.items() if k != 'tail'}
+            if last.get('shot') and not failshot_file(last['shot']):     # 📸 정리돼 지워진 화면 — 가리키지 않는다
+                last['shot'] = None
+                last.pop('shot_file', None)
+            LAST_RUN[r['macro']] = last
         except (ValueError, KeyError, TypeError):
             continue
     try:
@@ -1575,8 +1653,13 @@ def macro_view(m):
     last = next((x for x in reversed(runs) if x.macro == m['id'] and not x.tool and x.status != 'running'
                  and x.trigger.get('kind') != 'test'), None)
     d = {k: v for k, v in m.items() if k != 'path'}
+    saved = dict(LAST_RUN.get(m['id']) or {}) or None
+    if saved:
+        saved.pop('shot_file', None)                 # 화면에는 이 PC 의 절대 경로를 보내지 않는다(파일 이름 shot 이면 된다)
+    if saved and saved.get('shot') and not failshot_file(saved['shot']):   # 그 사이 정리로 지워진 화면
+        saved['shot'] = None
     d.update(enabled=bool(state['enabled'].get(m['id'])), running=r.id if r else None, hidden=m['id'] in hidden_ids(),
-             last=last.summary() if last else LAST_RUN.get(m['id']),
+             last=last.summary() if last else saved,
              motion=r.motion if r else d['motion'], motion_until=r.motion_until if r else None,
              motion_default=r.motion_default if r else None, saved_params=saved_params(m))
     if m['chain']:                                   # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로)
