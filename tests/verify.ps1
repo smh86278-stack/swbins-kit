@@ -19,9 +19,28 @@ Write-Host ("  checked {0} files" -f $py.Count)
 
 Write-Host '== 2. python unittest'
 # Keep the summary readable: drop interpreter ResourceWarning noise; on failure print the full report (CI needs it).
-$ut = @(& python -X utf8 -m unittest discover -s tests 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -notmatch '^sys:1: ResourceWarning' })
+$ut = @(& python -X utf8 -m unittest discover -s tests 2>&1 | ForEach-Object { "$_" -replace '^System\.Management\.Automation\.RemoteException$', '' } | Where-Object { $_ -notmatch '^sys:1: ResourceWarning' })
 $utExit = $LASTEXITCODE
-if ($utExit -ne 0) { $ut | ForEach-Object { Write-Host $_ }; $fail++ }
+if ($utExit -ne 0) {
+    $ut | ForEach-Object { Write-Host $_ }; $fail++
+    if ($env:GITHUB_ACTIONS) {
+        # GitHub Actions: each failing test becomes an error annotation (readable on the run page without log access)
+        $blocks = @(); $cur = $null
+        foreach ($line in $ut) {
+            if ($line -match '^(FAIL|ERROR): ') { if ($cur) { $blocks += ,$cur }; $cur = @($line) }
+            elseif ($line -match '^(=+|-+)$' -or $line -match '^Ran ') { if ($cur -and $line -notmatch '^-+$') { $blocks += ,$cur; $cur = $null } }
+            elseif ($cur) { $cur += $line }
+        }
+        if ($cur) { $blocks += ,$cur }
+        for ($i = 0; $i -lt [Math]::Min($blocks.Count, 10); $i++) {
+            $b = $blocks[$i]
+            $msg = ($b | Select-Object -Last 40) -join "`n"
+            if ($msg.Length -gt 4000) { $msg = $msg.Substring($msg.Length - 4000) }
+            $msg = $msg.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ("::error title={0}::{1}" -f ($b[0] -replace '[:,]', ' '), $msg)
+        }
+    }
+}
 else { $ut | Where-Object { $_ -match '^(Ran |OK)' } | ForEach-Object { Write-Host "  $_" } }
 Get-ChildItem -Path tests -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
