@@ -411,6 +411,7 @@ AI 를 쓰는 곳은 두 가지다.
 접속·복호화는 tools\macro-hub\kit.py 의 공통 코드를 쓴다.
 
 실행(claude 호출)은 inbox-worker.ps1 이 담당한다. 여기서는 큐에 넣고 회신만 한다.
+예외: &quot;#c 일 순서 &lt;이름&gt;&quot; 은 Claude 없이 허브(8630)의 일 순서를 바로 돌린다(start_hub_chain · pump_hub_runs).
 
 사용법:
     python setup.py                    계정·비밀번호 설정 (저장소 맨 위 설정 마법사)

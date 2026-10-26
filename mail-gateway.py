@@ -26,6 +26,7 @@
 접속·복호화는 tools\\macro-hub\\kit.py 의 공통 코드를 쓴다.
 
 실행(claude 호출)은 inbox-worker.ps1 이 담당한다. 여기서는 큐에 넣고 회신만 한다.
+예외: "#c 일 순서 <이름>" 은 Claude 없이 허브(8630)의 일 순서를 바로 돌린다(start_hub_chain · pump_hub_runs).
 
 사용법:
     python setup.py                    계정·비밀번호 설정 (저장소 맨 위 설정 마법사)
@@ -42,6 +43,7 @@ import ctypes
 import email
 import email.header
 import email.utils
+import hashlib
 import hmac
 import imaplib
 import json
@@ -51,6 +53,8 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from html import escape as html_escape
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -728,6 +732,7 @@ def load_own_reply_ids() -> set:
             for k in ("reply_msgid", "confirm_msgid"):
                 if j.get(k):
                     ids.add(j[k])
+            ids.update(j.get("hub_confirm_ids") or [])   # 🔗 일 순서 확인 메일(단계마다 확인이면 여러 통) — 자기 메일을 새 지시로 받지 않게
     return ids
 
 
@@ -1654,6 +1659,17 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         log("확인 답장을 알아듣지 못했습니다(1=실행, 2=취소) %s" % pjob["id"])
                     continue
 
+                # 🔗 메일로 부른 일 순서에 대한 답 — 확인 메일에 1(계속)·2(멈춤), 도는 중에 '멈춤'. 새 지시로 만들지 않는다.
+                hub_job = find_hub_run(head, thread_no, trust)
+                if hub_job:
+                    processed.add(key)
+                    save_processed(processed)
+                    m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                    answer = parse_hub_answer(reply_text(plain_body(msg)))
+                    log(hub_answer(cfg, hub_job[0], hub_job[1], answer == "yes") if answer else
+                        "일 순서 답을 알아듣지 못했습니다(1=계속, 2=멈춤) %s" % hub_job[1]["id"])
+                    continue
+
                 # 돌고 있는(대기 중인) 일을 멈추라는 말이면 새 잡을 만들지 않고 워커에 멈춤 표시(jobs\<id>.stop)만 남긴다.
                 # 폰 대화방의 '멈춤' 단추는 그 지시에 대한 답장으로 '멈춤' 한 마디를 보낸다. 끝난 일에 대한 '멈춤' 은
                 # 지금처럼 그 세션에 '정리하고 보고해' 로 이어진다.
@@ -1712,6 +1728,17 @@ def poll_once(cfg: dict, password: str, seed_only: bool = False, acct=None) -> i
                         n += 1
                         log("다시 실행 %s ← 실패한 %s%s" % (job["id"], failed["id"], " — 정책으로 막음: " + blocked if blocked else ""))
                         continue
+
+                # 🔗 '#c 일 순서 <이름>' — Claude 없이 허브에 그 일 순서를 돌려 달라고 한다(새 대화일 때만 — 대화 안의 답은 평소대로)
+                chain_name = hub_chain_command(clean_subject, cfg)
+                if chain_name is not None and thread_no is None and not find_resume_job(head):
+                    processed.add(key)
+                    save_processed(processed)
+                    m.uid("STORE", uid_s, "+FLAGS", "\\Seen")
+                    job = start_hub_chain(chain_name, msgid, clean_subject, sender, cfg)
+                    n += 1
+                    log("일 순서 접수 %s [%s] — %s" % (job["id"], job["status"], chain_name or "(목록)"))
+                    continue
 
                 prompt, workdir, label, mode = build_instruction(clean_subject, plain_body(msg), cfg)
 
@@ -1983,6 +2010,240 @@ def build_confirm_message(cfg: dict, job: dict):
     mark_bot(msg, job, ask, kind="confirm")
     msg.add_alternative(reply_html(cfg, job, ask, text, "[T%s]" % job.get("thread", "?")), subtype="html")
     return msg, mid
+
+
+# ---------------------------------------------------------------- 🔗 메일로 일 순서 부르기 (2026-10-26)
+# "#c 일 순서 <이름>" — Claude 에게 넘기지 않고 허브(8630, 설정 hub_url)에 그 일 순서를 바로 돌려 달라고 한다.
+# 허브 실행 요청에는 허브 화면에 심긴 토큰이 필요해 허브 화면을 읽어 꺼낸다(허브가 메신저에 하는 ask_messenger 와 같은 방식 —
+# 이 PC 의 프로세스만 127.0.0.1 로 읽을 수 있다). 잡은 status "hubrun" 으로 두어 워커가 집지 않고, 게이트웨이가 매 바퀴
+# 실행 상태를 보고(pump_hub_runs) 🙋 확인을 기다리면 확인 메일(1=계속, 2=멈춤)을, 끝나면 결과를 평소 회신 길로 보낸다.
+HUB_CHAIN_RE = re.compile(r"^일\s*순서(?:\s+(.+))?$", re.S)
+HUB_YES = CONFIRM_YES | {"계속", "계속해", "진행", "이어서"}
+HUB_RUN_MAX_SEC = 7 * 3600                       # 이보다 오래 hubrun 이면 끝난 것으로 본다(허브 제한 시간 6시간 + 여유)
+
+
+def hub_url(cfg: dict) -> str:
+    return (cfg.get("hub_url") or "http://127.0.0.1:8630").rstrip("/")
+
+
+def hub_get(cfg: dict, path: str, timeout: float = 5):
+    with urllib.request.urlopen(hub_url(cfg) + path, timeout=timeout) as r:
+        raw = r.read().decode("utf-8")
+    return json.loads(raw) if path.startswith("/api/") else raw
+
+
+def hub_post(cfg: dict, path: str, body: dict, timeout: float = 10) -> dict:
+    """허브 실행 API — 화면의 토큰을 읽어 X-Hub-Token 으로. 실패하면 RuntimeError(허브가 준 오류 글)."""
+    m = re.search(r"const TOKEN\s*=\s*'([^']+)'", hub_get(cfg, "/") or "")
+    if not m:
+        raise RuntimeError("허브 화면에서 실행 토큰을 찾지 못했습니다")
+    req = urllib.request.Request(hub_url(cfg) + path, data=json.dumps(body).encode("utf-8"), method="POST",
+                                 headers={"Content-Type": "application/json", "X-Hub-Token": m.group(1)})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode("utf-8")).get("error")
+        except Exception:
+            err = None
+        raise RuntimeError(err or "허브 HTTP %s" % e.code)
+
+
+def hub_chain_command(subject: str, cfg: dict):
+    """제목이 '#c 일 순서 [이름]' 이면 이름(없으면 "")을, 아니면 None. 본문은 보지 않는다(서명 등이 붙으므로)."""
+    text = build_instruction(subject, "", cfg)[0]
+    m = HUB_CHAIN_RE.match(text.strip()) if text else None
+    return None if not m else (m.group(1) or "").strip()
+
+
+def pick_chain(chains: list, name: str):
+    """이름으로 일 순서 고르기 — 같은 이름이 먼저, 없으면 이름에 들어간 것이 하나뿐일 때. (찾은 것, 오류 글)"""
+    exact = [c for c in chains if c.get("name") == name]
+    if exact:
+        return exact[0], None
+    low = name.lower()
+    part = [c for c in chains if low in str(c.get("name") or "").lower()]
+    if len(part) == 1:
+        return part[0], None
+    names = " · ".join(c.get("name") or c.get("id") for c in chains) or "(없음)"
+    return None, ("「%s」 이(가) 여러 개입니다: %s" % (name, " · ".join(c["name"] for c in part)) if part else
+                  "「%s」 일 순서가 없습니다. 지금 있는 일 순서: %s" % (name, names))
+
+
+def start_hub_chain(name: str, msgid, subject: str, sender: str, cfg: dict) -> dict:
+    """'#c 일 순서 <이름>' — 허브에 실행을 맡기고 hubrun 잡을 남긴다. 이름이 없거나 못 찾거나 허브가 꺼졌으면 끝난 잡(회신만)."""
+    job = new_job("일 순서 「%s」 실행" % name if name else "일 순서 목록", "", "hub", msgid, subject, sender, "read", cfg)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        chains = [m for m in hub_get(cfg, "/api/macros") if m.get("kind") == "chain"]
+        if not name:
+            raise LookupError("지금 있는 일 순서: %s\n\n'#c 일 순서 <이름>' 으로 부르세요."
+                              % (" · ".join(c.get("name") or c["id"] for c in chains) or "(없음 — 허브 🛠 만들기에서 만드세요)"))
+        chain, err = pick_chain(chains, name)
+        if err:
+            raise RuntimeError(err)
+        run = hub_post(cfg, "/api/run", {"id": chain["id"]}).get("run")
+        if not run:
+            raise RuntimeError("허브가 실행 번호를 돌려주지 않았습니다")
+    except LookupError as e:                           # 목록 물음 — 실패가 아니라 답
+        job.update(status="done", result=str(e), finished_at=now)
+    except (OSError, ValueError, RuntimeError) as e:
+        job.update(status="error", error="일 순서를 시작하지 못했습니다 — %s" % (
+            e if isinstance(e, RuntimeError) else "허브(8630)가 꺼져 있거나 응답하지 않습니다: %s" % e), finished_at=now)
+    else:
+        job.update(status="hubrun", started_at=now, hub_run=run, hub_chain=chain["id"], hub_name=chain.get("name"),
+                   prompt="일 순서 「%s」 실행" % chain.get("name"))
+    write_json(os.path.join(JOBS, job["id"] + ".json"), job)
+    return job
+
+
+def parse_hub_answer(text: str):
+    """일 순서 확인 메일에 대한 답 — 'yes'(계속) / 'no'(멈춤) / None. 첫 '내용 있는 줄'만 본다."""
+    for line in (text or "").splitlines():
+        t = re.sub(r"[\s.!。]+$", "", line.strip()).lower()
+        if not t or t.startswith(">"):
+            continue
+        return "yes" if t in HUB_YES else "no" if (t in CONFIRM_NO or t in STOP_WORDS) else None
+    return None
+
+
+def find_hub_run(head, thread=None, trust=None):
+    """들어온 메일이 메일로 부른 일 순서(hubrun 잡)에 대한 답이면 (경로, 잡) — 대화 번호 또는 확인 메일 Message-ID 로."""
+    trust = trust or (lambda _j: True)
+    refs = set()
+    for h in ("In-Reply-To", "References"):
+        refs |= set(re.findall(r"<[^<>]+>", str(head.get(h) or "")))
+    for path, j in iter_jobs():
+        if j.get("status") != "hubrun" or not trust(j):
+            continue
+        if (thread is not None and j.get("thread") == thread) or (j.get("hub_confirm_msgid") in refs) \
+                or (j.get("mail_msgid") and j["mail_msgid"] in refs):
+            return path, j
+    return None
+
+
+def hub_answer(cfg: dict, path: str, job: dict, ok: bool) -> str:
+    """메일 답을 허브에 전한다 — 확인을 기다리면 계속·멈춤, 아니면 멈춤만(중지). 로그에 남길 한 줄을 돌려준다."""
+    try:
+        if job.get("hub_wait"):
+            hub_post(cfg, "/api/chain/confirm", {"run": job["hub_run"], "ok": ok})
+            job["hub_wait"] = False
+            write_json(path, job)
+            return "일 순서 확인 %s — %s" % (job["id"], "계속" if ok else "멈춤")
+        if not ok:
+            hub_post(cfg, "/api/stop", {"run": job["hub_run"]})
+            return "일 순서 중지 %s" % job["id"]
+        return "일 순서 %s — 확인을 기다리는 중이 아니라 답을 넘기지 않았습니다" % job["id"]
+    except (OSError, ValueError, RuntimeError) as e:
+        return "일 순서 답 전달 실패 %s — %s" % (job["id"], e)
+
+
+def hub_result_text(job: dict, run: dict) -> str:
+    """끝난 일 순서의 회신 본문 — 결과 한 줄 + 로그(@@ 줄 빼고, 길면 끝부분)."""
+    word = {"ok": "끝까지 돌았습니다", "fail": "실패했습니다", "timeout": "제한 시간을 넘겨 멈췄습니다",
+            "stopped": "멈췄습니다"}.get(run.get("status"), run.get("status") or "끝")
+    lines = [l for l in run.get("lines") or [] if not l.startswith("@@")]
+    log_text = "\n".join(lines)
+    if len(log_text) > 3500:
+        log_text = "…\n" + log_text[-3500:]
+    return "🔗 일 순서 「%s」 — %s\n\n%s" % (job.get("hub_name") or job.get("hub_chain"), word, log_text)
+
+
+def build_hub_confirm_message(cfg: dict, job: dict, confirm: dict):
+    """🙋 메일로 부른 일 순서가 확인을 기다림 — 그 단계 결과(AI 답 등)를 보이고 1=계속, 2=멈춤 을 묻는다. (msg, msgid)"""
+    msg = EmailMessage()
+    msg["Subject"] = reply_subject(job)
+    msg["From"] = cfg["user"]
+    msg["To"] = job.get("mail_from") or cfg["user"]
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    domain = cfg["user"].split("@", 1)[-1] if "@" in (cfg.get("user") or "") else None
+    mid = email.utils.make_msgid(domain=domain)
+    msg["Message-ID"] = mid
+    if job.get("mail_msgid"):
+        msg["In-Reply-To"] = job["mail_msgid"]
+        msg["References"] = job["mail_msgid"]
+    shown = confirm.get("text") or "(결과 글 없음)"
+    shown = shown if len(shown) <= 3000 else shown[:3000] + "…"
+    text = "\n".join([
+        "🙋 일 순서 「%s」 — 「%s」 결과를 확인해 주세요." % (job.get("hub_name") or "", confirm.get("name") or ""),
+        "",
+        shown,
+        "",
+        "-- 이 메일에 답장하세요",
+        "  1  (또는 '계속')  →  다음 단계로",
+        "  2  (또는 '멈춤')  →  여기서 멈춤",
+        "30분 안에 답이 없으면 멈춥니다(PC 허브 화면에서 눌러도 됩니다).",
+    ])
+    msg.set_content(text)
+    ask = {"question": "계속할까요?", "multi": False, "options": ["계속", "멈춤"]}
+    mark_bot(msg, job, ask, kind="confirm")
+    msg.add_alternative(reply_html(cfg, job, ask, text, "[T%s]" % job.get("thread", "?")), subtype="html")
+    return msg, mid
+
+
+def pump_hub_runs(cfg: dict, password: str, now: float = None) -> int:
+    """메일로 부른 일 순서(hubrun 잡) 살피기 — 확인을 기다리면 확인 메일, 끝났으면 결과를 잡에 적어 send_replies 가 회신.
+    허브가 잠깐 안 받으면 다음 바퀴에. 보낸 메일 수를 돌려준다."""
+    now = now or time.time()
+    jobs = [(p, j) for p, j in iter_jobs() if j.get("status") == "hubrun"]
+    if not jobs:
+        return 0
+    sent, conn, phone_smtp = 0, None, []
+    mode = cfg.get("reply_mode", "append")
+    try:
+        for path, job in jobs:
+            try:
+                run = hub_get(cfg, "/api/run?id=%s" % job.get("hub_run"))
+            except urllib.error.HTTPError as e:
+                run = None if e.code == 404 else False      # 404 = 허브가 다시 떠서 실행 기록이 사라짐
+            except (OSError, ValueError):
+                run = False
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            started = time.mktime(time.strptime(job.get("created_at") or stamp, "%Y-%m-%d %H:%M:%S"))
+            if run is None or (run is False and now - started > HUB_RUN_MAX_SEC):
+                job.update(status="error", finished_at=stamp,
+                           error="일 순서 「%s」 의 결과를 알 수 없습니다 — 허브가 그사이 다시 떴거나 응답하지 않습니다. "
+                                 "허브 화면의 실행 기록을 확인해 주세요." % (job.get("hub_name") or ""))
+                write_json(path, job)
+                continue
+            if run is False:
+                continue
+            if run.get("status") != "running":
+                ok = run.get("status") in ("ok", "stopped")
+                job.update(status="done" if ok else "error", finished_at=stamp, hub_wait=False,
+                           **({"result": hub_result_text(job, run)} if ok else {"error": hub_result_text(job, run)}))
+                write_json(path, job)
+                log("일 순서 끝 %s — %s" % (job["id"], run.get("status")))
+                continue
+            confirm = run.get("confirm")
+            sig = hashlib.sha1(json.dumps(confirm, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest() if confirm else None
+            if confirm and sig != job.get("hub_confirm_sig"):
+                ensure_thread(job, cfg)
+                cmsg, cmid = build_hub_confirm_message(cfg, job, confirm)
+                if conn is None:
+                    conn = imap_connect(cfg, password) if mode == "append" else smtp_connect(cfg, password)
+                if mode == "append":
+                    conn.append("INBOX", "", imaplib.Time2Internaldate(time.time()), cmsg.as_bytes())
+                    copy_to_phone(cfg, password, job, cmsg, phone_smtp)
+                else:
+                    conn.send_message(cmsg)
+                job.update(hub_wait=True, hub_confirm_sig=sig, hub_confirm_msgid=cmid,
+                           hub_confirm_ids=(job.get("hub_confirm_ids") or []) + [cmid])   # load_own_reply_ids 가 거른다
+                write_json(path, job)
+                sent += 1
+                log("일 순서 확인 메일 %s — %s" % (job["id"], confirm.get("name")))
+            elif not confirm and job.get("hub_wait"):
+                job["hub_wait"] = False                      # PC 허브 화면에서 답했다
+                write_json(path, job)
+    finally:
+        for c in [conn] + phone_smtp:
+            try:
+                if c is not None:
+                    (c.logout if mode == "append" and c is conn else c.quit)()
+            except Exception:
+                pass
+    return sent
 
 
 def build_ack_message(cfg: dict, job: dict):
@@ -2706,6 +2967,10 @@ def main() -> int:
             else:
                 got = poll_once(cfg, pw) + poll_gmail(cfg, pw)
                 send_acks(cfg, pw)
+                try:
+                    pump_hub_runs(cfg, pw)             # 🔗 메일로 부른 일 순서 — 확인 메일·끝난 결과(회신은 아래 send_replies)
+                except Exception as e:
+                    log("일 순서 살피기 실패 — %s" % e)
                 sent = send_replies(cfg, pw)
                 send_progress(cfg, pw)                 # 회신 뒤에 — 방금 끝난 잡엔 안 간다('진행?' 답도 여기서)
                 try:

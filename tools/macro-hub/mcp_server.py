@@ -21,7 +21,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
-HUB = 'http://127.0.0.1:%d' % int(os.environ.get('MACROHUB_PORT') or 8610)
+HUB = 'http://127.0.0.1:%d' % int(os.environ.get('MACROHUB_PORT') or 8630)   # 키트 허브 — 8610 은 D&C 허브 포트였다(2026-10-26)
 F_RUNS = os.path.join(HERE, 'runs.jsonl')
 JOBS = os.path.join(ROOT, 'inbox', 'jobs')
 JOB_AUDIT = os.path.join(ROOT, 'inbox', 'job-audit.jsonl')
