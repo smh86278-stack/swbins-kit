@@ -503,6 +503,61 @@ def is_ai_step(step):
     return isinstance(step, dict) and 'ai' in step
 
 
+# ---- 🔀 조건 단계 {"cond": has|lacks|ask, "text": 말·질문, "else": stop|skip, "engine": ""}
+# 앞 단계 결과를 보고 맞으면 그대로 다음으로, 아니면 여기서 끝(정상 끝) 또는 다음 단계 하나 건너뛰기. 앞 결과는 그대로 넘긴다.
+COND_KINDS = {'has': '이 말이 있으면', 'lacks': '이 말이 없으면', 'ask': 'AI 에게 물어 「예」면'}
+COND_ELSE = {'stop': '아니면 여기서 끝', 'skip': '아니면 다음 단계 건너뛰기'}
+COND_SYSTEM = '너는 업무 자동화의 조건 판단기다. [자료]를 보고 [질문]에 「예」 또는 「아니오」 한 단어로만 답한다.'
+COND_YES = {'예', '네', 'yes', 'y', '참', 'true'}
+COND_NO = {'아니오', '아니요', '아니', 'no', 'n', '거짓', 'false'}
+
+
+def is_cond_step(step):
+    return isinstance(step, dict) and 'cond' in step
+
+
+def cond_words(text):
+    return [w.strip() for w in re.split(r'[,·]', str(text or '')) if w.strip()]
+
+
+def cond_step_name(step):
+    """🔀 조건 단계의 보이는 이름 — 예: 조건: 「급함」 있으면 · 아니면 여기서 끝."""
+    text = ' '.join(str(step.get('text') or '').split())
+    kind = step.get('cond')
+    head = ('「%s」 있으면' % text[:20] if kind == 'has' else '「%s」 없으면' % text[:20] if kind == 'lacks'
+            else 'AI: %s' % (text[:30] + ('…' if len(text) > 30 else '')))
+    return '조건: %s · %s' % (head, COND_ELSE.get(step.get('else'), COND_ELSE['stop']))
+
+
+def check_cond(step, prev, ask=None):
+    """🔀 조건 판단 — (맞음 여부, 한 줄 설명). AI 가 못 답하면 RuntimeError."""
+    kind, text = step.get('cond'), str(step.get('text') or '').strip()
+    if kind in ('has', 'lacks'):
+        words = cond_words(text)
+        hit = next((w for w in words if w.lower() in (prev or '').lower()), None)
+        return (bool(hit) if kind == 'has' else not hit), ('「%s」 있음' % hit if hit else '「%s」 없음' % ' · '.join(words))
+    if kind == 'ask':
+        ask = ask or _ask_ai
+        prompt = '[질문]\n%s\n\n[자료]\n%s' % (text, prev or '(없음)')
+        _, answer = ask(prompt, str(step.get('engine') or ''), int(step.get('timeout') or AI_TIMEOUT), COND_SYSTEM)
+        first = re.split(r'[\s.,!。「」]+', (answer or '').strip().lower() + ' ')[0]
+        if first in COND_YES or first in COND_NO:
+            return first in COND_YES, 'AI 답: %s' % (answer or '').strip().splitlines()[0][:60]
+        raise RuntimeError('AI 답이 「예」·「아니오」가 아닙니다: %s' % (answer or '').strip()[:60])
+    raise RuntimeError('모르는 조건입니다: %s' % kind)
+
+
+def step_title(step):
+    """일 순서 단계의 보이는 이름(🤖 AI · 🔀 조건 · 자동화 이름)."""
+    if is_ai_step(step):
+        return ai_step_name(step)
+    if is_cond_step(step):
+        return cond_step_name(step)
+    sid = step if isinstance(step, str) else (step or {}).get('id')
+    path = macro_path(sid)
+    return ((read_meta(path) if path and os.path.isfile(path) else None) or {}).get('name') or str(sid)
+
+
 AGENTS_FILE = os.path.join(HERE, 'data.local', 'agents.json')   # 🧑‍💼 나만의 에이전트 — 허브 만들기 화면에서 저장
 
 
@@ -645,6 +700,8 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
     prev = ''
     last_ai = None                           # 마지막 단계가 AI 면 그 답 — 묶음이 끝나면 알림으로
     stopped = 0
+    cut = 0                                  # 🔀 조건이 맞지 않아 돌리지 않은 단계 수
+    skip_next = False
 
     def gate(i, name, ai):
         """🙋 모드에 따라 다음 단계 전에 사람 확인 — 계속이면 True. 마지막 단계 뒤엔 묻지 않는다."""
@@ -662,6 +719,33 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
 
     for i, step in enumerate(steps, 1):
         last_ai = None
+        if skip_next:                        # 🔀 앞 조건이 「아니면 다음 단계 건너뛰기」
+            skip_next = False
+            cut += 1
+            say('⤼ [%d/%d] %s — 조건이 맞지 않아 건너뜀' % (i, total, step_title(step)))
+            continue
+        if is_cond_step(step):
+            name = cond_step_name(step)
+            try:
+                got, why = check_cond(step, prev, ask)
+            except Exception as e:
+                say('✖ [%d/%d] %s 실패 — %s' % (i, total, name, e))
+                fail_n += 1
+                if not keep and i < total:
+                    say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
+                    break
+                continue
+            ok_n += 1
+            if got:
+                say('🔀 [%d/%d] %s → 맞음 (%s) — 계속' % (i, total, name, why))
+                continue
+            if step.get('else') == 'skip':
+                say('🔀 [%d/%d] %s → 아님 (%s)' % (i, total, name, why))
+                skip_next = i < total
+                continue
+            say('🔀 [%d/%d] %s → 아님 (%s) — 나머지 %d개는 돌리지 않고 끝냅니다' % (i, total, name, why, total - i))
+            cut += total - i
+            break
         if is_ai_step(step):
             name = ai_step_name(step)
             say('🤖 [%d/%d] %s 시작' % (i, total, name))
@@ -752,7 +836,8 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
             say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
             break
     say('🔗 일 순서 결과: %d개 중 성공 %d · 실패 %d%s%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else '',
-                                                   ' · 멈춤으로 안 돌림 %d' % stopped if stopped else ''))
+                                                   ' · 멈춤으로 안 돌림 %d' % stopped if stopped else '')
+        + (' · 조건으로 안 돌림 %d' % cut if cut else ''))
     if last_ai:                                  # 마지막이 AI 단계면 그 답을 알림으로 — 로그를 열지 않아도 보이게
         ctx.notify('🤖 %s' % (meta.get('name') or '일 순서'), ' '.join(last_ai.split())[:300])
     return fail_n == 0

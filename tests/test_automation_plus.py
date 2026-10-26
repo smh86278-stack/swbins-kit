@@ -435,6 +435,64 @@ class AiChain(Base):
             self.assertTrue(macrohub.delete_agent(aid)[1])
             self.assertEqual(runner.ai_step_name({'ai': '', 'agent': aid}), '없는 에이전트')
 
+    # ---- 🔀 조건 단계
+    def test_cond_has_lacks_stop_and_skip(self):
+        ok, out = self.chain(['local/said', {'cond': 'has', 'text': '없는말, 결과', 'else': 'stop'}, 'local/echo'], mode='step')
+        self.assertTrue(ok, out)
+        self.assertIn('→ 맞음 (「결과」 있음) — 계속', out)
+        self.assertIn('prev=결과글', out)                                    # 조건은 앞 결과를 그대로 넘긴다
+        self.assertEqual([n for n, _ in self.asked], ['결과 남김', '받기'][:1])  # 조건 뒤에선 묻지 않는다
+        ok, out = self.chain(['local/said', {'cond': 'lacks', 'text': '결과', 'else': 'stop'}, 'local/echo', 'local/echo'], mode='auto')
+        self.assertTrue(ok, out)                                            # 조건으로 끝난 건 실패가 아니다
+        self.assertIn('나머지 2개는 돌리지 않고 끝냅니다', out)
+        self.assertIn('조건으로 안 돌림 2', out)
+        self.assertNotIn('🔗 [3/4]', out)
+        ok, out = self.chain(['local/said', {'cond': 'has', 'text': '급함', 'else': 'skip'}, 'local/log1', 'local/echo'], mode='auto')
+        self.assertTrue(ok, out)
+        self.assertIn('⤼ [3/4] 로그만 — 조건이 맞지 않아 건너뜀', out)
+        self.assertIn('prev=결과글', out)                                    # 건너뛴 단계 다음은 조건 앞 결과를 받는다
+        self.assertIn('4개 중 성공 3 · 실패 0', out)
+
+    def test_cond_ask_ai(self):
+        answers = []
+
+        def judge(prompt, engine, timeout, system=''):
+            answers.append((prompt, system))
+            return 'claude', self.verdict
+        for verdict, ran in (('예, 급한 문의가 있습니다.', True), ('아니오', False)):
+            self.verdict = verdict
+            with self.subTest(verdict=verdict):
+                ctx = runner.Ctx({'macro': 'local/c', 'trigger': {'kind': 'manual'}}, {})
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    ok = runner.run_chain(ctx, {'chain': ['local/said', {'cond': 'ask', 'text': '급한 게 있나?'}, 'local/echo']}, ask=judge)
+                self.assertTrue(ok, buf.getvalue())
+                self.assertEqual('prev=결과글' in buf.getvalue(), ran)
+        self.assertIn('[질문]\n급한 게 있나?\n\n[자료]\n결과글', answers[0][0])
+        self.assertEqual(answers[0][1], runner.COND_SYSTEM)
+        self.verdict = '글쎄요'
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ok = runner.run_chain(runner.Ctx({'macro': 'local/c'}, {}),
+                                  {'chain': ['local/said', {'cond': 'ask', 'text': '급한 게 있나?'}, 'local/echo']}, ask=judge)
+        self.assertFalse(ok)
+        self.assertIn('「예」·「아니오」가 아닙니다', buf.getvalue())
+
+    def test_cond_new_chain_rules(self):
+        cond = {'cond': 'has', 'text': ' 급함 ', 'else': 'skip'}
+        for steps in ([cond, 'local/echo'], ['local/echo', cond], ['local/echo', {'cond': 'nope', 'text': 'x'}, 'local/echo'],
+                      ['local/echo', {'cond': 'has', 'text': ' , '}, 'local/echo'],
+                      ['local/echo', {'cond': 'has', 'text': 'x', 'else': 'maybe'}, 'local/echo']):
+            with self.subTest(steps=str(steps)[:50]):
+                self.assertIsNone(macrohub.new_chain('x', steps, mode='step')[0])
+        mid, err = macrohub.new_chain('조건 순서', ['local/echo', cond, 'local/echo', 'local/said'], mode='step')
+        self.assertIsNone(err)
+        meta = runner.read_meta(os.path.join(self.local, '조건_순서.py'))
+        self.assertEqual(meta['chain'][1], {'cond': 'has', 'text': '급함', 'else': 'skip'})
+        self.assertEqual(meta['steps'][1], '🔀 조건: 「급함」 있으면 · 아니면 다음 단계 건너뛰기')
+        self.assertEqual(meta['timeout'] - sum(t for t in (600, 5, 600, 600)) - 30 * 4, 2 * runner.CONFIRM_WAIT)   # 조건 뒤엔 확인 없음
+        self.assertEqual(macrohub.find_macro(mid)['chain'], ['local/echo', 'local/echo', 'local/said'])
+
     def test_wait_confirm_reads_answer_file(self):
         with mock.patch.object(runner, 'CONFIRM_DIR', self.tmp), \
                 mock.patch('secrets.token_hex', lambda n: 'ab' * n):

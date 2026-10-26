@@ -241,8 +241,9 @@ def _discover_files():
             'service': bool(meta.get('service')),
             'motion': default_motion(meta),
             'owns': meta.get('owns') or [],
-            'chain': [str(s if isinstance(s, str) else (s or {}).get('id')) for s in meta.get('chain') or []
-                      if not runner.is_ai_step(s)] if meta.get('kind') == 'chain' else [],   # 자동화 단계 id 만(🤖 AI 단계 빼고)
+            'chain': [str(s if isinstance(s, str) else s.get('id')) for s in meta.get('chain') or []
+                      if isinstance(s, str) or (isinstance(s, dict) and s.get('id'))]
+            if meta.get('kind') == 'chain' else [],   # 자동화 단계 id 만(🤖 AI·🔀 조건 단계 빼고)   # 자동화 단계 id 만(🤖 AI 단계 빼고)
             'chain_raw': list(meta.get('chain') or []) if meta.get('kind') == 'chain' else [],
             'mode': runner.chain_mode(meta) if meta.get('kind') == 'chain' else '',
             'keep_going': bool(meta.get('keep_going')),
@@ -1573,7 +1574,26 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
     if mode not in runner.CHAIN_MODES:
         return None, '모드는 %s 중 하나입니다' % ' · '.join(runner.CHAIN_MODES)
     found = []                                       # (보이는 이름, META chain 항목, 제한 시간)
-    for sid in steps:
+    for n_step, sid in enumerate(steps, 1):
+        if runner.is_cond_step(sid):
+            kind = str(sid.get('cond') or '')
+            text = str(sid.get('text') or '').strip()
+            other = str(sid.get('else') or 'stop')
+            if kind not in runner.COND_KINDS:
+                return None, '조건 종류는 %s 중 하나입니다' % ' · '.join(runner.COND_KINDS)
+            if other not in runner.COND_ELSE:
+                return None, '아닐 때는 %s 중 하나입니다' % ' · '.join(runner.COND_ELSE)
+            if not (runner.cond_words(text) if kind != 'ask' else text):
+                return None, '조건에 볼 말(또는 AI 에게 물을 질문)을 입력하세요'
+            if len(text) > AI_ORDER_MAX:
+                return None, '조건은 %d자까지입니다' % AI_ORDER_MAX
+            if n_step == 1:
+                return None, '조건은 앞 단계 결과를 보므로 첫 단계가 될 수 없습니다'
+            if other == 'skip' and n_step == len(steps):
+                return None, '「다음 단계 건너뛰기」 조건 뒤에 단계가 없습니다'
+            item = {'cond': kind, 'text': text, 'else': other}
+            found.append(('🔀 ' + runner.cond_step_name(item), item, runner.AI_TIMEOUT if kind == 'ask' else 5))
+            continue
         if runner.is_ai_step(sid):
             order = str(sid.get('ai') or '').strip()
             engine = str(sid.get('engine') or '').strip()
@@ -1605,7 +1625,8 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
         return None, '같은 이름이 이미 있습니다'
     keep = bool(keep_going)
     asks = sum(1 for i, (_, item, _) in enumerate(found, 1)    # 🙋 확인으로 멈출 수 있는 곳 — 그만큼 제한 시간을 늘린다
-               if i < len(found) and (mode == 'step' or (mode == 'ai' and not isinstance(item, str))))
+               if i < len(found) and not runner.is_cond_step(item)
+               and (mode == 'step' or (mode == 'ai' and runner.is_ai_step(item))))
     meta = {
         'name': name.strip(),
         'desc': '단계 %d개를 순서대로 — %s · %s' % (len(found), '하나가 실패해도 끝까지' if keep else '앞이 실패하면 멈춤',
@@ -1792,6 +1813,7 @@ def macro_view(m):
     raw = m.get('chain_raw') or m['chain']
     if raw:                                          # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로, 🤖 AI 단계는 지시 첫머리)
         d['chain_names'] = [('🤖 ' + runner.ai_step_name(s)) if runner.is_ai_step(s) else
+                            ('🔀 ' + runner.cond_step_name(s)) if runner.is_cond_step(s) else
                             (find_macro(str(s if isinstance(s, str) else (s or {}).get('id'))) or {}).get('name') or str(s)
                             for s in raw]
     return d
