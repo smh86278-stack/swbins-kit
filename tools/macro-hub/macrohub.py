@@ -1497,6 +1497,67 @@ CHAIN_MAX = 20
 AI_ORDER_MAX = 4000
 
 
+AGENT_NAME_MAX = 30
+AGENT_ROLE_MAX = 4000
+
+
+def agents_view():
+    """🧑‍💼 저장한 에이전트 목록(만든 순) — 화면용."""
+    return sorted(runner.load_agents().values(), key=lambda a: a.get('created', 0))
+
+
+def _write_agents(items):
+    os.makedirs(os.path.dirname(runner.AGENTS_FILE), exist_ok=True)
+    tmp = runner.AGENTS_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(items, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, runner.AGENTS_FILE)
+
+
+def save_agent(aid, name, role, engine=''):
+    """🧑‍💼 에이전트 저장 — aid 가 비면 새로. 일 순서의 AI 단계는 id 로 가리켜 고치면 바로 따라간다. (id, 오류)"""
+    import secrets as _sec
+    name, role, engine = str(name or '').strip(), str(role or '').strip(), str(engine or '').strip()
+    if not name:
+        return None, '에이전트 이름을 입력하세요'
+    if len(name) > AGENT_NAME_MAX:
+        return None, '이름은 %d자까지입니다' % AGENT_NAME_MAX
+    if not role:
+        return None, '역할(무엇을 어떻게 하는지)을 적어 주세요'
+    if len(role) > AGENT_ROLE_MAX:
+        return None, '역할은 %d자까지입니다' % AGENT_ROLE_MAX
+    if engine and engine not in aicli.ENGINES:
+        return None, '없는 AI 입니다: %s' % engine
+    items = agents_view()
+    if any(a['name'] == name and a['id'] != aid for a in items):
+        return None, '같은 이름의 에이전트가 이미 있습니다'
+    if aid:
+        cur = next((a for a in items if a['id'] == aid), None)
+        if not cur:
+            return None, '없는 에이전트입니다'
+        cur.update(name=name, role=role, engine=engine)
+    else:
+        aid = 'ag_' + _sec.token_hex(4)
+        items.append({'id': aid, 'name': name, 'role': role, 'engine': engine, 'created': int(time.time())})
+    _write_agents(items)
+    audit('에이전트 저장', aid, name)
+    broadcast({'t': 'agents'})
+    return aid, None
+
+
+def delete_agent(aid):
+    """🧑‍💼 에이전트 지우기 — 쓰던 일 순서가 있으면 그 이름을 돌려준다(그래도 지운다 — 그 단계는 돌 때 실패로 알린다)."""
+    items = agents_view()
+    if not any(a['id'] == aid for a in items):
+        return None, '없는 에이전트입니다'
+    used = [m['name'] for m in discover() if any(runner.is_ai_step(s) and s.get('agent') == aid for s in m.get('chain_raw') or [])]
+    _write_agents([a for a in items if a['id'] != aid])
+    audit('에이전트 지움', aid, ', '.join(used))
+    broadcast({'t': 'agents'})
+    broadcast({'t': 'macros'})
+    return used, None
+
+
 def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
     """🔗 묶음 만들기 — macros.local\\<이름>.py 에 META 만 있는 파일(kind chain). 단계는 지금 있는 자동화(상시·묶음 제외)
     또는 🤖 AI 단계 {"ai": "지시", "engine": ""}(앞 단계 결과를 자료로 묻는다 — runner.run_chain).
@@ -1516,13 +1577,16 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
         if runner.is_ai_step(sid):
             order = str(sid.get('ai') or '').strip()
             engine = str(sid.get('engine') or '').strip()
-            if not order:
-                return None, 'AI 단계의 지시를 입력하세요'
+            agent = str(sid.get('agent') or '').strip()
+            if agent and agent not in runner.load_agents():
+                return None, '없는 에이전트입니다: %s' % agent
+            if not order and not agent:
+                return None, 'AI 단계의 지시를 입력하거나 에이전트를 고르세요'
             if len(order) > AI_ORDER_MAX:
                 return None, 'AI 지시는 %d자까지입니다' % AI_ORDER_MAX
             if engine and engine not in aicli.ENGINES:
                 return None, '없는 AI 입니다: %s' % engine
-            item = {'ai': order, 'engine': engine}
+            item = dict({'ai': order, 'engine': engine}, **({'agent': agent} if agent else {}))
             found.append(('🤖 ' + runner.ai_step_name(item), item, runner.AI_TIMEOUT))
             continue
         m = find_macro(str(sid))
@@ -1882,6 +1946,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, b'not found', 'text/plain')
             with open(shot, 'rb') as f:
                 return self._send(200, f.read(), 'image/png')
+        if u.path == '/api/agents':                   # 🧑‍💼 나만의 에이전트 목록
+            return self._send(200, agents_view())
         if u.path == '/api/runs':
             with lock:
                 items = [r.summary() for r in runs if not r.tool][-100:]
@@ -1967,6 +2033,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/stop':
             return self._send(200, {'ok': stop_run(int(body.get('run', 0)))})
+        if path == '/api/agents/save':                # 🧑‍💼 에이전트 저장 {"id"(고칠 때), "name", "role", "engine"}
+            aid, err = save_agent(str(body.get('id') or ''), body.get('name'), body.get('role'), body.get('engine'))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': aid})
+        if path == '/api/agents/delete':              # 🧑‍💼 에이전트 지우기 {"id"} — 쓰던 일 순서 이름을 돌려준다
+            used, err = delete_agent(str(body.get('id') or ''))
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'used': used})
         if path == '/api/chain/confirm':              # 🙋 묶음 확인 답 {"run", "ok"} — 계속(true)·멈춤(false)
             err = answer_confirm(int(body.get('run', 0) or 0), body.get('ok') is True)
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True})

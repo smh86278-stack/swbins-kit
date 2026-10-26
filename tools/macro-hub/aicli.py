@@ -154,6 +154,9 @@ def _claude_text(prompt, model='', timeout=1800, system=''):
     path = exe('claude')
     if not path:
         raise RuntimeError('%s 가 이 PC 에 없습니다 — %s' % (NAMES['claude'], INSTALL['claude']))
+    if system and _shell(path):
+        # npm 으로 깐 claude.cmd 는 cmd.exe 를 거친다 — 여러 줄 인자는 첫 줄에서 잘려 뒤(🧑‍💼 에이전트 역할 등)가 빠진다(10-26 실측)
+        system = ' '.join(system.split())
     argv = ([path, '-p', '--output-format', 'text', '--tools', '', '--strict-mcp-config', '--no-session-persistence']
             + (['--model', model] if model else []) + (['--system-prompt', system] if system else []))
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}

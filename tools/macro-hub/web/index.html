@@ -248,12 +248,20 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
         <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="grid"></span><div><b>자동화 갤러리</b><small>자주 쓰는 견본을 내 자동화로 복사 — 칸만 채우면 됩니다</small></div></summary>
         <div id="galList" class="gal"></div>
       </details>
+      <details class="mk-card" id="agentBox">
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="user"></span><div><b>나만의 에이전트</b><small>자주 맡기는 AI 역할을 저장해 두고 일 순서의 AI 단계에서 골라 써요</small></div></summary>
+        <div id="agentList"></div>
+        <div class="chain-ai"><input id="agentName" type="text" placeholder="이름 (예: 분류 담당)" aria-label="에이전트 이름">
+          <textarea id="agentRole" rows="3" aria-label="역할" placeholder="역할 — 무엇을 어떻게 하는지 (예: 고객 문의를 급함·보통·나중으로 나누고, 급한 것은 이유를 한 줄씩. 표 대신 목록으로)"></textarea>
+          <div class="row"><select id="agentEngine" class="grow" aria-label="쓸 AI"></select><button id="agentNew">새로</button><button id="agentSave" class="pri">에이전트 저장</button></div></div>
+        <small class="mk-note">고치면 이 에이전트를 쓰는 모든 일 순서에 바로 반영돼요. 일 순서에서 지시를 비워 두면 역할대로 처리해요.</small>
+      </details>
       <details class="mk-card" id="chainBox">
         <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="link"></span><div><b>일 순서</b><small>자동화·AI 를 순서대로 — 예: 자료 받기 → AI 가 요약 → 내가 확인 → 메일 보내기</small></div></summary>
         <div class="row"><label class="sr" for="chainPick">넣을 자동화</label><select id="chainPick" class="grow"></select><button id="chainAdd">넣기</button></div>
         <div class="chain-ai"><label class="sr" for="chainAiText">AI 에게 시킬 일</label>
           <textarea id="chainAiText" placeholder="🤖 AI 단계 — 앞 단계 결과로 무엇을 할지 (예: 아래 내용을 세 줄로 요약하고 급한 것을 맨 위에)"></textarea>
-          <div class="row"><label class="sr" for="chainAiEngine">쓸 AI</label><select id="chainAiEngine" class="grow"></select><button id="chainAiAdd">AI 단계 넣기</button></div></div>
+          <div class="row"><select id="chainAiAgent" aria-label="에이전트" style="max-width:170px"></select><label class="sr" for="chainAiEngine">쓸 AI</label><select id="chainAiEngine" class="grow"></select><button id="chainAiAdd">AI 단계 넣기</button></div></div>
         <ol id="chainSteps" class="chain-steps"></ol>
         <div class="row"><label class="mk-note" for="chainMode">모드</label><select id="chainMode" class="grow">
           <option value="ai" selected>AI 답만 확인 — AI 단계 뒤에서 멈추고 내가 보고 계속</option>
@@ -654,6 +662,7 @@ function connect(){
     if(m.t==='run'){upsertRun(m.run);if(m.run.ended&&/^(app-check|ai):/.test(m.run.macro))loadApps()}
     else if(m.t==='log'){if(m.run===sel){const pre=$('#log'),near=pre.scrollHeight-pre.scrollTop-pre.clientHeight<48;addLine(m.line,true);if(near)pre.scrollTop=pre.scrollHeight}}
     else if(m.t==='macros'||m.t==='motion')loadMacros();
+    else if(m.t==='agents')loadAgents();
     else if(m.t==='pet')setTimeout(petState,400);
     else if(m.t==='skin')setSkin(m.skin,m.breed);
     else if(m.t==='theme')HubMode.apply(m.mode);
@@ -695,16 +704,44 @@ function drawChain(reset){
   const eng=$('#chainAiEngine'),ecur=eng.value;eng.replaceChildren(new Option('AI 고르기 설정대로'+(ai.engines.length?' ('+engineName()+')':''),''));
   for(const e of ai.engines)eng.append(new Option(e.name+(e.installed?'':' (설치 필요)'),e.id));
   eng.value=ecur;
+  const ags=$('#chainAiAgent'),acur=ags.value;ags.replaceChildren(new Option('🧑‍💼 에이전트 없이',''));   // 🧑‍💼 나만의 에이전트
+  for(const a of agents)ags.append(new Option('🧑‍💼 '+a.name,a.id));
+  ags.value=agents.some(a=>a.id===acur)?acur:'';
   const ol=$('#chainSteps');ol.replaceChildren();
   chainSteps.forEach((s,i)=>{const m=typeof s==='string'&&macros.find(x=>x.id===s);
-    const li=el('li','',typeof s==='string'?(m?m.name:s):'🤖 AI: '+s.ai.replace(/\s+/g,' ').slice(0,40)+(s.ai.length>40?'…':'')+(s.engine?' · '+((ai.engines.find(e=>e.id===s.engine)||{}).name||s.engine):''));
+    const li=el('li','',typeof s==='string'?(m?m.name:s):'🤖 '+(s.agent?agentName(s.agent):'AI')+(s.ai?': '+s.ai.replace(/\s+/g,' ').slice(0,40)+(s.ai.length>40?'…':''):'')+(s.engine?' · '+((ai.engines.find(e=>e.id===s.engine)||{}).name||s.engine):''));
     const up=el('button','','위로');up.disabled=!i;up.onclick=()=>{[chainSteps[i-1],chainSteps[i]]=[chainSteps[i],chainSteps[i-1]];drawChain()};
     const x=el('button','','빼기');x.onclick=()=>{chainSteps.splice(i,1);drawChain()};li.append(up,x);ol.append(li)});
   if(!chainSteps.length)ol.append(el('li','mk-note empty-step','아직 비었습니다 — 위에서 자동화·AI 단계를 넣기 (둘 이상)'));
 }
-$('#chainAiAdd').onclick=()=>{const t=$('#chainAiText').value.trim();if(!t)return toast('AI 에게 시킬 일을 적으세요');
-  chainSteps.push({ai:t,engine:$('#chainAiEngine').value});$('#chainAiText').value='';drawChain()};
-$('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)drawChain()});
+$('#chainAiAdd').onclick=()=>{const t=$('#chainAiText').value.trim(),ag=$('#chainAiAgent').value;
+  if(!t&&!ag)return toast('AI 에게 시킬 일을 적거나 에이전트를 고르세요');
+  chainSteps.push(Object.assign({ai:t,engine:$('#chainAiEngine').value},ag?{agent:ag}:{}));$('#chainAiText').value='';drawChain()};
+/* 🧑‍💼 나만의 에이전트 — 이름·역할·쓸 AI 를 저장해 두고 일 순서의 AI 단계에서 고른다(단계는 id 로 가리켜 고치면 바로 따라감) */
+let agents=[],agentEdit='';
+const agentName=id=>(agents.find(a=>a.id===id)||{}).name||'없는 에이전트';
+async function loadAgents(){try{agents=await api('/api/agents')}catch(e){agents=[]}drawAgents();if($('#chainBox').open)drawChain()}
+function drawAgents(){
+  const box=$('#agentList');box.replaceChildren();
+  if(!agents.length)box.append(el('div','mk-note','아직 없어요 — 아래에서 하나 만들어 보세요 (예: 「분류 담당」 — 고객 문의를 급한 순서로 나누고 이유를 한 줄씩)'));
+  for(const a of agents){const row=el('div','row');
+    row.append(el('b','',a.name),el('span','mk-note grow',a.role.replace(/\s+/g,' ').slice(0,60)+(a.role.length>60?'…':'')+(a.engine?' · '+((ai.engines.find(e=>e.id===a.engine)||{}).name||a.engine):'')));
+    const ed=el('button','','고치기');ed.onclick=()=>{agentEdit=a.id;$('#agentName').value=a.name;$('#agentRole').value=a.role;$('#agentEngine').value=a.engine||'';$('#agentSave').textContent='고친 내용 저장';$('#agentName').focus()};
+    const del=el('button','bad','지우기');del.onclick=guard(async()=>{if(!confirm('「'+a.name+'」 에이전트를 지울까요?'))return;
+      const r=await api('/api/agents/delete',{id:a.id});
+      toast(r.used.length?'지웠습니다 — 이 에이전트를 쓰던 일 순서('+r.used.join(', ')+')는 그 단계에서 멈춰요':'지웠습니다');if(agentEdit===a.id)agentReset();loadAgents()});
+    row.append(ed,del);box.append(row)}
+  const eng=$('#agentEngine'),cur=eng.value;eng.replaceChildren(new Option('AI 고르기 설정대로'+(ai.engines.length?' ('+engineName()+')':''),''));
+  for(const e of ai.engines)eng.append(new Option(e.name+(e.installed?'':' (설치 필요)'),e.id));
+  eng.value=cur;
+}
+function agentReset(){agentEdit='';$('#agentName').value='';$('#agentRole').value='';$('#agentEngine').value='';$('#agentSave').textContent='에이전트 저장'}
+$('#agentNew').onclick=agentReset;
+$('#agentSave').onclick=guard(async()=>{
+  await api('/api/agents/save',{id:agentEdit,name:$('#agentName').value,role:$('#agentRole').value,engine:$('#agentEngine').value});
+  toast(agentEdit?'고쳤습니다 — 이 에이전트를 쓰는 일 순서에 바로 반영돼요':'저장했습니다 — 일 순서의 AI 단계에서 고를 수 있어요');agentReset();loadAgents()});
+$('#agentBox').addEventListener('toggle',()=>{if($('#agentBox').open)loadAgents()});
+$('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)loadAgents()});   // 에이전트 목록을 받아 단계 칸까지 그린다
 $('#chainAdd').onclick=()=>{const v=$('#chainPick').value;if(!v)return toast('넣을 자동화를 고르세요');chainSteps.push(v);drawChain()};
 $('#chainBtn').onclick=guard(async()=>{
   const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value,mode:$('#chainMode').value});

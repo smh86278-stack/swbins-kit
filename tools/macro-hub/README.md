@@ -236,6 +236,10 @@ API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,s
   확인할 곳에서 runner 가 `@@confirm` 을 내고 기다리면 허브가 실행 카드에 결과와 「계속」·「멈춤」을 띄운다
   (`POST /api/chain/confirm` → `data.local\confirm\<토큰>.json`). 30분 안에 답이 없으면 멈춘다. 사람이 멈춘 건 실패가 아니다.
   허브 없이 도는 `runner.py --test` 는 확인 없이 계속한다.
+- **🧑‍💼 나만의 에이전트**(2026-10-26): 이름·역할·쓸 AI 를 `data.local\agents.json` 에 저장(만들기 화면 칸, `GET /api/agents` ·
+  `POST /api/agents/save`·`/api/agents/delete`). 일 순서의 AI 단계가 `{"ai", "engine", "agent": id}` 로 가리켜, 에이전트를 고치면
+  그걸 쓰는 일 순서에 바로 반영된다. 역할은 AI 지시문(system)에 붙고, 쓸 AI 는 단계 → 에이전트 → 「AI 고르기」 순. 지시가 비면 역할대로.
+  지운 에이전트를 쓰는 단계는 돌 때 「없는 에이전트」로 실패한다(지울 때 쓰던 일 순서 이름을 알려 준다).
 - **📸 실패한 순간 화면**: 자동화가 오류로 끝나면 runner 가 열린 Chrome 화면(녹화 스크립트는 브라우저가 닫히기 직전), 데스크톱 자동화는 전체 화면(pillow)을
   `data.local\failshots\<자동화>-<시각>.png` 로 남긴다(60장 넘으면 오래된 것부터 지움). 실행 기록에 📸 가 붙고 로그 위에 그림이 뜨며
   (`GET /api/failshot?file=`), 실패 알림 메일에 첨부된다. 제한 시간 초과로 끊긴 실행은 찍지 못한다.

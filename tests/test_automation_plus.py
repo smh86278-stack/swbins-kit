@@ -307,10 +307,14 @@ class AiChain(Base):
         p = mock.patch.object(runner, 'macro_path', lambda mid: self.paths.get(mid))
         p.start()
         self.addCleanup(p.stop)
-        self.prompts, self.asked = [], []
+        self.prompts, self.asked, self.systems = [], [], []
+        p = mock.patch.object(runner, 'AGENTS_FILE', os.path.join(self.tmp, 'agents.json'))
+        p.start()
+        self.addCleanup(p.stop)
 
-    def ask(self, prompt, engine, timeout):
+    def ask(self, prompt, engine, timeout, system=''):
         self.prompts.append((prompt, engine))
+        self.systems.append(system)
         if '터져' in prompt:
             raise RuntimeError('엔진 없음')
         return engine or 'claude', 'AI답 ' + str(len(self.prompts))
@@ -386,6 +390,50 @@ class AiChain(Base):
         self.assertTrue(ok, out)
         self.assertEqual(self.asked, [])
         self.assertIn('허브 밖 시험이라 확인 없이', out)
+
+    # ---- 🧑‍💼 나만의 에이전트
+    def test_agent_role_engine_and_empty_order(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            aid, err = macrohub.save_agent('', '분류 담당', '급함·보통·나중으로 나눈다', 'gemini')
+        self.assertIsNone(err)
+        ok, out = self.chain(['local/said', {'ai': '', 'engine': '', 'agent': aid}, 'local/echo'], mode='auto')
+        self.assertTrue(ok, out)
+        prompt, engine = self.prompts[0]
+        self.assertEqual(engine, 'gemini')                          # 단계에 AI 가 없으면 에이전트의 AI
+        self.assertIn('[지시]\n네 역할대로 처리해.', prompt)          # 지시를 비우면 역할대로
+        self.assertIn('[너의 역할 — 분류 담당]\n급함·보통·나중으로 나눈다', self.systems[0])
+        self.assertIn('🤖 [2/3] 분류 담당 시작', out)
+        ok, out = self.chain([{'ai': '요약', 'engine': 'codex', 'agent': aid}, 'local/echo'], mode='auto')
+        self.assertEqual(self.prompts[-1][1], 'codex')               # 단계에서 고른 AI 가 먼저
+        self.assertIn('분류 담당: 요약', out)
+
+    def test_agent_missing_fails_step(self):
+        ok, out = self.chain([{'ai': '요약', 'agent': 'ag_gone'}, 'local/echo'], mode='auto')
+        self.assertFalse(ok)
+        self.assertIn('없는 에이전트입니다', out)
+        self.assertEqual(self.prompts, [])
+
+    def test_agent_save_edit_delete_and_chain(self):
+        with mock.patch.object(macrohub, 'audit', lambda *a, **k: None), mock.patch.object(macrohub, 'broadcast', lambda *a, **k: None):
+            for args in (('', '', '역할'), ('', '이름', ''), ('', 'x' * 31, '역할'), ('', '이름', '역할', 'gpt9'), ('ag_none', '이름', '역할')):
+                with self.subTest(args=args):
+                    self.assertIsNone(macrohub.save_agent(*args)[0])
+            aid, _ = macrohub.save_agent('', '리뷰어', '꼼꼼히 본다')
+            self.assertTrue(macrohub.save_agent('', '리뷰어', '또')[1])           # 같은 이름
+            self.assertEqual(macrohub.save_agent(aid, '검토자', '더 꼼꼼히', 'claude'), (aid, None))
+            self.assertEqual([(a['name'], a['role'], a['engine']) for a in macrohub.agents_view()], [('검토자', '더 꼼꼼히', 'claude')])
+            self.assertTrue(macrohub.new_chain('x', ['local/echo', {'ai': '', 'agent': 'ag_gone'}])[1])   # 없는 에이전트
+            self.assertTrue(macrohub.new_chain('x', ['local/echo', {'ai': ''}])[1])                       # 지시도 에이전트도 없음
+            mid, err = macrohub.new_chain('검토 순서', ['local/echo', {'ai': '', 'agent': aid}])
+            self.assertIsNone(err)
+            meta = runner.read_meta(os.path.join(self.local, '검토_순서.py'))
+            self.assertEqual(meta['chain'][1], {'ai': '', 'engine': '', 'agent': aid})
+            self.assertEqual(meta['steps'][1], '🤖 검토자')
+            used, err = macrohub.delete_agent(aid)
+            self.assertEqual((used, err), (['검토 순서'], None))          # 쓰던 일 순서 이름을 알려 준다
+            self.assertEqual(macrohub.agents_view(), [])
+            self.assertTrue(macrohub.delete_agent(aid)[1])
+            self.assertEqual(runner.ai_step_name({'ai': '', 'agent': aid}), '없는 에이전트')
 
     def test_wait_confirm_reads_answer_file(self):
         with mock.patch.object(runner, 'CONFIRM_DIR', self.tmp), \

@@ -503,10 +503,29 @@ def is_ai_step(step):
     return isinstance(step, dict) and 'ai' in step
 
 
-def ai_step_name(step):
-    """🤖 AI 단계의 보이는 이름 — name 이 있으면 그것, 없으면 지시 첫머리."""
+AGENTS_FILE = os.path.join(HERE, 'data.local', 'agents.json')   # 🧑‍💼 나만의 에이전트 — 허브 만들기 화면에서 저장
+
+
+def load_agents():
+    """🧑‍💼 저장한 에이전트 {id: {"id", "name", "role", "engine"}} — 없거나 깨졌으면 빈 사전."""
+    try:
+        with open(AGENTS_FILE, encoding='utf-8') as f:
+            items = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {a['id']: a for a in items if isinstance(a, dict) and a.get('id')} if isinstance(items, list) else {}
+
+
+def ai_step_name(step, agents=None):
+    """🤖 AI 단계의 보이는 이름 — name 이 있으면 그것, 없으면 (에이전트 이름 또는 AI): 지시 첫머리."""
+    if str(step.get('name') or '').strip():
+        return str(step['name']).strip()
+    who = 'AI'
+    if step.get('agent'):
+        a = (load_agents() if agents is None else agents).get(step['agent'])
+        who = a['name'] if a else '없는 에이전트'
     text = ' '.join(str(step.get('ai') or '').split())
-    return str(step.get('name') or '').strip() or 'AI: ' + (text[:30] + ('…' if len(text) > 30 else ''))
+    return who + (': ' + text[:30] + ('…' if len(text) > 30 else '') if text else '')
 
 
 def _clip(text):
@@ -514,12 +533,12 @@ def _clip(text):
     return text if len(text) <= PREV_MAX else text[:PREV_MAX] + '\n…(이하 %d자 생략)' % (len(text) - PREV_MAX)
 
 
-def _ask_ai(prompt, engine, timeout):
+def _ask_ai(prompt, engine, timeout, system=AI_SYSTEM):
     """🤖 AI 단계 — 고른 엔진(비면 「AI 고르기」 설정)으로 글만 받는다. 모델은 설정과 같은 엔진일 때만 따른다."""
     import aicli
     s = aicli.settings()
     engine = engine if engine in aicli.ENGINES else s['engine']
-    return engine, aicli.text(prompt, engine, s['model'] if engine == s['engine'] else '', timeout, AI_SYSTEM)
+    return engine, aicli.text(prompt, engine, s['model'] if engine == s['engine'] else '', timeout, system)
 
 
 CONFIRM_PREFIX = '@@confirm '            # 🙋 AI 답을 사람이 보고 계속할지 — 허브가 실행 카드에 「계속」·「멈춤」을 띄운다
@@ -558,14 +577,22 @@ def wait_confirm(name, answer, wait=CONFIRM_WAIT, poll=1.0):
 
 
 def run_ai_step(step, prev, ask=None):
-    """🤖 AI 단계 하나 — (성공 여부, 답 글). 실패면 답 대신 오류 글."""
+    """🤖 AI 단계 하나 — (성공 여부, 답 글). 실패면 답 대신 오류 글.
+    🧑‍💼 에이전트를 골랐으면 그 역할을 지시문(system)에 붙이고, 쓸 AI 는 단계 → 에이전트 → 「AI 고르기」 순. 지시가 비면 역할대로."""
     ask = ask or _ask_ai
     order = str(step.get('ai') or '').strip()
-    if not order:
+    agent = None
+    if step.get('agent'):
+        agent = load_agents().get(step['agent'])
+        if not agent:
+            return False, '없는 에이전트입니다 — 지웠다면 이 단계를 다른 에이전트로 바꿔 주세요'
+    if not order and not agent:
         return False, 'AI 에게 줄 지시가 비었습니다'
-    prompt = '[지시]\n%s' % order + ('\n\n[앞 단계 결과]\n%s' % prev if prev else '')
+    prompt = '[지시]\n%s' % (order or '네 역할대로 처리해.') + ('\n\n[앞 단계 결과]\n%s' % prev if prev else '')
+    system = AI_SYSTEM + ('\n\n[너의 역할 — %s]\n%s' % (agent.get('name', ''), agent.get('role', '')) if agent else '')
+    engine = str(step.get('engine') or '') or str((agent or {}).get('engine') or '')
     try:
-        engine, answer = ask(prompt, str(step.get('engine') or ''), int(step.get('timeout') or AI_TIMEOUT))
+        engine, answer = ask(prompt, engine, int(step.get('timeout') or AI_TIMEOUT), system)
     except Exception as e:                       # 엔진 없음·로그인 안 됨·시간 초과 — 한 줄로
         return False, str(e) or e.__class__.__name__
     answer = (answer or '').strip()
