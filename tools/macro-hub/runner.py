@@ -102,7 +102,7 @@ class Ctx:
         say('@@notify ' + json.dumps({'title': title, 'text': text, 'level': level}, ensure_ascii=False))
 
     def result(self, text):
-        """이 실행의 결과 글 — 묶음에서는 다음 단계(🤖 AI 단계·자동화의 ctx.prev)가 받는다. 안 부르면 로그가 결과가 된다."""
+        """이 실행의 결과 글 — 일 순서에서는 다음 단계(🤖 AI 단계·자동화의 ctx.prev)가 받는다. 안 부르면 로그가 결과가 된다."""
         say(RESULT_PREFIX + json.dumps({'text': str(text)}, ensure_ascii=False))
 
     def motion(self, kind=None, hold=None):
@@ -281,7 +281,7 @@ def lock_profile(profile, macro=''):
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         fh.close()
-        raise AlreadyRunning('이미 실행 중입니다 — 같은 자동화(%s)가 다른 곳(묶음 단계·시험 실행·다른 실행)에서 '
+        raise AlreadyRunning('이미 실행 중입니다 — 같은 자동화(%s)가 다른 곳(일 순서 단계·시험 실행·다른 실행)에서 '
                              '브라우저를 쓰고 있어요. 그 실행이 끝난 뒤 다시 돌리세요' % (macro or os.path.basename(profile)))
     return fh
 
@@ -491,7 +491,7 @@ STEP_PREFIX = '@@step '                  # 🔗 묶음 단계의 시작·끝 —
 RESULT_PREFIX = '@@result '              # ctx.result() — 묶음이 다음 단계로 넘기고, 허브는 '📋 결과' 줄로 보인다
 PREV_MAX = 20000                         # 다음 단계로 넘기는 결과 글 길이 상한(AI 에게 통째로 보낼 만큼만)
 AI_TIMEOUT = 600
-AI_SYSTEM = ('너는 업무 자동화 묶음의 한 단계다. [지시]를 따르고, [앞 단계 결과]가 있으면 그것을 자료로 쓴다. '
+AI_SYSTEM = ('너는 업무 자동화 일 순서의 한 단계다. [지시]를 따르고, [앞 단계 결과]가 있으면 그것을 자료로 쓴다. '
              '인사·설명 없이 결과 글만 쓴다. 따로 말이 없으면 한국어로.')
 
 
@@ -610,7 +610,7 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
     steps = list(meta.get('chain') or [])
     keep = bool(meta.get('keep_going'))
     if not steps:
-        raise RuntimeError('묶음에 자동화가 없습니다 (META chain)')
+        raise RuntimeError('일 순서에 단계가 없습니다 (META chain)')
     mode = chain_mode(meta)
     confirm = confirm or wait_confirm
     ok_n = fail_n = skip_n = 0
@@ -665,8 +665,8 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
         smeta = read_meta(path) if path and os.path.isfile(path) else None
         name = (smeta or {}).get('name') or sid
         why = ('없는 자동화입니다' if smeta is None else
-               '묶음 안에 묶음은 넣을 수 없습니다' if smeta.get('kind') == 'chain' else
-               '상시 자동화는 묶을 수 없습니다' if smeta.get('service') else None)
+               '일 순서 안에 일 순서는 넣을 수 없습니다' if smeta.get('kind') == 'chain' else
+               '상시 자동화는 일 순서에 넣을 수 없습니다' if smeta.get('service') else None)
         if why:
             say('✖ [%d/%d] %s — %s' % (i, total, name, why))
             fail_n += 1
@@ -724,10 +724,10 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
         if not keep and i < total:
             say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
             break
-    say('🔗 묶음 결과: %d개 중 성공 %d · 실패 %d%s%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else '',
+    say('🔗 일 순서 결과: %d개 중 성공 %d · 실패 %d%s%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else '',
                                                    ' · 멈춤으로 안 돌림 %d' % stopped if stopped else ''))
     if last_ai:                                  # 마지막이 AI 단계면 그 답을 알림으로 — 로그를 열지 않아도 보이게
-        ctx.notify('🤖 %s' % (meta.get('name') or '묶음'), ' '.join(last_ai.split())[:300])
+        ctx.notify('🤖 %s' % (meta.get('name') or '일 순서'), ' '.join(last_ai.split())[:300])
     return fail_n == 0
 
 

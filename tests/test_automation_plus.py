@@ -213,7 +213,7 @@ class Chain(Base):
                 self.assertIsNone(macrohub.new_chain(*args)[0])
         self.assertTrue(macrohub.new_chain('x', ['local/a', 'local/b'], at='25:00')[1])
         macrohub.new_chain('c1', ['local/a', 'local/b'])
-        self.assertIn('묶음', macrohub.new_chain('x2', ['local/a', 'local/c1'])[1])   # 묶음 안에 묶음 금지
+        self.assertIn('일 순서', macrohub.new_chain('x2', ['local/a', 'local/c1'])[1])   # 묶음 안에 묶음 금지
         self.assertTrue(macrohub.new_chain('c1', ['local/a', 'local/b'])[1])          # 같은 이름
 
     def test_run_macro_passes_saved_step_params(self):
@@ -257,7 +257,7 @@ class RunChain(Base):
         self.assertTrue(ok, out)
         self.assertLess(out.index('step=local/ok1 n=7'), out.index('step=local/ok3'))
         self.assertIn('chain=local/c', out)
-        self.assertIn('묶음 결과: 2개 중 성공 2 · 실패 0', out)
+        self.assertIn('일 순서 결과: 2개 중 성공 2 · 실패 0', out)
 
     def test_stops_on_failure(self):
         ok, out = self.chain(['local/ok1', 'local/bad', 'local/ok3'])

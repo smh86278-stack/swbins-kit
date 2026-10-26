@@ -27,8 +27,8 @@ dispatch-chat/chat.py :8620  메일을 메신저처럼      mcp_server.py (stdio
 |---|---|---|
 | 입구·감시자 | `tools/macro-hub/launcher.py` → `WorkKit.exe` | 트레이 앱을 자식으로 띄우고 지킨다. 종료 코드 0 = 끝, 3 = 바로 재시작, 그 외 = 다시 띄움(5분에 5번 죽으면 멈추고 알림). 뮤텍스로 하나만 |
 | 트레이 앱 | `app.py` | 허브를 같은 프로세스에서 돌리고 트레이 메뉴·알림 풍선·로그온 자동 시작(HKCU Run)·실패 알림 메일 |
-| 허브 | `macrohub.py` | `ThreadingHTTPServer` 하나로 화면(HTML)·JSON API·SSE(`/events`) 실시간 로그. 자동화 발견(`discover`)·실행·트리거·상시 감독·녹화·갤러리·묶음 |
-| 러너 | `runner.py` | 자동화 1개를 `.venv` 파이썬 별도 프로세스로 실행. `ctx`(브라우저·창·비밀값·로그·알림) 제공, 시험 모드(`dry_run`), 실패 화면 캡처, 묶음(`kind: chain`) 실행 |
+| 허브 | `macrohub.py` | `ThreadingHTTPServer` 하나로 화면(HTML)·JSON API·SSE(`/events`) 실시간 로그. 자동화 발견(`discover`)·실행·트리거·상시 감독·녹화·갤러리·일 순서 |
+| 러너 | `runner.py` | 자동화 1개를 `.venv` 파이썬 별도 프로세스로 실행. `ctx`(브라우저·창·비밀값·로그·알림) 제공, 시험 모드(`dry_run`), 실패 화면 캡처, 일 순서(`kind: chain` — 🤖 AI 단계·🙋 확인 모드) 실행 |
 | 창 이벤트 | `winevents.py` | `SetWinEventHook` 으로 창 생성·제목 변화를 받아 `window` 트리거를 폴링 없이 깨운다 |
 | 외부 서비스 | `extsvc.py` · `macros/svc_*.py` | 게이트웨이·워커·대화 앱·Jira 감시·AI 위키를 허브와 **분리된 프로세스**로 띄우고 `META["owns"]` 로 찾아 넘겨받는다 |
 | 기능(예약 작업) | `macros/job_*.py` | 정기 메일·폴더 정리·감시·백업·만료 예고·브리핑 등. 결과는 `kit.write_status` → 운영 화면 |

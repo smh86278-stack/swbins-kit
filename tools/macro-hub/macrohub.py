@@ -307,7 +307,7 @@ def running_run(macro_id):
 def busy_text(r):
     """겹쳐 돌리려 할 때의 거절 말 — 묶음 단계로 도는 중이면 어느 묶음인지."""
     if r.parent:
-        return '이미 실행 중입니다 — 묶음 「%s」의 단계로 도는 중이에요. 끝난 뒤 다시 돌리세요' % r.parent.name
+        return '이미 실행 중입니다 — 일 순서 「%s」의 단계로 도는 중이에요. 끝난 뒤 다시 돌리세요' % r.parent.name
     return '이미 실행 중입니다'
 
 
@@ -420,7 +420,7 @@ def _step_start(run, info):
     m = find_macro(sid)
     test = run.trigger.get('kind') == 'test'
     step = Run(sid, (m or {}).get('name') or info.get('name') or sid,
-               {'kind': 'test' if test else 'chain', 'detail': '묶음 「%s」 %s/%s 단계' % (run.name, info.get('i', '?'), info.get('n', '?')),
+               {'kind': 'test' if test else 'chain', 'detail': '일 순서 「%s」 %s/%s 단계' % (run.name, info.get('i', '?'), info.get('n', '?')),
                 'chain': run.macro})
     step.parent = run
     run.step = step
@@ -535,7 +535,7 @@ def answer_confirm(run_id, ok):
         json.dump({'ok': bool(ok)}, f)
     os.replace(tmp, path)                        # runner 가 반쯤 쓴 파일을 읽지 않게
     run.confirm = None
-    audit('묶음 확인', run.macro, '%s — %s' % (c['name'], '계속' if ok else '멈춤'))
+    audit('일 순서 확인', run.macro, '%s — %s' % (c['name'], '계속' if ok else '멈춤'))
     broadcast({'t': 'run', 'run': run.summary()})
     return None
 
@@ -786,7 +786,7 @@ def run_macro(macro_id, params=None, trigger=None):
         for sid in m['chain']:                       # 단계가 이미 따로 돌고 있으면 그 단계에서 프로필 잠금으로 깨진다 — 미리 거절
             busy = running_run(sid)
             if busy and running_run(m['id']) is None:
-                return None, '단계 「%s」가 이미 실행 중이라 묶음을 시작하지 않았습니다 — 끝난 뒤 다시 돌리세요' % busy.name
+                return None, '단계 「%s」가 이미 실행 중이라 일 순서를 시작하지 않았습니다 — 끝난 뒤 다시 돌리세요' % busy.name
         extra = {'chain_params': {sid: saved_params(find_macro(sid)) for sid in m['chain'] if find_macro(sid)}}
     return start_run(m['id'], merged, trigger, m['path'], name, timeout=m['timeout'],
                      motion=None if m['service'] else m['motion'], extra=extra)
@@ -1504,11 +1504,11 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
     import aicli
     stem = safe_name(name)
     if not stem:
-        return None, '묶음 이름을 입력하세요'
+        return None, '일 순서 이름을 입력하세요'
     if not isinstance(steps, list) or len(steps) < 2:
         return None, '단계를 둘 이상 넣으세요'
     if len(steps) > CHAIN_MAX:
-        return None, '한 묶음에는 %d개까지 넣을 수 있습니다' % CHAIN_MAX
+        return None, '일 순서 하나에는 %d개까지 넣을 수 있습니다' % CHAIN_MAX
     if mode not in runner.CHAIN_MODES:
         return None, '모드는 %s 중 하나입니다' % ' · '.join(runner.CHAIN_MODES)
     found = []                                       # (보이는 이름, META chain 항목, 제한 시간)
@@ -1529,7 +1529,7 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
         if not m:
             return None, '없는 자동화입니다: %s' % sid
         if m['service'] or m['kind'] == 'chain':
-            return None, '상시 자동화·묶음은 넣을 수 없습니다: %s' % m['name']
+            return None, '상시 자동화·일 순서는 넣을 수 없습니다: %s' % m['name']
         found.append((m['name'], m['id'], m['timeout'] or 600))
     triggers = []
     if (at or '').strip():
@@ -1557,11 +1557,11 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
     import pprint
     os.makedirs(DIR_LOCAL, exist_ok=True)
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
-        f.write('# -*- coding: utf-8 -*-\n# 🔗 묶음 — 허브 🛠 만들기에서 만든 파일. chain 의 자동화를 순서대로 돌린다(runner.run_chain).\n'
+        f.write('# -*- coding: utf-8 -*-\n# 🔗 일 순서 — 허브 🛠 만들기에서 만든 파일. chain 의 자동화를 순서대로 돌린다(runner.run_chain).\n'
                 '# 순서·「실패해도 계속」(keep_going)은 여기서 고쳐도 된다.\nMETA = %s\n'
                 % pprint.pformat(meta, sort_dicts=False, width=110))
     mid = 'local/' + stem
-    audit('묶음 만듦', mid, ' → '.join(meta['steps']))
+    audit('일 순서 만듦', mid, ' → '.join(meta['steps']))
     broadcast({'t': 'macros'})
     return mid, None
 

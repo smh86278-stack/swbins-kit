@@ -13,7 +13,7 @@ The UI and docs are in Korean — see [README.md](README.md) and [docs/ARCHITECT
 - **Scheduled jobs** without Task Scheduler — recurring mail, folder tidy, backups, site/port/certificate/disk monitors,
   credential-expiry warnings, morning brief. Failures alert via mail, Slack, Teams, Discord, Google Chat or signed webhooks.
 - **UI automation** — record or script web (Playwright) and desktop (pywinauto) tasks; trigger on time, interval,
-  window appearance (`SetWinEventHook`) or process start. Dry-run mode, failure screenshots, chained runs, recorded passwords
+  window appearance (`SetWinEventHook`) or process start. Dry-run mode, failure screenshots, workflows (automations and AI steps in order, with an optional human check), recorded passwords
   are extracted into encrypted secrets automatically.
 - **AI integration** — pick Claude Code, Codex, Gemini CLI or local Ollama for "ask in plain words" automation building;
   a read-only MCP server exposes hub status to AI tools; optional mail-based dispatch lets Claude Code work on requests sent from a phone.

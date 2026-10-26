@@ -249,7 +249,7 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
         <div id="galList" class="gal"></div>
       </details>
       <details class="mk-card" id="chainBox">
-        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="link"></span><div><b>묶어 돌리기</b><small>자동화·AI 를 순서대로 — 예: 자료 받기 → AI 가 요약 → 내가 확인 → 메일 보내기</small></div></summary>
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="link"></span><div><b>일 순서</b><small>자동화·AI 를 순서대로 — 예: 자료 받기 → AI 가 요약 → 내가 확인 → 메일 보내기</small></div></summary>
         <div class="row"><label class="sr" for="chainPick">넣을 자동화</label><select id="chainPick" class="grow"></select><button id="chainAdd">넣기</button></div>
         <div class="chain-ai"><label class="sr" for="chainAiText">AI 에게 시킬 일</label>
           <textarea id="chainAiText" placeholder="🤖 AI 단계 — 앞 단계 결과로 무엇을 할지 (예: 아래 내용을 세 줄로 요약하고 급한 것을 맨 위에)"></textarea>
@@ -259,12 +259,12 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
           <option value="ai" selected>AI 답만 확인 — AI 단계 뒤에서 멈추고 내가 보고 계속</option>
           <option value="step">단계마다 확인 — 단계가 끝날 때마다 보고 계속</option>
           <option value="auto">자동 — 묻지 않고 끝까지</option></select></div>
-        <div class="row"><label class="sr" for="chainName">묶음 이름</label><input id="chainName" type="text" placeholder="묶음 이름 (예: 아침 업무 한 번에)" class="grow"></div>
+        <div class="row"><label class="sr" for="chainName">일 순서 이름</label><input id="chainName" type="text" placeholder="일 순서 이름 (예: 아침 업무 한 번에)" class="grow"></div>
         <div class="row" style="flex-wrap:wrap"><label class="mk-note" title="끄면 앞 단계가 실패할 때 나머지를 돌리지 않습니다"><input type="checkbox" id="chainKeep"> 하나가 실패해도 끝까지</label>
           <label class="mk-note" for="chainAt" style="margin-left:auto">예약(선택)</label><input id="chainAt" type="time" style="width:110px">
           <select id="chainDays" aria-label="예약 요일"><option value="mon-fri">평일</option><option value="daily">매일</option></select>
-          <button id="chainBtn" class="pri">묶음 만들기</button></div>
-        <small class="mk-note">만든 묶음은 자동화 목록에 나타납니다. 더 보기 → 시험 실행으로 먼저 돌려 보고, 예약을 넣었으면 켜짐 스위치를 켜세요. 시각은 예약 화면에서 바꿉니다.</small>
+          <button id="chainBtn" class="pri">일 순서 만들기</button></div>
+        <small class="mk-note">만든 일 순서는 자동화 목록에 나타납니다. 더 보기 → 시험 실행으로 먼저 돌려 보고, 예약을 넣었으면 켜짐 스위치를 켜세요. 시각은 예약 화면에서 바꿉니다.</small>
       </details>
       <details class="mk-adv">
         <summary>고급 도구 <small>빈 자동화 파일 · 요소 찍기 · 구조 보기 · 폴더</small></summary>
@@ -334,7 +334,7 @@ HubMode.mount(null,TOKEN);HubLook.mount(null,TOKEN,{layout:true,pets:'petCtl'});
 HubNav.mount('#side',{active:navKey(),dot:true,pets:true});
 addEventListener('hashchange',()=>HubNav.setActive(navKey()));
 for(const s of document.querySelectorAll('[data-icon]'))s.append(hubIcon(s.dataset.icon));
-if(VIEW_MAKE){document.title='만들기 — WorkKit';$h('#headline','만들기');$h('#subline','보여 주기 · 말로 부탁하기 · 갤러리 · 묶어 돌리기 · 내 앱')}
+if(VIEW_MAKE){document.title='만들기 — WorkKit';$h('#headline','만들기');$h('#subline','보여 주기 · 말로 부탁하기 · 갤러리 · 일 순서 · 내 앱')}
 function $h(s,t){document.querySelector(s).textContent=t}
 const $=s=>document.querySelector(s);
 let macros=[],deleted=[],runs=[],sel=null,toolRuns=new Map(),paramVals={},query='',lastLoad=0;
@@ -442,7 +442,7 @@ function macroRow(m,dim){
   line.append(el('span','nm',m.name));
   if(m.target)line.append(el('span','badge',m.target==='web'?'웹':'데스크톱'));
   if(m.service)line.append(el('span','badge svc','상시'));
-  if(m.kind==='chain')line.append(el('span','badge',(m.keep_going?'묶음 · 끝까지':'묶음')+' · '+({step:'단계마다 확인',ai:'AI 답만 확인',auto:'자동'}[m.mode]||'자동')));
+  if(m.kind==='chain')line.append(el('span','badge',(m.keep_going?'일 순서 · 끝까지':'일 순서')+' · '+({step:'단계마다 확인',ai:'AI 답만 확인',auto:'자동'}[m.mode]||'자동')));
   if(!m.local)line.append(el('span','badge','예제'));
   nc.append(line);if(m.desc)nc.append(el('div','ds',m.desc));
   // 언제
@@ -480,14 +480,14 @@ function macroRow(m,dim){
   if(steps.length){const ol=el('ol','msteps');for(const s of steps)ol.append(el('li','',s));d.append(ol)}   // META steps — 무엇을 하는지 쉬운 말로
   if(m.triggers.length)d.append(el('div','trg','트리거: '+m.triggers.map(trgText).join(' · ')));
   if(keys.length){
-    // 칸 — 녹화한 입력값·견본의 설정. 고친 값은 이번 실행에만, 「값 저장」을 누르면 기억해서 예약 실행·묶음도 그 값으로 돈다
+    // 칸 — 녹화한 입력값·견본의 설정. 고친 값은 이번 실행에만, 「값 저장」을 누르면 기억해서 예약 실행·일 순서도 그 값으로 돈다
     const p=el('div','params'),saved=m.saved_params||{};
     for(const k of keys){
       const l=el('label','',k),i=el('input');i.type='text';i.value=(paramVals[m.id]||{})[k]??saved[k]??m.params[k];
       if(k in saved)l.classList.add('saved');
       i.oninput=()=>{(paramVals[m.id]=paramVals[m.id]||{})[k]=i.value};l.append(i);p.append(l);
     }
-    const sv=el('button','','값 저장');sv.type='button';sv.title='지금 칸의 값을 기억합니다 — 예약 실행·묶음도 이 값으로 돕니다 (기본값과 같은 칸은 빼고)';
+    const sv=el('button','','값 저장');sv.type='button';sv.title='지금 칸의 값을 기억합니다 — 예약 실행·일 순서도 이 값으로 돕니다 (기본값과 같은 칸은 빼고)';
     sv.onclick=async()=>{const vals={};for(const k of keys)vals[k]=(paramVals[m.id]||{})[k]??saved[k]??m.params[k];
       try{const r=await api('/api/params',{id:m.id,params:vals});delete paramVals[m.id];toast(Object.keys(r.saved||{}).length?m.name+' — 값을 기억했습니다':m.name+' — 모두 기본값으로 돌렸습니다')}catch(e){toast(e.message)}};
     p.append(sv);d.append(p);
@@ -708,7 +708,7 @@ $('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)drawChain()
 $('#chainAdd').onclick=()=>{const v=$('#chainPick').value;if(!v)return toast('넣을 자동화를 고르세요');chainSteps.push(v);drawChain()};
 $('#chainBtn').onclick=guard(async()=>{
   const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value,mode:$('#chainMode').value});
-  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';$('#chainKeep').checked=false;$('#chainDays').value='mon-fri';$('#chainMode').value='ai';drawChain(true);toast('묶음을 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
+  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';$('#chainKeep').checked=false;$('#chainDays').value='mon-fri';$('#chainMode').value='ai';drawChain(true);toast('일 순서를 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
 // 말로 부탁하기 — 대화가 켜져 있으면 허브가 바로 보낸다(/api/ask → 8620 /api/send, 쓰기 지시). 보낸 뒤 대화를 열어 진행을 보여 준다.
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';
