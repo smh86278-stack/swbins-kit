@@ -21,13 +21,15 @@
 ![허브 첫 화면 — 오늘 요약·실패 알림·자동화 표](docs/images/ui-hub-light.png)
 
 <details>
-<summary>색 테마 3종 · 만들기 · 운영 화면 더 보기</summary>
+<summary>라이트 · 다크 · 만들기 · 운영 화면 더 보기</summary>
 
-| | 기본 | 진한 사이드바 | 다크 |
-|---|---|---|---|
-| 자동화 | <img src="docs/images/ui-hub-light.png" width="260" alt="자동화 · 기본"> | <img src="docs/images/ui-hub-navy.png" width="260" alt="자동화 · 진한 사이드바"> | <img src="docs/images/ui-hub-dark.png" width="260" alt="자동화 · 다크"> |
-| 만들기 | <img src="docs/images/ui-make-light.png" width="260" alt="만들기 · 기본"> | <img src="docs/images/ui-make-navy.png" width="260" alt="만들기 · 진한 사이드바"> | <img src="docs/images/ui-make-dark.png" width="260" alt="만들기 · 다크"> |
-| 운영 | <img src="docs/images/ui-ops-light.png" width="260" alt="운영 · 기본"> | <img src="docs/images/ui-ops-navy.png" width="260" alt="운영 · 진한 사이드바"> | <img src="docs/images/ui-ops-dark.png" width="260" alt="운영 · 다크"> |
+화면은 「종이 노트」 하나 — 라이트 · 다크 · 자동(Windows 설정 따라감) 중에서 고른다.
+
+| | 라이트 | 다크 |
+|---|---|---|
+| 자동화 | <img src="docs/images/ui-hub-light.png" width="390" alt="자동화 · 라이트"> | <img src="docs/images/ui-hub-dark.png" width="390" alt="자동화 · 다크"> |
+| 만들기 | <img src="docs/images/ui-make-light.png" width="390" alt="만들기 · 라이트"> | <img src="docs/images/ui-make-dark.png" width="390" alt="만들기 · 다크"> |
+| 운영 | <img src="docs/images/ui-ops-light.png" width="390" alt="운영 · 라이트"> | <img src="docs/images/ui-ops-dark.png" width="390" alt="운영 · 다크"> |
 
 </details>
 
