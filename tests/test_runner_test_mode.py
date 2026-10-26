@@ -86,7 +86,8 @@ class TestMode(unittest.TestCase):
         local = os.path.join(HUB, 'macros.local')
         meta = {'params': {'a': 1}}
         raw = runner.test_ctx(os.path.join(local, 'order.py'), ['a=2', 'b="x y"'], meta)
-        self.assertEqual(raw, {'macro': 'local/order', 'params': {'a': 2, 'b': 'x y'}, 'trigger': {'kind': 'test'}, 'dry_run': True})
+        self.assertEqual(raw, {'macro': 'local/order', 'params': {'a': 2, 'b': 'x y'}, 'trigger': {'kind': 'test'}, 'dry_run': True,
+                               'no_hub': True})
         self.assertEqual(runner.test_ctx(os.path.join(self.tmp, 'x.py'), [], {})['macro'], 'x')
         self.assertEqual(meta, {'params': {'a': 1}})                    # META 를 고치지 않는다
 

@@ -119,6 +119,7 @@ details[open]>summary.mk-head::after{transform:rotate(45deg)}
 .mk-note{color:var(--muted);font-size:12px}
 .mk-off{font-size:12.5px;color:var(--muted);background:var(--soft);border-radius:var(--r-sm);padding:8px 10px}
 .mk-off[hidden]{display:none}
+#fixBtn[hidden]{display:none}   /* 단추 공통 display:flex 가 hidden 을 이겨 실패가 아닐 때도 보이던 것 */
 .app-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;background:var(--solid);display:flex;flex-direction:column;gap:8px}
 .app-card .mk-head small{display:block}
 .app-perm{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px}
@@ -142,6 +143,10 @@ details[open]>summary.mk-head::after{transform:rotate(45deg)}
 .mk-card input[type=checkbox]{width:auto;vertical-align:middle}
 .chain-steps{margin:0;padding-left:22px;font-size:13px}
 .chain-steps li{padding:2px 0}.chain-steps li.empty-step{list-style:none;margin-left:-22px}.chain-steps button{font-size:11.5px;padding:0 7px;margin-left:6px}
+.confirmbox{margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--solid)}
+.confirmbox pre{white-space:pre-wrap;max-height:240px;overflow:auto;margin:6px 0;font:inherit;font-size:13px}
+.confirmbox .row{gap:6px}
+.chain-ai{display:flex;flex-direction:column;gap:6px;margin:6px 0}.chain-ai textarea{min-height:56px;resize:vertical;font:inherit}
 .shotbox{margin-top:8px}.shotbox img{max-width:100%;max-height:220px;border:1px solid var(--line);border-radius:var(--r-sm);cursor:zoom-in;display:block;margin-top:4px}
 .mk-adv{border-top:1px solid var(--line2);padding-top:10px;margin-top:4px}
 .mk-adv>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);margin-bottom:10px}
@@ -244,9 +249,16 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
         <div id="galList" class="gal"></div>
       </details>
       <details class="mk-card" id="chainBox">
-        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="link"></span><div><b>묶어 돌리기</b><small>자동화 여러 개를 순서대로 — 예: 로그인 확인 → 자료 받기 → 정리</small></div></summary>
+        <summary class="mk-head" style="cursor:pointer"><span class="mk-ico" data-icon="link"></span><div><b>묶어 돌리기</b><small>자동화·AI 를 순서대로 — 예: 자료 받기 → AI 가 요약 → 내가 확인 → 메일 보내기</small></div></summary>
         <div class="row"><label class="sr" for="chainPick">넣을 자동화</label><select id="chainPick" class="grow"></select><button id="chainAdd">넣기</button></div>
+        <div class="chain-ai"><label class="sr" for="chainAiText">AI 에게 시킬 일</label>
+          <textarea id="chainAiText" placeholder="🤖 AI 단계 — 앞 단계 결과로 무엇을 할지 (예: 아래 내용을 세 줄로 요약하고 급한 것을 맨 위에)"></textarea>
+          <div class="row"><label class="sr" for="chainAiEngine">쓸 AI</label><select id="chainAiEngine" class="grow"></select><button id="chainAiAdd">AI 단계 넣기</button></div></div>
         <ol id="chainSteps" class="chain-steps"></ol>
+        <div class="row"><label class="mk-note" for="chainMode">모드</label><select id="chainMode" class="grow">
+          <option value="ai" selected>AI 답만 확인 — AI 단계 뒤에서 멈추고 내가 보고 계속</option>
+          <option value="step">단계마다 확인 — 단계가 끝날 때마다 보고 계속</option>
+          <option value="auto">자동 — 묻지 않고 끝까지</option></select></div>
         <div class="row"><label class="sr" for="chainName">묶음 이름</label><input id="chainName" type="text" placeholder="묶음 이름 (예: 아침 업무 한 번에)" class="grow"></div>
         <div class="row" style="flex-wrap:wrap"><label class="mk-note" title="끄면 앞 단계가 실패할 때 나머지를 돌리지 않습니다"><input type="checkbox" id="chainKeep"> 하나가 실패해도 끝까지</label>
           <label class="mk-note" for="chainAt" style="margin-left:auto">예약(선택)</label><input id="chainAt" type="time" style="width:110px">
@@ -295,6 +307,7 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
       <div class="runs" id="runs" role="list"></div>
       <div class="row"><div id="logTitle" class="grow">실행을 고르면 로그가 보입니다</div>
         <button id="fixBtn" hidden title="실패한 내 자동화를 로그와 함께 AI 에게 넘겨 고쳐 달라고 합니다(대화가 꺼져 있으면 부탁 글 복사)">고쳐 달라기</button></div>
+      <div id="confirmBox" class="confirmbox" hidden></div>
       <div id="shotBox" class="shotbox" hidden></div>
       <pre id="log" tabindex="0" aria-label="실행 로그"></pre>
     </section>
@@ -429,7 +442,7 @@ function macroRow(m,dim){
   line.append(el('span','nm',m.name));
   if(m.target)line.append(el('span','badge',m.target==='web'?'웹':'데스크톱'));
   if(m.service)line.append(el('span','badge svc','상시'));
-  if(m.kind==='chain')line.append(el('span','badge',m.keep_going?'묶음 · 끝까지':'묶음'));
+  if(m.kind==='chain')line.append(el('span','badge',(m.keep_going?'묶음 · 끝까지':'묶음')+' · '+({step:'단계마다 확인',ai:'AI 답만 확인',auto:'자동'}[m.mode]||'자동')));
   if(!m.local)line.append(el('span','badge','예제'));
   nc.append(line);if(m.desc)nc.append(el('div','ds',m.desc));
   // 언제
@@ -516,7 +529,7 @@ function drawRuns(){
   for(const r of runs){
     if(!showRoutine&&routine(r))continue;
     const d=runRow('run'+(r.id===sel?' sel':''),()=>select(r.id));
-    const nm=el('span','grow',r.name);if(r.shot)nm.append(' ',el('span','badge','실패 화면'));
+    const nm=el('span','grow',r.name);if(r.shot)nm.append(' ',el('span','badge','실패 화면'));if(r.confirm)nm.append(' ',el('span','badge','🙋 확인 기다림'));
     d.append(el('span','t',hm(r.started)),nm,el('span','t',r.trigger+(r.detail?' · '+r.detail:'')),chip(r.status));
     box.append(d);
   }
@@ -525,7 +538,7 @@ async function select(id){
   sel=id;drawRuns();
   const r=await api('/api/run?id='+id).catch(()=>null);if(!r||sel!==id)return;
   $('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
-  showFix(r);showShot(r);
+  showFix(r);showShot(r);showConfirm(r);
   const pre=$('#log');pre.replaceChildren();r.lines.forEach(l=>addLine(l,false));pre.scrollTop=pre.scrollHeight;
 }
 // 실패한 순간 화면 — 실패하면 runner 가 data.local\failshots 에 남긴다. 누르면 새 탭에 크게
@@ -536,6 +549,18 @@ function showShot(r){
   const img=el('img');img.alt='실패한 순간 화면';img.onclick=()=>window.open(url,'_blank');
   img.onerror=()=>{b.hidden=true;b.replaceChildren();delete b.dataset.shot};img.src=url;   // 그 사이 정리로 지워졌으면 깨진 그림 대신 숨긴다
   b.dataset.shot=r.shot;b.replaceChildren(a,img);b.hidden=false;
+}
+// 🙋 묶음이 사람 확인을 기다림 — 앞 단계 결과(AI 답 등)를 보여 주고 「계속」·「멈춤」
+function showConfirm(r){
+  const b=$('#confirmBox');if(!r.confirm){b.hidden=true;b.replaceChildren();delete b.dataset.run;return}
+  if(b.dataset.run===String(r.id)&&!b.hidden)return;
+  const go=el('button','pri','계속'),stop=el('button','bad','멈춤'),row=el('div','row');
+  const answer=ok=>guard(async()=>{go.disabled=stop.disabled=true;
+    try{await api('/api/chain/confirm',{run:r.id,ok})}catch(e){go.disabled=stop.disabled=false;throw e}
+    toast(ok?'계속합니다':'멈췄습니다')});
+  go.onclick=answer(true);stop.onclick=answer(false);row.append(go,stop,el('small','mk-note','30분 안에 고르지 않으면 멈춥니다'));
+  b.replaceChildren(el('b','','🙋 「'+r.confirm.name+'」 결과를 확인해 주세요'),el('pre','',r.confirm.text||'(결과 글 없음)'),row);
+  b.dataset.run=String(r.id);b.hidden=false;
 }
 function addLine(text,animate){const s=el('div','',text||' ');$('#log').append(s)}
 
@@ -608,7 +633,8 @@ function reactToRun(r){PetMood.react(flash,r)}
 function upsertRun(r){
   if(r.tool){toolRuns.set(r.id,r)}else{const i=runs.findIndex(x=>x.id===r.id);if(i>=0)runs[i]=r;else runs.unshift(r);runs=runs.slice(0,100)}
   reactToRun(r);drawRuns();
-  if(r.id===sel){$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);showFix(r);showShot(r)}
+  if(r.id===sel){$('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);showFix(r);showShot(r);showConfirm(r)}
+  else if(r.confirm&&!r.tool)select(r.id);       // 🙋 확인을 기다리는 묶음은 바로 그 실행을 열어 보인다
   if(!r.tool)loadMacros();else updatePets();
 }
 // 고쳐 달라기 — 실패한 내 자동화(local/…)에만. 녹화한 자동화가 사이트 변경으로 깨지면 로그째 AI 에게 넘긴다.
@@ -666,17 +692,23 @@ function drawChain(reset){
   const pick=$('#chainPick'),cur=reset?'':pick.value;pick.replaceChildren(new Option('— 넣을 자동화 고르기 —',''));
   for(const m of macros.filter(m=>!m.service&&m.kind!=='chain'))pick.append(new Option(m.name+(m.local?'':' (예제)'),m.id));
   pick.value=cur;
+  const eng=$('#chainAiEngine'),ecur=eng.value;eng.replaceChildren(new Option('AI 고르기 설정대로'+(ai.engines.length?' ('+engineName()+')':''),''));
+  for(const e of ai.engines)eng.append(new Option(e.name+(e.installed?'':' (설치 필요)'),e.id));
+  eng.value=ecur;
   const ol=$('#chainSteps');ol.replaceChildren();
-  chainSteps.forEach((id,i)=>{const m=macros.find(x=>x.id===id),li=el('li','',m?m.name:id);
+  chainSteps.forEach((s,i)=>{const m=typeof s==='string'&&macros.find(x=>x.id===s);
+    const li=el('li','',typeof s==='string'?(m?m.name:s):'🤖 AI: '+s.ai.replace(/\s+/g,' ').slice(0,40)+(s.ai.length>40?'…':'')+(s.engine?' · '+((ai.engines.find(e=>e.id===s.engine)||{}).name||s.engine):''));
     const up=el('button','','위로');up.disabled=!i;up.onclick=()=>{[chainSteps[i-1],chainSteps[i]]=[chainSteps[i],chainSteps[i-1]];drawChain()};
     const x=el('button','','빼기');x.onclick=()=>{chainSteps.splice(i,1);drawChain()};li.append(up,x);ol.append(li)});
-  if(!chainSteps.length)ol.append(el('li','mk-note empty-step','아직 비었습니다 — 위에서 고르고 넣기 (둘 이상)'));
+  if(!chainSteps.length)ol.append(el('li','mk-note empty-step','아직 비었습니다 — 위에서 자동화·AI 단계를 넣기 (둘 이상)'));
 }
+$('#chainAiAdd').onclick=()=>{const t=$('#chainAiText').value.trim();if(!t)return toast('AI 에게 시킬 일을 적으세요');
+  chainSteps.push({ai:t,engine:$('#chainAiEngine').value});$('#chainAiText').value='';drawChain()};
 $('#chainBox').addEventListener('toggle',()=>{if($('#chainBox').open)drawChain()});
 $('#chainAdd').onclick=()=>{const v=$('#chainPick').value;if(!v)return toast('넣을 자동화를 고르세요');chainSteps.push(v);drawChain()};
 $('#chainBtn').onclick=guard(async()=>{
-  const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value});
-  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';$('#chainKeep').checked=false;$('#chainDays').value='mon-fri';drawChain(true);toast('묶음을 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
+  const r=await api('/api/chain/new',{name:$('#chainName').value,steps:chainSteps,keep_going:$('#chainKeep').checked,at:$('#chainAt').value,days:$('#chainDays').value,mode:$('#chainMode').value});
+  chainSteps=[];$('#chainName').value='';$('#chainAt').value='';$('#chainKeep').checked=false;$('#chainDays').value='mon-fri';$('#chainMode').value='ai';drawChain(true);toast('묶음을 만들었습니다 ('+r.id+') — 자동화 목록에서 시험 실행해 보세요');loadMacros()});
 // 말로 부탁하기 — 대화가 켜져 있으면 허브가 바로 보낸다(/api/ask → 8620 /api/send, 쓰기 지시). 보낸 뒤 대화를 열어 진행을 보여 준다.
 // 대화가 꺼져 있으면(키트 기본) 없는 화면을 열지 않고 글만 복사한다 — 이 PC 의 Claude Code 에 붙여 넣으면 된다
 const CHAT_URL='http://127.0.0.1:8620/';

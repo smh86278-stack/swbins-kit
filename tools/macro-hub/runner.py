@@ -18,6 +18,10 @@ ctx.dry_run 이 참이라 ctx.for_real('메일 보내기') 로 감싼 되돌릴 
 
   chain    🔗 묶음 — META["chain"] 의 자동화 id 를 순서대로 하나씩 이 파일(runner.py)로 돌린다(run_chain).
            앞이 실패하면 멈추고, META["keep_going"] 이 참이면 실패해도 다음으로. 하나라도 실패하면 묶음도 실패.
+           단계가 {"ai": "지시", "engine": ""} 면 🤖 AI 단계 — 앞 단계 결과를 자료로 AI 에게 묻고(aicli.text) 답을 다음 단계로.
+           앞 단계 결과 = 그 자동화가 ctx.result("…") 로 남긴 글, 없으면 그 단계 로그. 다음 자동화는 ctx.prev 로 받는다.
+           🙋 META["mode"] — step(단계마다 확인) · ai(AI 답만 확인) · auto(자동, 없으면 이것). 확인은 허브 실행 카드의
+           「계속」·「멈춤」(@@confirm → data.local\\confirm\\<토큰>.json), 30분 안에 답이 없으면 멈춤.
 
 실패한 순간 화면(📸): 자동화가 오류로 끝나면 웹은 열려 있던 Chrome 화면을, 데스크톱(target desktop)은 전체 화면을
 data.local\\failshots\\<자동화>-<시각>.png 로 남기고 '@@failshot <경로>' 줄을 낸다 — 허브가 실행 기록·실패 알림 메일에 붙인다.
@@ -71,6 +75,8 @@ class Ctx:
         self.meta = meta
         self.dry_run = bool(raw.get('dry_run'))   # 시험 실행(--test) — for_real() 로 감싼 동작을 건너뛴다
         self.chain_params = raw.get('chain_params') or {}   # 🔗 묶음 — 허브 카드에서 기억한 단계별 입력값 {자동화 id: {...}}
+        self.prev = raw.get('prev') or ''                   # 🔗 묶음 — 앞 단계 결과(ctx.result 글·AI 답). 묶음 밖이면 빈 글
+        self.no_hub = bool(raw.get('no_hub'))               # 허브 없이 도는 시험(--test) — 🙋 확인을 띄울 화면이 없다
         self._pw = None
         self._browser_ctx = None
         self._profile_lock = None
@@ -94,6 +100,10 @@ class Ctx:
     def notify(self, title, text='', level='info'):
         """허브 알림 — 트레이 풍선과 웹 화면 토스트로 뜨고, 로그에도 남는다. level: info | warning | error"""
         say('@@notify ' + json.dumps({'title': title, 'text': text, 'level': level}, ensure_ascii=False))
+
+    def result(self, text):
+        """이 실행의 결과 글 — 묶음에서는 다음 단계(🤖 AI 단계·자동화의 ctx.prev)가 받는다. 안 부르면 로그가 결과가 된다."""
+        say(RESULT_PREFIX + json.dumps({'text': str(text)}, ensure_ascii=False))
 
     def motion(self, kind=None, hold=None):
         """펫 고양이가 보일 일의 모습을 바꾼다 — web | desktop | write | mail | search, None 이면 META 기본으로.
@@ -478,10 +488,90 @@ def track_playwright(macro, meta, seen):
 
 CHAIN_ID = re.compile(r'^(local/)?[\w\-]+$')
 STEP_PREFIX = '@@step '                  # 🔗 묶음 단계의 시작·끝 — 허브가 그 자동화의 '실행 중'·'마지막 실행'으로 기록한다
+RESULT_PREFIX = '@@result '              # ctx.result() — 묶음이 다음 단계로 넘기고, 허브는 '📋 결과' 줄로 보인다
+PREV_MAX = 20000                         # 다음 단계로 넘기는 결과 글 길이 상한(AI 에게 통째로 보낼 만큼만)
+AI_TIMEOUT = 600
+AI_SYSTEM = ('너는 업무 자동화 묶음의 한 단계다. [지시]를 따르고, [앞 단계 결과]가 있으면 그것을 자료로 쓴다. '
+             '인사·설명 없이 결과 글만 쓴다. 따로 말이 없으면 한국어로.')
 
 
 def step_mark(sid, state, **more):
     say(STEP_PREFIX + json.dumps(dict(more, id=sid, state=state), ensure_ascii=False))
+
+
+def is_ai_step(step):
+    return isinstance(step, dict) and 'ai' in step
+
+
+def ai_step_name(step):
+    """🤖 AI 단계의 보이는 이름 — name 이 있으면 그것, 없으면 지시 첫머리."""
+    text = ' '.join(str(step.get('ai') or '').split())
+    return str(step.get('name') or '').strip() or 'AI: ' + (text[:30] + ('…' if len(text) > 30 else ''))
+
+
+def _clip(text):
+    text = (text or '').strip()
+    return text if len(text) <= PREV_MAX else text[:PREV_MAX] + '\n…(이하 %d자 생략)' % (len(text) - PREV_MAX)
+
+
+def _ask_ai(prompt, engine, timeout):
+    """🤖 AI 단계 — 고른 엔진(비면 「AI 고르기」 설정)으로 글만 받는다. 모델은 설정과 같은 엔진일 때만 따른다."""
+    import aicli
+    s = aicli.settings()
+    engine = engine if engine in aicli.ENGINES else s['engine']
+    return engine, aicli.text(prompt, engine, s['model'] if engine == s['engine'] else '', timeout, AI_SYSTEM)
+
+
+CONFIRM_PREFIX = '@@confirm '            # 🙋 AI 답을 사람이 보고 계속할지 — 허브가 실행 카드에 「계속」·「멈춤」을 띄운다
+CONFIRM_DIR = os.path.join(HERE, 'data.local', 'confirm')
+CONFIRM_WAIT = 1800                      # 30분 안에 답이 없으면 멈춤으로
+
+
+def confirm_file(token):
+    return os.path.join(CONFIRM_DIR, token + '.json') if re.match(r'^[0-9a-f]{16,64}$', str(token or '')) else None
+
+
+def wait_confirm(name, answer, wait=CONFIRM_WAIT, poll=1.0):
+    """🙋 사람 확인 — 허브가 data.local\\confirm\\<토큰>.json 에 {"ok": true|false} 를 써 줄 때까지 기다린다.
+    (계속이면 True, 멈춤·시간 초과면 False)"""
+    import secrets as _sec
+    token = _sec.token_hex(16)
+    path = confirm_file(token)
+    say(CONFIRM_PREFIX + json.dumps({'token': token, 'name': name, 'text': answer[:4000], 'wait': wait}, ensure_ascii=False))
+    end = time.time() + wait
+    try:
+        while time.time() < end:
+            if os.path.isfile(path):
+                try:
+                    with open(path, encoding='utf-8') as f:
+                        return bool(json.load(f).get('ok'))
+                except (OSError, ValueError, AttributeError):
+                    pass                         # 쓰는 중 — 다음 번에
+            time.sleep(poll)
+        say('⌛ %d분 동안 확인이 없어 멈춥니다' % (wait // 60))
+        return False
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def run_ai_step(step, prev, ask=None):
+    """🤖 AI 단계 하나 — (성공 여부, 답 글). 실패면 답 대신 오류 글."""
+    ask = ask or _ask_ai
+    order = str(step.get('ai') or '').strip()
+    if not order:
+        return False, 'AI 에게 줄 지시가 비었습니다'
+    prompt = '[지시]\n%s' % order + ('\n\n[앞 단계 결과]\n%s' % prev if prev else '')
+    try:
+        engine, answer = ask(prompt, str(step.get('engine') or ''), int(step.get('timeout') or AI_TIMEOUT))
+    except Exception as e:                       # 엔진 없음·로그인 안 됨·시간 초과 — 한 줄로
+        return False, str(e) or e.__class__.__name__
+    answer = (answer or '').strip()
+    if not answer:
+        return False, '%s 가 빈 답을 돌려줬습니다' % engine
+    return True, answer
 
 
 def macro_path(mid):
@@ -501,19 +591,74 @@ def _kill_tree(proc):
         proc.kill()
 
 
-def run_chain(ctx, meta, popen=None):
+CHAIN_MODES = {'step': '단계마다 확인', 'ai': 'AI 답만 확인', 'auto': '자동'}
+
+
+def chain_mode(meta):
+    """🙋 묶음 모드 — META mode. 없으면(옛 묶음) 자동: 예전처럼 묻지 않고 돈다."""
+    mode = meta.get('mode')
+    return mode if mode in CHAIN_MODES else 'auto'
+
+
+def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
     """🔗 묶음 — META chain 의 자동화를 하나씩 runner.py 자식으로 돌린다. 성공(실패 없음)이면 True.
     단계 로그는 들여 써서 그대로 흘리고, '@@' 줄(알림·펫·📸)은 허브가 읽게 그대로 둔다.
-    시험 실행이면 단계도 시험으로 — 키트 기본 자동화(for_real 로 감싸지 않음)는 건너뛴다."""
+    🤖 AI 단계는 자식 없이 여기서 묻는다(ask — 시험에서 바꿔 끼운다). 앞 단계 결과는 prev 로 이어 간다.
+    시험 실행이면 단계도 시험으로 — 키트 기본 자동화(for_real 로 감싸지 않음)는 건너뛴다. AI 단계는 시험에서도 진짜로 묻는다(글만 받으니)."""
     import subprocess
     popen = popen or subprocess.Popen
     steps = list(meta.get('chain') or [])
     keep = bool(meta.get('keep_going'))
     if not steps:
         raise RuntimeError('묶음에 자동화가 없습니다 (META chain)')
+    mode = chain_mode(meta)
+    confirm = confirm or wait_confirm
     ok_n = fail_n = skip_n = 0
     total = len(steps)
+    prev = ''
+    last_ai = None                           # 마지막 단계가 AI 면 그 답 — 묶음이 끝나면 알림으로
+    stopped = 0
+
+    def gate(i, name, ai):
+        """🙋 모드에 따라 다음 단계 전에 사람 확인 — 계속이면 True. 마지막 단계 뒤엔 묻지 않는다."""
+        if i >= total or mode == 'auto' or (mode == 'ai' and not ai):
+            return True
+        if ctx.no_hub:
+            say('🧪 허브 밖 시험이라 확인 없이 계속합니다 (모드: %s)' % CHAIN_MODES[mode])
+            return True
+        say('🙋 [%d/%d] %s 결과를 확인해 주세요 — 허브 실행 카드에서 「계속」 또는 「멈춤」' % (i, total, name))
+        if confirm(name, prev):
+            say('▶ 계속 — 확인함')
+            return True
+        say('⏹ 멈춤 — 나머지 %d개는 돌리지 않습니다' % (total - i))
+        return False
+
     for i, step in enumerate(steps, 1):
+        last_ai = None
+        if is_ai_step(step):
+            name = ai_step_name(step)
+            say('🤖 [%d/%d] %s 시작' % (i, total, name))
+            ctx.motion('write')
+            good, answer = run_ai_step(step, prev, ask)
+            ctx.motion(None)
+            if good:
+                for line in answer.splitlines():
+                    say('   ' + line)
+                say('✔ [%d/%d] %s 성공 (%d자)' % (i, total, name, len(answer)))
+                ok_n += 1
+                prev = last_ai = _clip(answer)
+                if not gate(i, name, True):
+                    stopped = total - i
+                    last_ai = None               # 확인 화면에서 이미 본 답 — 알림으로 또 띄우지 않는다
+                    break
+                continue
+            say('✖ [%d/%d] %s 실패 — %s' % (i, total, name, answer))
+            fail_n += 1
+            prev = ''
+            if not keep and i < total:
+                say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
+                break
+            continue
         sid = step if isinstance(step, str) else (step or {}).get('id')
         over = {} if isinstance(step, str) else dict((step or {}).get('params') or {})
         path = macro_path(sid)
@@ -535,7 +680,8 @@ def run_chain(ctx, meta, popen=None):
             params = dict(smeta.get('params') or {})
             params.update({k: v for k, v in (ctx.chain_params.get(sid) or {}).items() if k in params})
             params.update(over)
-            sub = {'macro': sid, 'params': params, 'trigger': dict(ctx.trigger, chain=ctx.macro), 'dry_run': ctx.dry_run}
+            sub = {'macro': sid, 'params': params, 'trigger': dict(ctx.trigger, chain=ctx.macro), 'dry_run': ctx.dry_run,
+                   'prev': prev}
             env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', PYTHONUNBUFFERED='1',
                        MACROHUB_CTX=json.dumps(sub, ensure_ascii=False))
             limit = int(smeta.get('timeout') or 600)
@@ -545,9 +691,20 @@ def run_chain(ctx, meta, popen=None):
             timer = threading.Timer(limit, _kill_tree, args=(proc,))
             timer.daemon = True
             timer.start()
+            said, logged = None, []
             for raw in iter(proc.stdout.readline, b''):
                 line = raw.decode('utf-8', 'replace').rstrip('\r\n')
+                if line.startswith(RESULT_PREFIX):       # ctx.result() — 다음 단계로 넘길 글(여러 번이면 이어 붙임)
+                    try:
+                        got = str(json.loads(line[len(RESULT_PREFIX):]).get('text', ''))
+                    except (ValueError, AttributeError):
+                        got = ''
+                    said = got if said is None else said + '\n' + got
+                    say('   📋 결과: ' + ' '.join(got.split())[:200])
+                    continue
                 say(line if line.startswith('@@') else '   ' + line)
+                if not line.startswith('@@') and not re.match(r'^(▶ .* 시작 \(|■ 끝 \()', line):
+                    logged.append(line)
             code = proc.wait()
             proc.stdout.close()
             late = not timer.is_alive() and code != 0
@@ -556,13 +713,21 @@ def run_chain(ctx, meta, popen=None):
             if code == 0:
                 say('✔ [%d/%d] %s 성공' % (i, total, name))
                 ok_n += 1
+                prev = _clip(said if said is not None else '\n'.join(logged))
+                if not gate(i, name, False):
+                    stopped = total - i
+                    break
                 continue
             say('✖ [%d/%d] %s %s' % (i, total, name, '시간 초과 (%d초)' % limit if late else '실패 (종료 코드 %s)' % code))
             fail_n += 1
+            prev = ''
         if not keep and i < total:
             say('⏹ 앞 단계가 실패해 나머지 %d개는 돌리지 않습니다 (「실패해도 계속」이 꺼져 있음)' % (total - i))
             break
-    say('🔗 묶음 결과: %d개 중 성공 %d · 실패 %d%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else ''))
+    say('🔗 묶음 결과: %d개 중 성공 %d · 실패 %d%s%s' % (total, ok_n, fail_n, ' · 건너뜀 %d' % skip_n if skip_n else '',
+                                                   ' · 멈춤으로 안 돌림 %d' % stopped if stopped else ''))
+    if last_ai:                                  # 마지막이 AI 단계면 그 답을 알림으로 — 로그를 열지 않아도 보이게
+        ctx.notify('🤖 %s' % (meta.get('name') or '묶음'), ' '.join(last_ai.split())[:300])
     return fail_n == 0
 
 
@@ -584,7 +749,8 @@ def test_ctx(path, pairs, meta):
             raise SystemExit('시험 인자는 이름=값 으로 주세요: %s' % p)
         k, v = p.split('=', 1)
         params[k.strip()] = _value(v.strip())
-    return {'macro': ('local/' if local else '') + stem, 'params': params, 'trigger': {'kind': 'test'}, 'dry_run': True}
+    return {'macro': ('local/' if local else '') + stem, 'params': params, 'trigger': {'kind': 'test'}, 'dry_run': True,
+            'no_hub': True}
 
 
 def main():

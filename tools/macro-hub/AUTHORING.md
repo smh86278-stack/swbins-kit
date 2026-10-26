@@ -74,6 +74,7 @@ def run(ctx):
 | `ctx.click(컨트롤)` · `ctx.set_text(컨트롤, 글)` | 마우스·키보드 없이 먼저 시도 |
 | `ctx.params` · `ctx.param(키)` · `ctx.secret(키)` · `ctx.data_dir` | 입력값(사전 · 글자 하나) · 비밀값 · 이 자동화 전용 폴더(지난번 값 저장 등) |
 | `ctx.log(...)` · `ctx.notify(제목, 글)` | 로그 · 알림(트레이·허브 화면) |
+| `ctx.result(글)` · `ctx.prev` | 🔗 묶음에서 다음 단계(🤖 AI 단계 등)로 넘길 결과 · 앞 단계 결과(묶음 밖이면 빈 글) |
 | `ctx.for_real(설명)` · `ctx.dry_run` | 되돌릴 수 없는 동작 앞 — 시험이면 False |
 | `import kit` → `kit.send_mail(받는사람, 제목, 본문)` · `kit.alert(제목, 본문)` | 메일 · 알림(설정된 메일 계정·알림 출구로) — 보내기는 `for_real` 안에 |
 

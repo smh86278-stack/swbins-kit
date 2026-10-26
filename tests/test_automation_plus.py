@@ -286,6 +286,156 @@ class RunChain(Base):
 
 
 
+ECHO = '''def run(ctx):
+    ctx.log("prev=" + ctx.prev.replace("\\n", " | "))
+    if ctx.params.get("say"):
+        ctx.result(ctx.params["say"])
+'''
+
+
+class AiChain(Base):
+    """🤖 AI 단계 · 앞 단계 결과 넘기기 · 🙋 모드(사람 확인). AI 와 확인은 가짜로 바꿔 끼운다."""
+
+    def setUp(self):
+        super().setUp()
+        self.paths = {
+            'local/log1': self.write('log1', {'name': '로그만'}, ECHO),
+            'local/said': self.write('said', {'name': '결과 남김', 'params': {'say': '결과글'}}, ECHO),
+            'local/echo': self.write('echo', {'name': '받기'}, ECHO),
+            'local/bad': self.write('bad', {'name': '실패', 'params': {'boom': 1}}, STEP),
+        }
+        p = mock.patch.object(runner, 'macro_path', lambda mid: self.paths.get(mid))
+        p.start()
+        self.addCleanup(p.stop)
+        self.prompts, self.asked = [], []
+
+    def ask(self, prompt, engine, timeout):
+        self.prompts.append((prompt, engine))
+        if '터져' in prompt:
+            raise RuntimeError('엔진 없음')
+        return engine or 'claude', 'AI답 ' + str(len(self.prompts))
+
+    def confirm_with(self, *answers):
+        answers = list(answers)
+
+        def confirm(name, text):
+            self.asked.append((name, text))
+            return answers.pop(0) if answers else True
+        return confirm
+
+    def chain(self, steps, mode=None, keep=False, confirm=None, no_hub=False):
+        ctx = runner.Ctx({'macro': 'local/c', 'trigger': {'kind': 'manual'}, 'no_hub': no_hub}, {})
+        meta = {'name': '아침', 'chain': steps, 'keep_going': keep}
+        if mode:
+            meta['mode'] = mode
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ok = runner.run_chain(ctx, meta, ask=self.ask, confirm=confirm or self.confirm_with())
+        return ok, buf.getvalue()
+
+    def test_log_goes_to_ai_and_answer_to_next(self):
+        ok, out = self.chain(['local/log1', {'ai': '요약해', 'engine': 'gemini'}, 'local/echo'], mode='auto')
+        self.assertTrue(ok, out)
+        prompt, engine = self.prompts[0]
+        self.assertEqual(engine, 'gemini')
+        self.assertIn('[지시]\n요약해', prompt)
+        self.assertIn('[앞 단계 결과]\nprev=', prompt)              # 앞 단계 로그(▶·■ 줄 빼고)가 자료로
+        self.assertNotIn('■ 끝', prompt)
+        self.assertIn('prev=AI답 1', out)                           # AI 답이 다음 자동화의 ctx.prev 로
+        self.assertIn('3개 중 성공 3', out)
+        self.assertNotIn('🔔', out)                                 # 마지막이 AI 가 아니면 알림 없음
+        self.assertEqual(self.asked, [])                            # 자동 모드는 묻지 않는다
+
+    def test_result_overrides_log_and_last_ai_notifies(self):
+        ok, out = self.chain(['local/said', {'ai': '정리해'}], mode='auto')
+        self.assertTrue(ok, out)
+        self.assertTrue(self.prompts[0][0].endswith('[앞 단계 결과]\n결과글'))
+        self.assertIn('📋 결과: 결과글', out)
+        self.assertIn('@@notify', out)
+        self.assertIn('AI답 1', out.split('@@notify', 1)[1])
+
+    def test_ai_failure_stops(self):
+        ok, out = self.chain([{'ai': '터져라'}, 'local/echo'], mode='auto')
+        self.assertFalse(ok)
+        self.assertIn('실패 — 엔진 없음', out)
+        self.assertIn('나머지 1개는 돌리지 않습니다', out)
+        self.assertNotIn('prev=', out)
+
+    def test_ai_mode_asks_only_after_ai_and_stop_halts(self):
+        confirm = self.confirm_with(False)
+        ok, out = self.chain(['local/log1', {'ai': '요약'}, 'local/echo'], mode='ai', confirm=confirm)
+        self.assertTrue(ok, out)                                    # 사람이 멈춘 건 실패가 아니다
+        self.assertEqual(len(self.asked), 1)
+        self.assertEqual(self.asked[0][1], 'AI답 1')                # 확인 화면에 AI 답
+        self.assertIn('⏹ 멈춤 — 나머지 1개는', out)
+        self.assertIn('멈춤으로 안 돌림 1', out)
+        self.assertNotIn('prev=AI답', out)
+
+    def test_step_mode_asks_between_every_step_not_after_last(self):
+        ok, out = self.chain(['local/log1', 'local/said', {'ai': '요약'}], mode='step')
+        self.assertTrue(ok, out)
+        self.assertEqual([n for n, _ in self.asked], ['로그만', '결과 남김'])
+        self.assertEqual(self.asked[1][1], '결과글')
+
+    def test_old_chain_without_mode_is_auto_and_no_hub_skips(self):
+        self.assertEqual(runner.chain_mode({}), 'auto')
+        ok, out = self.chain([{'ai': '요약'}, 'local/echo'])
+        self.assertTrue(ok, out)
+        self.assertEqual(self.asked, [])
+        ok, out = self.chain([{'ai': '요약'}, 'local/echo'], mode='step', no_hub=True)
+        self.assertTrue(ok, out)
+        self.assertEqual(self.asked, [])
+        self.assertIn('허브 밖 시험이라 확인 없이', out)
+
+    def test_wait_confirm_reads_answer_file(self):
+        with mock.patch.object(runner, 'CONFIRM_DIR', self.tmp), \
+                mock.patch('secrets.token_hex', lambda n: 'ab' * n):
+            path = runner.confirm_file('ab' * 16)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump({'ok': True}, f)
+            with contextlib.redirect_stdout(io.StringIO()) as buf:
+                self.assertTrue(runner.wait_confirm('요약', '답', wait=5, poll=0.01))
+            self.assertIn('@@confirm', buf.getvalue())
+            self.assertFalse(os.path.exists(path))                  # 읽은 답 파일은 지운다
+            with contextlib.redirect_stdout(io.StringIO()) as buf:
+                self.assertFalse(runner.wait_confirm('요약', '답', wait=0, poll=0.01))
+            self.assertIn('확인이 없어 멈춥니다', buf.getvalue())
+        for bad in ('', '../x', 'AB' * 16, None):
+            self.assertIsNone(runner.confirm_file(bad))
+
+    def test_answer_confirm_writes_file(self):
+        run = macrohub.Run('local/c', '아침', {'kind': 'manual'})
+        run.confirm = {'token': 'cd' * 16, 'name': '요약', 'text': '답'}
+        with mock.patch.object(runner, 'CONFIRM_DIR', self.tmp), mock.patch.dict(macrohub.runs_by_id, {run.id: run}):
+            self.assertIsNone(macrohub.answer_confirm(run.id, False))
+            with open(runner.confirm_file('cd' * 16), encoding='utf-8') as f:
+                self.assertEqual(json.load(f), {'ok': False})
+            self.assertIsNone(run.confirm)
+            self.assertTrue(macrohub.answer_confirm(run.id, True))   # 두 번째 답은 거절
+        self.assertTrue(macrohub.answer_confirm(999, True))
+
+    def test_new_chain_with_ai_step_and_mode(self):
+        self.write('a', {'name': '하나', 'timeout': 60})
+        mid, err = macrohub.new_chain('요약 묶음', ['local/a', {'ai': '  세 줄 요약 ', 'engine': 'codex'}, 'local/a'], mode='ai')
+        self.assertIsNone(err)
+        meta = runner.read_meta(os.path.join(self.local, '요약_묶음.py'))
+        self.assertEqual(meta['chain'], ['local/a', {'ai': '세 줄 요약', 'engine': 'codex'}, 'local/a'])
+        self.assertEqual(meta['mode'], 'ai')
+        self.assertEqual(meta['steps'], ['하나', '🤖 AI: 세 줄 요약', '하나'])
+        self.assertEqual(meta['timeout'], 60 + runner.AI_TIMEOUT + 60 + 90 + runner.CONFIRM_WAIT)   # 확인 한 곳만큼 늘림
+        m = macrohub.find_macro(mid)
+        self.assertEqual(m['chain'], ['local/a', 'local/a'])          # 자동화 단계만 — 겹쳐 돌리기 검사용
+        self.assertEqual(m['mode'], 'ai')
+        self.assertEqual(macrohub.macro_view(m)['chain_names'], ['하나', '🤖 AI: 세 줄 요약', '하나'])
+
+    def test_new_chain_rejects_bad_ai_steps(self):
+        self.write('a', {'name': '하나'})
+        for steps, mode in ((['local/a', {'ai': ' '}], 'ai'), (['local/a', {'ai': 'x', 'engine': 'gpt9'}], 'ai'),
+                            (['local/a', {'ai': 'x' * 4001}], 'ai'), (['local/a', {'ai': 'x'}], 'yolo')):
+            with self.subTest(steps=str(steps)[:40], mode=mode):
+                self.assertIsNone(macrohub.new_chain('x', steps, mode=mode)[0])
+
+
 class MacroPath(unittest.TestCase):
     def test_macro_path_rules(self):
         self.assertTrue(runner.macro_path('local/x').endswith(os.path.join('macros.local', 'x.py')))

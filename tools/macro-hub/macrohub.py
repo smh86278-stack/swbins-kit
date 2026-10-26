@@ -241,8 +241,10 @@ def _discover_files():
             'service': bool(meta.get('service')),
             'motion': default_motion(meta),
             'owns': meta.get('owns') or [],
-            'chain': [str(s if isinstance(s, str) else (s or {}).get('id')) for s in meta.get('chain') or []]
-            if meta.get('kind') == 'chain' else [],
+            'chain': [str(s if isinstance(s, str) else (s or {}).get('id')) for s in meta.get('chain') or []
+                      if not runner.is_ai_step(s)] if meta.get('kind') == 'chain' else [],   # 자동화 단계 id 만(🤖 AI 단계 빼고)
+            'chain_raw': list(meta.get('chain') or []) if meta.get('kind') == 'chain' else [],
+            'mode': runner.chain_mode(meta) if meta.get('kind') == 'chain' else '',
             'keep_going': bool(meta.get('keep_going')),
             'timeout': int(meta.get('timeout', 0 if meta.get('service') else 600)),
             'cooldown': int(meta.get('cooldown', 10)),
@@ -278,15 +280,18 @@ class Run:
         self.shot = None                 # 📸 실패한 순간 화면(data.local\failshots\*.png) — runner 의 '@@failshot' 줄
         self.parent = None               # 🔗 묶음 단계로 돈 실행이면 그 묶음의 Run (proc 은 묶음 것)
         self.step = None                 # 🔗 묶음이면 지금 도는 단계의 Run
+        self.confirm = None              # 🙋 묶음이 사람 확인을 기다리는 중이면 {token, name, text} — runner 의 '@@confirm' 줄
 
     def summary(self):
         # 📸 화면 파일은 오래되면 지워진다(60장 넘으면 정리) — 없는 파일을 가리키면 깨진 그림 대신 표시하지 않는다
         shot = self.shot if self.shot and os.path.isfile(self.shot) else None
+        wait = self.confirm if self.confirm and self.status == 'running' else None
         return {'id': self.id, 'macro': self.macro, 'name': self.name, 'trigger': self.trigger.get('kind', 'manual'),
                 'detail': self.trigger.get('detail', ''), 'started': int(self.started * 1000),
                 'ended': int(self.ended * 1000) if self.ended else None,
                 'status': self.status, 'code': self.code, 'tool': self.tool,
-                'shot': os.path.basename(shot) if shot else None}
+                'shot': os.path.basename(shot) if shot else None,
+                'confirm': {'name': wait['name'], 'text': wait['text']} if wait else None}
 
 
 runs = deque(maxlen=300)
@@ -460,6 +465,22 @@ def _pump(run):
                 if run.step:
                     run.step.shot = shot
             continue
+        if line.startswith(runner.CONFIRM_PREFIX):     # 🙋 묶음이 사람 확인을 기다린다 — 실행 카드에 「계속」·「멈춤」, 알림도
+            try:
+                c = json.loads(line[len(runner.CONFIRM_PREFIX):])
+                run.confirm = {'token': str(c['token']), 'name': str(c.get('name') or ''),
+                               'text': hubutil.redact(str(c.get('text') or ''))}
+            except (ValueError, KeyError, TypeError):
+                continue
+            broadcast({'t': 'run', 'run': run.summary()})
+            broadcast({'t': 'notify', 'title': '🙋 확인해 주세요 — %s' % run.name,
+                       'text': '「%s」 결과를 보고 계속할지 골라 주세요' % run.confirm['name'], 'level': 'warning', 'macro': run.name})
+            continue
+        if line.startswith(runner.RESULT_PREFIX):      # ctx.result() — 묶음 밖에서 돌면 사람이 읽는 줄로만
+            try:
+                line = '📋 결과: ' + str(json.loads(line[len(runner.RESULT_PREFIX):]).get('text', ''))
+            except (ValueError, AttributeError):
+                continue
         if line.startswith(NOTIFY_PREFIX):          # ctx.notify() — 알림으로 바꾸고 로그에는 사람이 읽는 형태로 남긴다
             try:
                 n = json.loads(line[len(NOTIFY_PREFIX):])
@@ -490,6 +511,7 @@ def _watch(run, timeout):
     if getattr(run, 'pump', None):               # 마지막 줄(📸 '@@failshot' 등)까지 읽은 뒤에 기록·알림을 남긴다
         run.pump.join(timeout=3)
     run.ended = time.time()
+    run.confirm = None
     if run.status == 'running':
         run.status = 'stopped' if run.stopping else ('ok' if run.code == 0 else 'fail')
     if run.step:                                 # 묶음이 단계 도중에 멈춤·시간 초과로 끝났다 — 그 단계도 같이 닫는다
@@ -498,6 +520,24 @@ def _watch(run, timeout):
         threading.Thread(target=run.after, daemon=True).start()
     _record(run)
     broadcast({'t': 'run', 'run': run.summary()})
+
+
+def answer_confirm(run_id, ok):
+    """🙋 묶음 확인에 답한다 — runner 가 기다리는 data.local\\confirm\\<토큰>.json 에 {"ok"} 를 쓴다. 오류 글 또는 None."""
+    run = runs_by_id.get(run_id)
+    c = run.confirm if run and run.status == 'running' else None
+    path = runner.confirm_file(c['token']) if c else None
+    if not path:
+        return '확인을 기다리는 실행이 아닙니다 (이미 답했거나 끝났습니다)'
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump({'ok': bool(ok)}, f)
+    os.replace(tmp, path)                        # runner 가 반쯤 쓴 파일을 읽지 않게
+    run.confirm = None
+    audit('묶음 확인', run.macro, '%s — %s' % (c['name'], '계속' if ok else '멈춤'))
+    broadcast({'t': 'run', 'run': run.summary()})
+    return None
 
 
 def _record(run, alert=True):
@@ -1454,24 +1494,43 @@ def copy_gallery(fname):
 CHAIN_MAX = 20
 
 
-def new_chain(name, steps, keep_going=False, at='', days='daily'):
-    """🔗 묶음 만들기 — macros.local\\<이름>.py 에 META 만 있는 파일(kind chain). 단계는 지금 있는 자동화(상시·묶음 제외).
-    at 이 있으면 예약(⏰)도 건다 — 켜는 건 사람이 「자동 실행」으로. (자동화 id, 오류)"""
+AI_ORDER_MAX = 4000
+
+
+def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
+    """🔗 묶음 만들기 — macros.local\\<이름>.py 에 META 만 있는 파일(kind chain). 단계는 지금 있는 자동화(상시·묶음 제외)
+    또는 🤖 AI 단계 {"ai": "지시", "engine": ""}(앞 단계 결과를 자료로 묻는다 — runner.run_chain).
+    mode 🙋 = step(단계마다 확인) · ai(AI 답만 확인) · auto(자동). at 이 있으면 예약(⏰)도 건다 — 켜는 건 사람이 「자동 실행」으로. (자동화 id, 오류)"""
+    import aicli
     stem = safe_name(name)
     if not stem:
         return None, '묶음 이름을 입력하세요'
     if not isinstance(steps, list) or len(steps) < 2:
-        return None, '자동화를 둘 이상 고르세요'
+        return None, '단계를 둘 이상 넣으세요'
     if len(steps) > CHAIN_MAX:
         return None, '한 묶음에는 %d개까지 넣을 수 있습니다' % CHAIN_MAX
-    found = []
+    if mode not in runner.CHAIN_MODES:
+        return None, '모드는 %s 중 하나입니다' % ' · '.join(runner.CHAIN_MODES)
+    found = []                                       # (보이는 이름, META chain 항목, 제한 시간)
     for sid in steps:
+        if runner.is_ai_step(sid):
+            order = str(sid.get('ai') or '').strip()
+            engine = str(sid.get('engine') or '').strip()
+            if not order:
+                return None, 'AI 단계의 지시를 입력하세요'
+            if len(order) > AI_ORDER_MAX:
+                return None, 'AI 지시는 %d자까지입니다' % AI_ORDER_MAX
+            if engine and engine not in aicli.ENGINES:
+                return None, '없는 AI 입니다: %s' % engine
+            item = {'ai': order, 'engine': engine}
+            found.append(('🤖 ' + runner.ai_step_name(item), item, runner.AI_TIMEOUT))
+            continue
         m = find_macro(str(sid))
         if not m:
             return None, '없는 자동화입니다: %s' % sid
         if m['service'] or m['kind'] == 'chain':
             return None, '상시 자동화·묶음은 넣을 수 없습니다: %s' % m['name']
-        found.append(m)
+        found.append((m['name'], m['id'], m['timeout'] or 600))
     triggers = []
     if (at or '').strip():
         triggers, err = clean_schedule([{'at': at, 'days': days or 'daily'}])
@@ -1481,15 +1540,19 @@ def new_chain(name, steps, keep_going=False, at='', days='daily'):
     if os.path.exists(path):
         return None, '같은 이름이 이미 있습니다'
     keep = bool(keep_going)
+    asks = sum(1 for i, (_, item, _) in enumerate(found, 1)    # 🙋 확인으로 멈출 수 있는 곳 — 그만큼 제한 시간을 늘린다
+               if i < len(found) and (mode == 'step' or (mode == 'ai' and not isinstance(item, str))))
     meta = {
         'name': name.strip(),
-        'desc': '자동화 %d개를 순서대로 — %s' % (len(found), '하나가 실패해도 끝까지' if keep else '앞이 실패하면 멈춤'),
+        'desc': '단계 %d개를 순서대로 — %s · %s' % (len(found), '하나가 실패해도 끝까지' if keep else '앞이 실패하면 멈춤',
+                                             runner.CHAIN_MODES[mode]),
         'kind': 'chain',
-        'steps': [m['name'] for m in found],
-        'chain': [m['id'] for m in found],
+        'steps': [n for n, _, _ in found],
+        'chain': [item for _, item, _ in found],
         'keep_going': keep,
+        'mode': mode,
         'triggers': triggers,
-        'timeout': min(6 * 3600, sum(m['timeout'] or 600 for m in found) + 30 * len(found)),
+        'timeout': min(6 * 3600, sum(t for _, _, t in found) + 30 * len(found) + runner.CONFIRM_WAIT * asks),
     }
     import pprint
     os.makedirs(DIR_LOCAL, exist_ok=True)
@@ -1662,8 +1725,11 @@ def macro_view(m):
              last=last.summary() if last else saved,
              motion=r.motion if r else d['motion'], motion_until=r.motion_until if r else None,
              motion_default=r.motion_default if r else None, saved_params=saved_params(m))
-    if m['chain']:                                   # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로)
-        d['chain_names'] = [(find_macro(s) or {}).get('name') or s for s in m['chain']]
+    raw = m.get('chain_raw') or m['chain']
+    if raw:                                          # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로, 🤖 AI 단계는 지시 첫머리)
+        d['chain_names'] = [('🤖 ' + runner.ai_step_name(s)) if runner.is_ai_step(s) else
+                            (find_macro(str(s if isinstance(s, str) else (s or {}).get('id'))) or {}).get('name') or str(s)
+                            for s in raw]
     return d
 
 
@@ -1901,6 +1967,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if run else 409, {'run': run.id} if run else {'error': err})
         if path == '/api/stop':
             return self._send(200, {'ok': stop_run(int(body.get('run', 0)))})
+        if path == '/api/chain/confirm':              # 🙋 묶음 확인 답 {"run", "ok"} — 계속(true)·멈춤(false)
+            err = answer_confirm(int(body.get('run', 0) or 0), body.get('ok') is True)
+            return self._send(400 if err else 200, {'error': err} if err else {'ok': True})
         if path == '/api/apps/approve':               # ✨ 앱 권한 허락·거두기 {"id", "perms": [...]} — 빈 목록이면 모두 거둠
             perms = body.get('perms')
             try:
@@ -2027,9 +2096,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/gallery/copy':               # 📚 견본을 내 자동화로 {"file"} — 꺼진 채, 이름이 겹치면 _2
             mid, err = copy_gallery(str(body.get('file') or ''))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': mid})
-        if path == '/api/chain/new':                  # 🔗 묶음 만들기 {"name", "steps": [id…], "keep_going", "at", "days"}
+        if path == '/api/chain/new':                  # 🔗 묶음 만들기 {"name", "steps": [id | {"ai","engine"}…], "keep_going", "at", "days", "mode"}
             mid, err = new_chain(str(body.get('name') or ''), body.get('steps'), bool(body.get('keep_going')),
-                                 str(body.get('at') or ''), str(body.get('days') or 'daily'))
+                                 str(body.get('at') or ''), str(body.get('days') or 'daily'), str(body.get('mode') or 'ai'))
             return self._send(400 if err else 200, {'error': err} if err else {'ok': True, 'id': mid})
         if path == '/api/params':                     # 💾 카드 입력값 기억 {"id", "params"} — 예약 실행·묶음도 이 값으로
             keep, err = save_params(str(body.get('id') or ''), body.get('params'))
