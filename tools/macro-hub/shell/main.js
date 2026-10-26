@@ -39,7 +39,7 @@ const NAMES = { hub: TITLE, make: '자동화 만들기', chat: '디스패치 대
 
 // 화면 모드(자동·라이트·다크) — 허브가 기억한다(/api/theme). 창 테두리(nativeTheme)와 배경색(web/theme.css 의 --bg)을 맞추고,
 // 허브 /events 를 들어 화면에서 바꾸면 바로 따라간다. 허브가 꺼져 있으면 5초마다 다시 붙는다. 아이콘 줄은 prefers-color-scheme 로 따라온다.
-const BG = { light: '#f7f7f8', dark: '#111214' };
+const BG = { light: '#f4efe6', dark: '#1f1c19' };                       // 「종이 노트」 바탕
 const bg = () => (nativeTheme.shouldUseDarkColors ? BG.dark : BG.light);
 function paint() {
   if (!win) return;
@@ -52,7 +52,7 @@ function applyMode(mode) {
   paint();
 }
 nativeTheme.on('updated', paint);
-let lookTheme = 'basic';                                                  // 꾸미기 색 테마(basic·navy·pastel) — 아이콘 줄이 「진한 사이드바」면 남색으로
+let lookTheme = 'paper';                                                  // 꾸미기 색 테마 — 이제 paper(종이 노트) 하나. 아이콘 줄에 그대로 넘긴다
 function applyLook(lk) { const t = lk && lk.theme; if (t && t !== lookTheme) { lookTheme = t; sendRail(); } }
 async function fetchMode() {
   try { applyMode((await (await fetch(HUB + '/api/theme', { signal: AbortSignal.timeout(1500) })).json()).mode); } catch (_) {}

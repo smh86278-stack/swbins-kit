@@ -30,9 +30,9 @@ class CleanSchedule(unittest.TestCase):
         self.assertEqual(macrohub.clean_schedule([{'at': '09:30'}])[0], [{'type': 'schedule', 'at': '09:30', 'days': 'daily'}])
         self.assertEqual(macrohub.clean_schedule([{'at': '18:00', 'days': 'TUE'}])[0][0]['days'], 'tue')
 
-    def test_removed_theme_reads_as_basic(self):
-        macrohub.state['look'] = {'theme': 'mint', 'hero': 'big'}       # 2026-10 에 없앤 테마·잘못된 값 — 기본으로
-        self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('basic', 'hide'))
+    def test_removed_theme_reads_as_paper(self):
+        macrohub.state['look'] = {'theme': 'mint', 'hero': 'big'}       # 없앤 테마·잘못된 값 — 종이 노트·기본으로
+        self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('paper', 'hide'))
 
     def test_rejects(self):
         for bad in ([], [{}], [{'every': '30s'}], [{'every': 'x'}], [{'at': '9:30'}], [{'at': '24:00'}],
@@ -494,25 +494,26 @@ class LookCustom(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def test_default_and_attrs(self):
-        self.assertEqual(macrohub.look()['theme'], 'basic')
+        self.assertEqual(macrohub.look()['theme'], 'paper')
         a = macrohub.look_attrs()
-        self.assertIn('data-theme="basic"', a)
+        self.assertIn('data-theme="paper"', a)
         self.assertIn('data-hero="hide"', a)                            # 화면 펫 무대는 기본 숨김
         self.assertNotIn('style=', a)                                  # 내 색이 없으면 style 도 없다
 
     def test_clean_and_custom_color(self):
         lk, err = macrohub.clean_look({'theme': 'navy', 'accent': '#AA3366', 'swap': 1, 'zzz': 'x'})
-        self.assertIsNone(err)
-        self.assertEqual((lk['theme'], lk['accent'], lk['swap'], lk['cols']), ('navy', '#aa3366', True, '2'))
+        self.assertIsNone(err)                                         # 옛 화면이 보낸 없어진 테마 — 오류 대신 종이 노트로
+        self.assertEqual((lk['theme'], lk['accent'], lk['swap'], lk['cols']), ('paper', '#aa3366', True, '2'))
         self.assertNotIn('zzz', lk)
         a = macrohub.look_attrs(lk)
         self.assertIn('data-swap="1"', a)
         self.assertIn('--accent:light-dark(#aa3366,', a)
         self.assertIn('--accentsoft:', a)
 
-    def test_removed_theme_reads_as_basic(self):
-        macrohub.state['look'] = {'theme': 'mint', 'hero': 'big'}       # 2026-10 에 없앤 테마·잘못된 값 — 기본으로
-        self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('basic', 'hide'))
+    def test_removed_theme_reads_as_paper(self):
+        for old in ('mint', 'basic', 'navy', 'pastel'):                # 없앤 테마·잘못된 값 — 종이 노트·기본으로
+            macrohub.state['look'] = {'theme': old, 'hero': 'big'}
+            self.assertEqual((macrohub.look()['theme'], macrohub.look()['hero']), ('paper', 'hide'))
 
     def test_rejects(self):
         for bad in ({'theme': 'neon'}, {'hero': 'big'}, {'cols': '3'}, {'accent': 'red'},
@@ -527,7 +528,7 @@ class LookCustom(unittest.TestCase):
         self.addCleanup(os.remove, f.name)
         macrohub.state['look'] = {'theme': 'pastel', 'hero': 'show'}
         page = macrohub.render_page(f.name)
-        self.assertIn('data-theme="pastel"', page)                     # 예전 모양
+        self.assertIn('data-theme="paper"', page)                      # 예전 모양도 종이 노트로
         self.assertIn('data-hero="show"', page)
         self.assertNotIn('__MODE__', page)
 

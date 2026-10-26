@@ -575,10 +575,10 @@ def ai_step_name(step, agents=None):
     """🤖 AI 단계의 보이는 이름 — name 이 있으면 그것, 없으면 (에이전트 이름 또는 AI): 지시 첫머리."""
     if str(step.get('name') or '').strip():
         return str(step['name']).strip()
-    who = 'AI'
+    who = '맡기기'
     if step.get('agent'):
         a = (load_agents() if agents is None else agents).get(step['agent'])
-        who = a['name'] if a else '없는 에이전트'
+        who = '맡기기 · ' + (a['name'] if a else '없는 도우미')
     text = ' '.join(str(step.get('ai') or '').split())
     return who + (': ' + text[:30] + ('…' if len(text) > 30 else '') if text else '')
 
@@ -640,9 +640,9 @@ def run_ai_step(step, prev, ask=None):
     if step.get('agent'):
         agent = load_agents().get(step['agent'])
         if not agent:
-            return False, '없는 에이전트입니다 — 지웠다면 이 단계를 다른 에이전트로 바꿔 주세요'
+            return False, '없는 도우미입니다 — 지웠다면 이 단계를 다른 도우미로 바꿔 주세요'
     if not order and not agent:
-        return False, 'AI 에게 줄 지시가 비었습니다'
+        return False, '맡길 지시가 비었습니다'
     prompt = '[지시]\n%s' % (order or '네 역할대로 처리해.') + ('\n\n[앞 단계 결과]\n%s' % prev if prev else '')
     system = AI_SYSTEM + ('\n\n[너의 역할 — %s]\n%s' % (agent.get('name', ''), agent.get('role', '')) if agent else '')
     engine = str(step.get('engine') or '') or str((agent or {}).get('engine') or '')
@@ -748,7 +748,7 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
             break
         if is_ai_step(step):
             name = ai_step_name(step)
-            say('🤖 [%d/%d] %s 시작' % (i, total, name))
+            say('▶ [%d/%d] %s 시작' % (i, total, name))
             ctx.motion('write')
             good, answer = run_ai_step(step, prev, ask)
             ctx.motion(None)
@@ -839,7 +839,7 @@ def run_chain(ctx, meta, popen=None, ask=None, confirm=None):
                                                    ' · 멈춤으로 안 돌림 %d' % stopped if stopped else '')
         + (' · 조건으로 안 돌림 %d' % cut if cut else ''))
     if last_ai:                                  # 마지막이 AI 단계면 그 답을 알림으로 — 로그를 열지 않아도 보이게
-        ctx.notify('🤖 %s' % (meta.get('name') or '일 순서'), ' '.join(last_ai.split())[:300])
+        ctx.notify('%s' % (meta.get('name') or '일 순서'), ' '.join(last_ai.split())[:300])
     return fail_n == 0
 
 

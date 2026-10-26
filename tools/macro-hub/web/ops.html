@@ -6,22 +6,22 @@
 <title>운영 — WorkKit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
 <link rel="stylesheet" href="/static/theme.css">
 <style>
-/* 운영 화면 — 예약 작업 · 상시 서비스 · 기능 상태 · 설정(보기 전용) · 에이전트 · 변경 이력.
-   색·단추·칩·입력·사이드바·토스트는 /static/theme.css(허브 첫 화면과 공유). 여기는 운영 화면에만 있는 것. */
-nav.tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+/* 운영 화면 — 예약 작업 · 상시 서비스 · 기능 상태 · 설정(보기 전용) · Claude 작업(agents) · 변경 이력.
+   색·단추·상태·입력·목차·토스트는 /static/theme.css(허브 첫 화면과 공유, 「종이 노트」). 여기는 운영 화면에만 있는 것. */
+nav.tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-top:-6px}
 nav.tabs button{border:0;border-radius:0;background:transparent;padding:8px 12px;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--muted);font-size:13.5px}
 nav.tabs button:hover{background:transparent;color:var(--text)}
-nav.tabs button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+nav.tabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent);font-weight:700}
 main{max-width:1320px;min-width:0}
 section{display:none}section.on{display:block}
-h2{font-size:15px;margin:4px 0 6px;font-weight:600}
+h2{font-size:18px;margin:4px 0 8px}
 .note{color:var(--muted);font-size:13px;margin:0 0 12px;max-width:860px}
-.card{border:1px solid var(--line);background:var(--solid);border-radius:var(--r);padding:12px 16px;margin-bottom:8px}
+.card{border-bottom:1px solid var(--line);padding:12px 2px;margin-bottom:0}
 /* 예약 작업 · 상시 서비스는 넓은 창에서 두 줄로 — 한 화면에 더 많이 */
-#schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(520px,100%),1fr));gap:8px;align-items:start}
+#schedList,#svcList{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(520px,100%),1fr));column-gap:28px;align-items:start;border-top:2px solid var(--rule)}
 #schedList>.card,#svcList>.card{margin-bottom:0}
 #schedList>.empty,#svcList>.empty{grid-column:1/-1}
 /* 안 쓰는 것 숨기기 — 접힌 줄은 칸 전체 폭, 펼친 숨긴 카드는 흐리게 */
@@ -36,10 +36,10 @@ h2{font-size:15px;margin:4px 0 6px;font-weight:600}
 .edit{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);display:none}
 .edit.on{display:block}
 .edit .line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
-table{border-collapse:separate;border-spacing:0;width:100%;background:var(--solid);border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;margin-top:8px}
+table{border-collapse:separate;border-spacing:0;width:100%;border-top:2px solid var(--rule);border-bottom:1px solid var(--line);margin-top:8px}
 td,th{padding:6px 10px;border-bottom:1px solid var(--line2);text-align:left;font-size:13px;vertical-align:top}
 tr:last-child td{border-bottom:0}
-th{color:var(--muted);font-weight:600;background:var(--soft);font-size:12.5px}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
 tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
 .log>.row{padding:6px 0;border-bottom:1px solid var(--line2)}
 </style>
@@ -49,14 +49,14 @@ tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
 <nav id="side"></nav>
 <div class="content">
 <header class="pagehead">
-  <div class="ttl"><h1>운영</h1><p class="sub">예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트 · 변경 이력</p></div>
+  <div class="ttl"><h1>운영</h1><p class="sub">예약 작업 · 상시 서비스 · 기능 상태 · 설정 · Claude 작업 · 변경 이력</p></div>
 </header>
 <nav class="tabs" id="tabs" role="tablist" aria-label="운영 화면">
   <button data-tab="sched" role="tab">예약 작업</button>
   <button data-tab="svc" role="tab">상시 서비스</button>
   <button data-tab="feat" role="tab">기능 상태</button>
   <button data-tab="set" role="tab">설정</button>
-  <button data-tab="agents" role="tab">에이전트</button>
+  <button data-tab="agents" role="tab">Claude 작업</button>
   <button data-tab="audit" role="tab">변경 이력</button>
 </nav>
 <main>
@@ -76,7 +76,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
     <div id="featBox"><div class="empty">준비 중</div></div>
   </section>
   <section id="set" role="tabpanel"><h2 class="sr">설정</h2><div id="setBox"><div class="empty">준비 중</div></div></section>
-  <section id="agents" role="tabpanel"><h2 class="sr">에이전트</h2><div id="agentBox"><div class="empty">준비 중</div></div></section>
+  <section id="agents" role="tabpanel"><h2 class="sr">Claude 작업</h2><div id="agentBox"><div class="empty">준비 중</div></div></section>
   <section id="audit" role="tabpanel"><h2 class="sr">변경 이력</h2>
     <p class="note">서비스·예약 작업을 켜고 끈 것, 다시 띄우기·지금 실행, 예약 시각, 설정 변경(바뀐 갈래·키 이름만 — 값은 남기지 않음)을 누가(Windows 사용자)·어디서(화면 · 트레이 · 설정 프로그램)·언제 했는지. 덧붙이기만 하는 기록입니다.</p>
     <div id="auditBox"><div class="empty">준비 중</div></div>
@@ -310,7 +310,7 @@ async function loadAgents(verify){
   if (t.hiddenDone){ const bU = el('button', '', '치운 것 되돌리기'); bU.title = '화면에서 치운 완료 작업을 다시 보입니다(' + v.doneKeepDays + '일 지난 것은 그대로 접힘)';
     bU.onclick = async () => { try { await api('/api/ops/agents/dismiss', {undo: true}); loadAgents(false); } catch (e) { toast(e.message); } }; head.append(bU); }
   const bV = el('button', '', 'CLI 로 대조'); bV.onclick = () => loadAgents(true); head.append(bV);
-  box.append(el('div', 'note', '띄워 둔 백그라운드 에이전트와 지금 열려 있는 대화형 세션입니다. 보기 전용 — 상태는 ~\\.claude 의 상태 파일에서 읽습니다.'), head);
+  box.append(el('div', 'note', '띄워 둔 백그라운드 작업과 지금 열려 있는 대화형 세션입니다. 보기 전용 — 상태는 ~\\.claude 의 상태 파일에서 읽습니다.'), head);
   if (v.verify){
     const vv = v.verify;
     box.append(el('div', 'card', vv.ok ? 'CLI 대조: ' + vv.count + '개 — ' + (vv.names || []).join(', ') + (vv.mismatch ? ' — 보드와 다름' : ' (일치)') : 'CLI 대조 실패: ' + vv.error));
@@ -336,7 +336,7 @@ async function loadAgents(verify){
       box.append(c);
     }
   };
-  group('백그라운드 에이전트', v.background || []);
+  group('백그라운드 작업', v.background || []);
   group('열린 세션', v.interactive || []);
 }
 

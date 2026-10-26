@@ -80,11 +80,11 @@ hubutil.py      자동화 공용 도구 — DPAPI 암호화 · TOTP
 macrohub.py     허브 본체 — 웹 서버(SSE) · 자동화 목록 · 실행/중지 · 자동 실행 트리거 · 상시 자동화 감독
 runner.py       자동화 1개를 .venv 파이썬에서 별도 프로세스로 실행 (ctx 제공). 중지하면 프로세스 트리째 끈다
 web/index.html  화면
-web/theme.css   공통 테마(파스텔 색·단추·칩·입력) — index.html·ops.html 이 함께 쓴다. 색은 여기 :root 만 고친다(light-dark 한 쌍)
+web/theme.css   공통 테마 「종이 노트」(미색 종이·먹색·벽돌색, 명조 제목 · 가로줄 · 단추·상태·입력) — index.html·ops.html 이 함께 쓴다. 색은 여기 :root 만 고친다(light-dark 한 쌍)
 web/theme.js    화면 모드 단추(☀️ 라이트 · 🌙 다크 · 자동=Windows 설정) — 허브가 기억(/api/theme), 열린 화면·전용 창이 같이 바뀐다
-                · 🎨 꾸미기(HubLook) — 색 테마(파스텔·네이비·민트·모노·선셋, theme.css :root[data-theme]) · 내 강조색 · 첫 화면 배치
+                · 🎨 꾸미기(HubLook) — 색 테마는 paper 하나(2026-10-26, 예전 basic·navy·pastel 값은 paper 로 읽음) · 내 강조색 · 첫 화면 배치
                   (펫 무대 보통/작게/숨김 · 두 칸/한 칸 · 좌우 바꾸기 · 촘촘하게). 허브가 state['look'] 에 기억(GET·POST /api/look), 페이지 <html> 에 심는다
-web/ops.html    운영 화면(/ops) — 예약 작업 · 상시 서비스 · 기능 상태 · 설정 · 에이전트
+web/ops.html    운영 화면(/ops) — 예약 작업 · 상시 서비스 · 기능 상태 · 설정 · Claude 작업(에이전트 보드)
 ops.py          운영 화면의 데이터 — 기능 상태(kit.read_status) · 설정 준비 여부 · 에이전트 보드
 kit.py          키트 공통 바탕 — 설정(config.local.json) · 메일 · DPAPI · 예약 시각 판정 · 상태 파일
 alertmail.py    실패 알림 메일
@@ -229,17 +229,18 @@ API — `GET /api/schedule` · `POST /api/schedule` · `GET /api/ops/{features,s
   (`POST /api/chain/new`). runner 가 단계마다 `runner.py` 자식을 띄워 순서대로 돌리고, 앞이 실패하면 멈춘다(「하나가 실패해도 끝까지」면 계속,
   그래도 결과는 실패). 일 순서도 보통 자동화라 ⏰ 예약·자동 실행·실행 기록·실패 알림을 그대로 쓴다. 시험(🧪)이면 단계도 시험이고
   키트 기본 자동화 단계는 건너뛴다. 상시 자동화·일 순서는 넣을 수 없다.
-- **🤖 AI 단계**: 일 순서에 `{"ai": "지시", "engine": ""}` 단계를 넣으면 앞 단계 결과를 자료로 AI 에게 묻고(`aicli.text` — 글만, 도구 없이)
+- **맡기기 단계**(예전 이름 「AI 단계」): 일 순서에 `{"ai": "지시", "engine": ""}` 단계를 넣으면 앞 단계 결과를 자료로 AI 에게 묻고(`aicli.text` — 글만, 도구 없이)
   답을 다음 단계로 넘긴다. 앞 단계 결과 = 그 자동화가 `ctx.result("…")` 로 남긴 글, 없으면 그 단계 로그. 다음 자동화는 `ctx.prev` 로 받는다.
   engine 이 비면 「AI 고르기」 설정. 마지막 단계가 AI 면 그 답을 알림으로 띄운다.
 - **🙋 모드**(META `mode`): `step` 단계마다 확인 · `ai` AI 답만 확인(만들기 화면 기본) · `auto` 자동(모드 없는 옛 파일은 이것).
   확인할 곳에서 runner 가 `@@confirm` 을 내고 기다리면 허브가 실행 카드에 결과와 「계속」·「멈춤」을 띄운다
   (`POST /api/chain/confirm` → `data.local\confirm\<토큰>.json`). 30분 안에 답이 없으면 멈춘다. 사람이 멈춘 건 실패가 아니다.
   허브 없이 도는 `runner.py --test` 는 확인 없이 계속한다.
-- **🧑‍💼 나만의 에이전트**(2026-10-26): 이름·역할·쓸 AI 를 `data.local\agents.json` 에 저장(만들기 화면 칸, `GET /api/agents` ·
-  `POST /api/agents/save`·`/api/agents/delete`). 일 순서의 AI 단계가 `{"ai", "engine", "agent": id}` 로 가리켜, 에이전트를 고치면
-  그걸 쓰는 일 순서에 바로 반영된다. 역할은 AI 지시문(system)에 붙고, 쓸 AI 는 단계 → 에이전트 → 「AI 고르기」 순. 지시가 비면 역할대로.
-  지운 에이전트를 쓰는 단계는 돌 때 「없는 에이전트」로 실패한다(지울 때 쓰던 일 순서 이름을 알려 준다).
+- **나만의 도우미**(2026-10-26, 예전 이름 「나만의 에이전트」 — 코드·API 는 agents): 이름·역할·쓸 AI 를 `data.local\agents.json` 에 저장(만들기 화면 칸, `GET /api/agents` ·
+  `POST /api/agents/save`·`/api/agents/delete`). 일 순서의 맡기기 단계가 `{"ai", "engine", "agent": id}` 로 가리켜, 도우미를 고치면
+  그걸 쓰는 일 순서에 바로 반영된다. 역할은 AI 지시문(system)에 붙고, 쓸 AI 는 단계 → 도우미 → 「AI 고르기」 순. 지시가 비면 역할대로.
+  지운 도우미를 쓰는 단계는 돌 때 「없는 도우미」로 실패한다(지울 때 쓰던 일 순서 이름을 알려 준다).
+  만들기 화면에서는 「여러 일 잇기」 구역 안에 일 순서 칸과 함께 있다(맨 위는 보여 주기 · 말로 부탁하기 · 견본에서 고르기 셋 중 하나).
 - **🔀 조건 단계**(2026-10-26): 일 순서에 `{"cond": "has"|"lacks"|"ask", "text", "else": "stop"|"skip"}` — 앞 단계 결과에 그 말이
   있으면 / 없으면(쉼표로 여러 말) / AI 에게 물어(`COND_SYSTEM`, 「예」·「아니오」 한 단어) 「예」면 다음으로, 아니면 여기서 정상으로 끝(stop)
   또는 다음 단계 하나 건너뛰기(skip). 앞 결과는 그대로 넘기고, 조건 뒤에서는 🙋 확인을 묻지 않는다. 첫 단계·건너뛸 단계 없는 skip 은 저장 때 거절.

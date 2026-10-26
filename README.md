@@ -54,7 +54,7 @@ Windows 10/11 · Python 3.10 이상 · 관리자 권한 불필요.
 | 감시·알림 | 🌐 사이트·포트·인증서 · 💽 디스크 · 🔑 로그인·토큰 만료 예고 · ⏱ API 호출 한도 미터기 | `job_monitors` · `job_pc_watch` · `job_cred_watch` · `ratelimit.py` |
 | 알림 출구 | 메일 · 슬랙 · Teams · 디스코드 · 구글 챗 · 일반 웹훅(HMAC 서명) — 같은 일은 60분에 한 번 | `kit.alert` · `alertmail.py` |
 | 화면 자동화 | 웹·데스크톱 녹화 · 요소 찍기 · 트리거(시각·주기·창·프로세스) · 🧪 시험 실행 · 📸 실패 화면 · 📚 갤러리 | `macrohub.py` · `runner.py` · `winevents.py` |
-| 일 순서 | 자동화·🤖 AI 단계를 순서대로 이어 돌리기(앞 단계 결과 → AI → 다음 단계) · 🙋 확인 모드(단계마다 · AI 답만 · 자동) · 🔀 조건(앞 결과에 말이 있으면·없으면·AI 판단) · 📮 메일로 부르기(`#c 일 순서 <이름>`, 확인도 답장으로) · 🧑‍💼 나만의 에이전트(역할을 저장해 AI 단계에서 고르기) | `runner.py` (`run_chain`) · `macrohub.py` |
+| 일 순서 | 만들기 → 「여러 일 잇기」. 자동화·맡기기 단계를 순서대로 이어 돌리기(앞 단계 결과 → AI → 다음 단계) · 확인 모드(단계마다 · AI 답만 · 자동) · 조건(앞 결과에 말이 있으면·없으면·AI 판단) · 📮 메일로 부르기(`#c 일 순서 <이름>`, 확인도 답장으로) · 나만의 도우미(역할을 저장해 맡기기 단계에서 고르기) | `runner.py` (`run_chain`) · `macrohub.py` |
 | 상시 서비스 | 외부 프로그램(게이트웨이·워커·대화 앱)을 허브와 분리된 프로세스로 띄우고 죽으면 다시 살림 | `extsvc.py` · `macros/svc_*.py` (5개) |
 | AI 연동 | 🧠 AI 고르기(Claude Code · Codex · Gemini CLI · Ollama) · 🔌 읽기 전용 MCP 서버 | `aicli.py` · `ollama_agent.py` · `mcp_server.py` |
 | 나만의 앱 | 템플릿 6종 → AI 설계서 → 생성 → 실제 브라우저 자동 검사 → 버전 관리 → zip/HTML 한 장/exe 내보내기 | `apphost.py` · `appcheck.py` · `apphistory.py` · `apppack.py` |

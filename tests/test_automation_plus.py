@@ -402,7 +402,7 @@ class AiChain(Base):
         self.assertEqual(engine, 'gemini')                          # 단계에 AI 가 없으면 에이전트의 AI
         self.assertIn('[지시]\n네 역할대로 처리해.', prompt)          # 지시를 비우면 역할대로
         self.assertIn('[너의 역할 — 분류 담당]\n급함·보통·나중으로 나눈다', self.systems[0])
-        self.assertIn('🤖 [2/3] 분류 담당 시작', out)
+        self.assertIn('▶ [2/3] 맡기기 · 분류 담당 시작', out)
         ok, out = self.chain([{'ai': '요약', 'engine': 'codex', 'agent': aid}, 'local/echo'], mode='auto')
         self.assertEqual(self.prompts[-1][1], 'codex')               # 단계에서 고른 AI 가 먼저
         self.assertIn('분류 담당: 요약', out)
@@ -410,7 +410,7 @@ class AiChain(Base):
     def test_agent_missing_fails_step(self):
         ok, out = self.chain([{'ai': '요약', 'agent': 'ag_gone'}, 'local/echo'], mode='auto')
         self.assertFalse(ok)
-        self.assertIn('없는 에이전트입니다', out)
+        self.assertIn('없는 도우미입니다', out)
         self.assertEqual(self.prompts, [])
 
     def test_agent_save_edit_delete_and_chain(self):
@@ -428,12 +428,12 @@ class AiChain(Base):
             self.assertIsNone(err)
             meta = runner.read_meta(os.path.join(self.local, '검토_순서.py'))
             self.assertEqual(meta['chain'][1], {'ai': '', 'engine': '', 'agent': aid})
-            self.assertEqual(meta['steps'][1], '🤖 검토자')
+            self.assertEqual(meta['steps'][1], '맡기기 · 검토자')
             used, err = macrohub.delete_agent(aid)
             self.assertEqual((used, err), (['검토 순서'], None))          # 쓰던 일 순서 이름을 알려 준다
             self.assertEqual(macrohub.agents_view(), [])
             self.assertTrue(macrohub.delete_agent(aid)[1])
-            self.assertEqual(runner.ai_step_name({'ai': '', 'agent': aid}), '없는 에이전트')
+            self.assertEqual(runner.ai_step_name({'ai': '', 'agent': aid}), '맡기기 · 없는 도우미')
 
     # ---- 🔀 조건 단계
     def test_cond_has_lacks_stop_and_skip(self):
@@ -489,7 +489,7 @@ class AiChain(Base):
         self.assertIsNone(err)
         meta = runner.read_meta(os.path.join(self.local, '조건_순서.py'))
         self.assertEqual(meta['chain'][1], {'cond': 'has', 'text': '급함', 'else': 'skip'})
-        self.assertEqual(meta['steps'][1], '🔀 조건: 「급함」 있으면 · 아니면 다음 단계 건너뛰기')
+        self.assertEqual(meta['steps'][1], '조건: 「급함」 있으면 · 아니면 다음 단계 건너뛰기')
         self.assertEqual(meta['timeout'] - sum(t for t in (600, 5, 600, 600)) - 30 * 4, 2 * runner.CONFIRM_WAIT)   # 조건 뒤엔 확인 없음
         self.assertEqual(macrohub.find_macro(mid)['chain'], ['local/echo', 'local/echo', 'local/said'])
 
@@ -527,12 +527,12 @@ class AiChain(Base):
         meta = runner.read_meta(os.path.join(self.local, '요약_묶음.py'))
         self.assertEqual(meta['chain'], ['local/a', {'ai': '세 줄 요약', 'engine': 'codex'}, 'local/a'])
         self.assertEqual(meta['mode'], 'ai')
-        self.assertEqual(meta['steps'], ['하나', '🤖 AI: 세 줄 요약', '하나'])
+        self.assertEqual(meta['steps'], ['하나', '맡기기: 세 줄 요약', '하나'])
         self.assertEqual(meta['timeout'], 60 + runner.AI_TIMEOUT + 60 + 90 + runner.CONFIRM_WAIT)   # 확인 한 곳만큼 늘림
         m = macrohub.find_macro(mid)
         self.assertEqual(m['chain'], ['local/a', 'local/a'])          # 자동화 단계만 — 겹쳐 돌리기 검사용
         self.assertEqual(m['mode'], 'ai')
-        self.assertEqual(macrohub.macro_view(m)['chain_names'], ['하나', '🤖 AI: 세 줄 요약', '하나'])
+        self.assertEqual(macrohub.macro_view(m)['chain_names'], ['하나', '맡기기: 세 줄 요약', '하나'])
 
     def test_new_chain_rejects_bad_ai_steps(self):
         self.write('a', {'name': '하나'})

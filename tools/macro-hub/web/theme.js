@@ -53,20 +53,20 @@ const HubMode = (() => {
   return { apply, mount, set, isDark, MODES };
 })();
 
-/* 화면 꾸미기 — 색 테마 · 내 강조색 · 촘촘하게 · 화면 펫. 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 에 심는다(macrohub.look_attrs).
+/* 화면 꾸미기 — 화면 모드 · 내 강조색 · 촘촘하게 · 화면 펫. 색 테마는 「종이 노트」(paper) 하나뿐이다(2026-10-26). 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 에 심는다(macrohub.look_attrs).
    바꾸면 허브가 /events 로 {t:'look'} 을 보내 열린 화면이 같이 바뀐다(페이지가 HubLook.apply 를 부른다). */
 const HubLook = (() => {
-  // [id, 이름, 사이드바 색, 강조색]
-  const THEMES = [['basic', '기본', '#ffffff', '#1d4ed8'], ['navy', '진한 사이드바', '#0f1b2d', '#0f766e'], ['pastel', '예전 모양', '#f3effb', '#8a72ee']];
+  // [id, 이름, 바탕색, 강조색] — 예전 basic·navy·pastel 은 허브가 paper 로 읽는다(macrohub.look)
+  const THEMES = [['paper', '종이 노트', '#f4efe6', '#9a3f1d']];
   let cur = null, token = '', opts = {}, panel = null, anchor = null;
   const pair = c => 'light-dark(' + c + ',color-mix(in srgb,' + c + ' 72%,white))';
   function apply(lk) {
     if (!lk) return;
     cur = lk;
     const r = document.documentElement, d = r.dataset;
-    d.theme = lk.theme; d.hero = lk.hero; d.cols = lk.cols; d.swap = lk.swap ? '1' : '0'; d.dense = lk.dense ? '1' : '0';
+    d.theme = 'paper'; d.hero = lk.hero; d.cols = lk.cols; d.swap = lk.swap ? '1' : '0'; d.dense = lk.dense ? '1' : '0';
     for (const [v, c] of [['--accent', lk.accent], ['--accent2', lk.accent2]]) c ? r.style.setProperty(v, pair(c)) : r.style.removeProperty(v);
-    if (lk.accent) r.style.setProperty('--accentsoft', 'light-dark(color-mix(in srgb,' + lk.accent + ' 12%,white),color-mix(in srgb,' + lk.accent + ' 22%,#18191c))');
+    if (lk.accent) r.style.setProperty('--accentsoft', 'light-dark(color-mix(in srgb,' + lk.accent + ' 12%,#fffaf2),color-mix(in srgb,' + lk.accent + ' 22%,#27231f))');
     else r.style.removeProperty('--accentsoft');
     HubNav.refresh(); redraw();
   }
@@ -91,12 +91,11 @@ const HubLook = (() => {
   function draw() {
     panel.replaceChildren();
     panel.append(el('h3', '', '화면 모드'), seg('화면 모드', HubMode.MODES, document.documentElement.dataset.mode, m => HubMode.set(m)));
-    panel.append(el('h3', '', '색 테마'), seg('색 테마', THEMES.map(t => [t[0], t[1], t[3]]), cur.theme, v => save({ theme: v })));
     panel.append(el('h3', '', '강조색'));
-    const cr = el('div', 'lrow'), base = THEMES.find(t => t[0] === cur.theme) || THEMES[0];
+    const cr = el('div', 'lrow'), base = THEMES[0];
     const l = el('label', '', '내 색'), i = el('input'); i.type = 'color'; i.value = cur.accent || base[3]; i.setAttribute('aria-label', '내 강조색');
     i.onchange = () => save({ accent: i.value }); l.append(i); cr.append(l);
-    const rs = el('button', '', '테마 색으로'); rs.type = 'button'; rs.onclick = () => save({ accent: '', accent2: '' }); cr.append(rs);
+    const rs = el('button', '', '기본 색으로'); rs.type = 'button'; rs.onclick = () => save({ accent: '', accent2: '' }); cr.append(rs);
     panel.append(cr);
     if (opts.layout) {
       const l2 = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = !!cur.dense;
@@ -139,7 +138,7 @@ const HubLook = (() => {
   function mount(sel, tok, o) {
     token = tok; opts = o || {};
     const d = document.documentElement.dataset;
-    cur = { theme: d.theme || 'basic', hero: d.hero || 'hide', cols: d.cols || '2', swap: d.swap === '1', dense: d.dense === '1', accent: '', accent2: '' };
+    cur = { theme: 'paper', hero: d.hero || 'hide', cols: d.cols || '2', swap: d.swap === '1', dense: d.dense === '1', accent: '', accent2: '' };
     fetch('/api/look', { headers: { 'X-Hub-Token': tok } }).then(r => r.json()).then(j => { cur = j.look; redraw(); }).catch(() => {});
     const old = sel && document.querySelector(sel); if (old) old.hidden = true;
     document.addEventListener('click', close);
@@ -149,7 +148,7 @@ const HubLook = (() => {
   return { apply, mount, open, close, redraw, save, THEMES, get cur() { return cur; } };
 })();
 
-/* 왼쪽 사이드바 — 로고 · 메뉴 · 색 테마 3개 · 화면 꾸미기 · 연결 상태. HubNav.mount('#side', {active, dot}) */
+/* 왼쪽 목차 — 이름 · 메뉴 · 화면 모드(라이트·다크·자동) · 화면 꾸미기 · 연결 상태. HubNav.mount('#side', {active, dot}) */
 const HubNav = (() => {
   const ITEMS = [   // [key, 이름, 주소, 아이콘, 허브 창 안에서 숨김(왼쪽 아이콘 줄에 있음), 새 탭]
     ['hub', '자동화', '/', 'list', true], ['make', '만들기', '/?view=make', 'plus', true], ['apps', '내 앱', '/?view=make#appsBox', 'apps'],
@@ -159,29 +158,15 @@ const HubNav = (() => {
   ];
   const TIPS = { chat: '디스패치 대화 — 메일로 맡긴 일을 메신저처럼', wiki: 'AI 공유 위키 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜹니다)',
     sched: '예약 작업 · 상시 서비스 · 기능 상태', log: '변경 이력 · 지시 실행 기록', set: '메일 계정 · 설정' };
-  // 사이드바 색 테마 3개 — 기본 · 진한 사이드바 · 다크(화면 모드). 예전 모양은 「화면 꾸미기」 안에서
-  const SW = [['basic', '기본', '#ffffff', '#1d4ed8'], ['navy', '진한 사이드바', '#0f1b2d', '#0f766e'], ['dark', '다크', '#18191c', '#5b8cff']];
-  let nav = null, sws = [], tname = null;
+  let nav = null, mbs = [];
   function setActive(key) {
     if (!nav) return;
     for (const a of nav.querySelectorAll('a.nav-i')) a.dataset.k === key ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current');
   }
-  function current() {
-    if (HubMode.isDark()) return 'dark';
-    const t = document.documentElement.dataset.theme;
-    return t === 'navy' ? 'navy' : t === 'basic' ? 'basic' : '';
-  }
   function refresh() {
     if (!nav) return;
-    const c = current();
-    for (const b of sws) b.setAttribute('aria-pressed', String(b.dataset.k === c));
-    const hit = SW.find(s => s[0] === c), t = document.documentElement.dataset.theme;
-    tname.textContent = hit ? hit[1] : (t === 'pastel' ? '예전 모양' : '');
-  }
-  function pick(k) {
-    if (k === 'dark') { if (!HubMode.isDark()) HubMode.set('dark'); return; }
-    if (document.documentElement.dataset.theme !== k) HubLook.save({ theme: k });
-    if (HubMode.isDark()) HubMode.set('light');
+    const m = document.documentElement.dataset.mode || 'auto';
+    for (const b of mbs) b.setAttribute('aria-pressed', String(b.dataset.k === m));
   }
   function mount(sel, o) {
     nav = document.querySelector(sel);
@@ -189,7 +174,7 @@ const HubNav = (() => {
     o = o || {};
     nav.classList.add('side'); nav.setAttribute('aria-label', '메뉴');
     const brand = document.createElement('a'); brand.className = 'brand'; brand.href = '/'; brand.setAttribute('aria-label', 'WorkKit 첫 화면');
-    brand.innerHTML = '<span class="logo" aria-hidden="true">W</span><b>WorkKit</b>';
+    brand.innerHTML = '<span class="logo" aria-hidden="true">W</span><b>WorkKit</b>';   // 이름 — 명조, 아래 굵은 줄
     nav.append(brand);
     for (const it of ITEMS) {
       if (!it) { const d = document.createElement('div'); d.className = 'divider'; d.setAttribute('aria-hidden', 'true'); nav.append(d); continue; }
@@ -202,20 +187,17 @@ const HubNav = (() => {
     }
     const sp = document.createElement('div'); sp.className = 'spacer'; nav.append(sp);
     const tb = document.createElement('div'); tb.className = 'themebox';
-    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = '색 테마'; lbl.id = 'swLbl';
-    const row = document.createElement('div'); row.className = 'sws'; row.setAttribute('role', 'group'); row.setAttribute('aria-labelledby', 'swLbl');
-    sws = SW.map(([k, name, bg, dot]) => {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'tsw'; b.dataset.k = k; b.title = name; b.setAttribute('aria-label', name);
-      b.style.background = bg; const s = document.createElement('span'); s.style.background = dot; b.append(s);
-      b.onclick = () => pick(k); row.append(b); return b;
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = '화면'; lbl.id = 'modeLbl';
+    const row = document.createElement('div'); row.className = 'modes'; row.setAttribute('role', 'group'); row.setAttribute('aria-labelledby', 'modeLbl');
+    mbs = HubMode.MODES.map(([k, name]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.k = k; b.textContent = name;
+      b.onclick = () => HubMode.set(k); row.append(b); return b;
     });
-    tname = document.createElement('div'); tname.className = 'tname';
     const lb = document.createElement('button'); lb.type = 'button'; lb.className = 'lookbtn'; lb.id = 'lookBtn';
-    lb.setAttribute('aria-haspopup', 'dialog'); lb.setAttribute('aria-expanded', 'false'); lb.title = '화면 꾸미기 — 모드 · 색 테마 · 강조색' + (o.pets ? ' · 화면 펫' : '');
-    const lt = document.createElement('span'); lt.textContent = '화면 꾸미기';
-    lb.append(hubIcon('brush'), lt);
+    lb.setAttribute('aria-haspopup', 'dialog'); lb.setAttribute('aria-expanded', 'false'); lb.title = '화면 꾸미기 — 모드 · 강조색' + (o.pets ? ' · 화면 펫' : '');
+    lb.textContent = '화면 꾸미기';
     lb.onclick = e => { e.stopPropagation(); HubLook.open(lb); };
-    tb.append(lbl, row, tname, lb); nav.append(tb);
+    tb.append(lbl, row, lb); nav.append(tb);
     if (o.dot) {
       const c = document.createElement('div'); c.className = 'conn';
       c.innerHTML = '<span id="dot" role="status"></span><span class="ct"></span>'; nav.append(c);

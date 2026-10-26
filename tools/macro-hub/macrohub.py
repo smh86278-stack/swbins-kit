@@ -119,10 +119,11 @@ def ui_mode():
 
 # 화면 꾸미기 — 색 테마·내 강조색·화면 펫 무대·촘촘하게. 허브가 state['look'] 에 기억하고 페이지를 줄 때 <html> 속성으로 심는다.
 # 색은 theme.css 의 :root[data-theme=…], 내 색은 inline --accent·--accent2, 펫 무대는 index.html 의 [data-hero].
-# basic(기본) · navy(진한 사이드바) · pastel(예전 모양). 2026-10 에 없앤 mint·mono·sunset 은 기본으로 읽는다. 펫 무대는 기본 숨김.
+# 색 테마는 paper(종이 노트, 2026-10-26) 하나 — 예전 basic·navy·pastel·mint·mono·sunset 은 paper 로 읽고 받는다. 펫 무대는 기본 숨김.
 # cols·swap 은 예전 두 칸 배치용 — 지금 화면은 쓰지 않지만 저장된 값과 API 는 그대로 받는다.
-LOOK_THEMES = ('basic', 'navy', 'pastel')
-LOOK_DEFAULT = {'theme': 'basic', 'accent': '', 'accent2': '', 'hero': 'hide', 'cols': '2', 'swap': False, 'dense': False}
+LOOK_THEMES = ('paper',)
+LOOK_OLD_THEMES = ('basic', 'navy', 'pastel', 'mint', 'mono', 'sunset')   # 열려 있던 옛 화면이 보내도 오류 대신 paper 로
+LOOK_DEFAULT = {'theme': 'paper', 'accent': '', 'accent2': '', 'hero': 'hide', 'cols': '2', 'swap': False, 'dense': False}
 LOOK_CHOICES = {'theme': LOOK_THEMES, 'hero': ('show', 'small', 'hide'), 'cols': ('2', '1')}
 HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 
@@ -141,6 +142,8 @@ def clean_look(body):
     for k, v in (body or {}).items():
         if k not in LOOK_DEFAULT:
             continue
+        if k == 'theme' and v in LOOK_OLD_THEMES:
+            v = 'paper'
         if k in LOOK_CHOICES:
             if v not in LOOK_CHOICES[k]:
                 return None, '%s 는 %s 중 하나입니다' % (k, ' · '.join(LOOK_CHOICES[k]))
@@ -165,7 +168,7 @@ def look_attrs(lk=None):
             css.append('%s:light-dark(%s,color-mix(in srgb,%s 72%%,white))' % (var, c, c))
     if lk['accent']:
         c = lk['accent']
-        css.append('--accentsoft:light-dark(color-mix(in srgb,%s 12%%,white),color-mix(in srgb,%s 22%%,#18191c))' % (c, c))
+        css.append('--accentsoft:light-dark(color-mix(in srgb,%s 12%%,#fffaf2),color-mix(in srgb,%s 22%%,#27231f))' % (c, c))
     return attrs + (' style="%s"' % ';'.join(css) if css else '')
 
 
@@ -1520,7 +1523,7 @@ def save_agent(aid, name, role, engine=''):
     import secrets as _sec
     name, role, engine = str(name or '').strip(), str(role or '').strip(), str(engine or '').strip()
     if not name:
-        return None, '에이전트 이름을 입력하세요'
+        return None, '도우미 이름을 입력하세요'
     if len(name) > AGENT_NAME_MAX:
         return None, '이름은 %d자까지입니다' % AGENT_NAME_MAX
     if not role:
@@ -1531,17 +1534,17 @@ def save_agent(aid, name, role, engine=''):
         return None, '없는 AI 입니다: %s' % engine
     items = agents_view()
     if any(a['name'] == name and a['id'] != aid for a in items):
-        return None, '같은 이름의 에이전트가 이미 있습니다'
+        return None, '같은 이름의 도우미가 이미 있습니다'
     if aid:
         cur = next((a for a in items if a['id'] == aid), None)
         if not cur:
-            return None, '없는 에이전트입니다'
+            return None, '없는 도우미입니다'
         cur.update(name=name, role=role, engine=engine)
     else:
         aid = 'ag_' + _sec.token_hex(4)
         items.append({'id': aid, 'name': name, 'role': role, 'engine': engine, 'created': int(time.time())})
     _write_agents(items)
-    audit('에이전트 저장', aid, name)
+    audit('도우미 저장', aid, name)
     broadcast({'t': 'agents'})
     return aid, None
 
@@ -1550,10 +1553,10 @@ def delete_agent(aid):
     """🧑‍💼 에이전트 지우기 — 쓰던 일 순서가 있으면 그 이름을 돌려준다(그래도 지운다 — 그 단계는 돌 때 실패로 알린다)."""
     items = agents_view()
     if not any(a['id'] == aid for a in items):
-        return None, '없는 에이전트입니다'
+        return None, '없는 도우미입니다'
     used = [m['name'] for m in discover() if any(runner.is_ai_step(s) and s.get('agent') == aid for s in m.get('chain_raw') or [])]
     _write_agents([a for a in items if a['id'] != aid])
-    audit('에이전트 지움', aid, ', '.join(used))
+    audit('도우미 지움', aid, ', '.join(used))
     broadcast({'t': 'agents'})
     broadcast({'t': 'macros'})
     return used, None
@@ -1592,22 +1595,22 @@ def new_chain(name, steps, keep_going=False, at='', days='daily', mode='ai'):
             if other == 'skip' and n_step == len(steps):
                 return None, '「다음 단계 건너뛰기」 조건 뒤에 단계가 없습니다'
             item = {'cond': kind, 'text': text, 'else': other}
-            found.append(('🔀 ' + runner.cond_step_name(item), item, runner.AI_TIMEOUT if kind == 'ask' else 5))
+            found.append((runner.cond_step_name(item), item, runner.AI_TIMEOUT if kind == 'ask' else 5))
             continue
         if runner.is_ai_step(sid):
             order = str(sid.get('ai') or '').strip()
             engine = str(sid.get('engine') or '').strip()
             agent = str(sid.get('agent') or '').strip()
             if agent and agent not in runner.load_agents():
-                return None, '없는 에이전트입니다: %s' % agent
+                return None, '없는 도우미입니다: %s' % agent
             if not order and not agent:
-                return None, 'AI 단계의 지시를 입력하거나 에이전트를 고르세요'
+                return None, '맡기기 단계의 지시를 입력하거나 도우미를 고르세요'
             if len(order) > AI_ORDER_MAX:
                 return None, 'AI 지시는 %d자까지입니다' % AI_ORDER_MAX
             if engine and engine not in aicli.ENGINES:
                 return None, '없는 AI 입니다: %s' % engine
             item = dict({'ai': order, 'engine': engine}, **({'agent': agent} if agent else {}))
-            found.append(('🤖 ' + runner.ai_step_name(item), item, runner.AI_TIMEOUT))
+            found.append((runner.ai_step_name(item), item, runner.AI_TIMEOUT))
             continue
         m = find_macro(str(sid))
         if not m:
@@ -1812,8 +1815,8 @@ def macro_view(m):
              motion_default=r.motion_default if r else None, saved_params=saved_params(m))
     raw = m.get('chain_raw') or m['chain']
     if raw:                                          # 🔗 묶음 — 단계 이름(없어진 자동화는 id 그대로, 🤖 AI 단계는 지시 첫머리)
-        d['chain_names'] = [('🤖 ' + runner.ai_step_name(s)) if runner.is_ai_step(s) else
-                            ('🔀 ' + runner.cond_step_name(s)) if runner.is_cond_step(s) else
+        d['chain_names'] = [runner.ai_step_name(s) if runner.is_ai_step(s) else
+                            runner.cond_step_name(s) if runner.is_cond_step(s) else
                             (find_macro(str(s if isinstance(s, str) else (s or {}).get('id'))) or {}).get('name') or str(s)
                             for s in raw]
     return d
