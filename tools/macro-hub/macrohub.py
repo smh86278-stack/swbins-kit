@@ -1458,7 +1458,8 @@ DIR_GALLERY = os.path.join(HERE, 'gallery')      # 견본 자동화 — 키트�
 
 
 def gallery_list():
-    """갤러리 견본 목록 [{"file", "name", "desc", "steps", "params", "secrets", "hint", "target", "triggers"}]."""
+    """갤러리 견본 목록 [{"file", "name", "desc", "steps", "params", "secrets", "hint", "target", "triggers", "keywords"}].
+    keywords(말 줄기)는 만들기 칸에 적은 말과 맞춰 비슷한 견본을 띄우는 데 쓴다(index.html mkSuggest)."""
     out = []
     for path, _ in _scan(DIR_GALLERY, False):
         meta = runner.read_meta(path)
@@ -1468,7 +1469,7 @@ def gallery_list():
                     'desc': meta.get('desc', ''), 'steps': [str(s) for s in meta.get('steps') or []],
                     'params': meta.get('params') or {}, 'secrets': [str(s) for s in meta.get('secrets') or []],
                     'hint': meta.get('hint', ''), 'target': meta.get('target', ''), 'triggers': meta.get('triggers') or [],
-                    'icon': meta.get('icon', '')})
+                    'icon': meta.get('icon', ''), 'keywords': [str(s) for s in meta.get('keywords') or []]})
     return out
 
 

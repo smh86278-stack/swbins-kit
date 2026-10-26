@@ -13,6 +13,8 @@
 #skinSel{max-width:100%}.breedSel{max-width:100%}
 /* 허브(목록)와 만들기(?view=make)는 같은 화면 — 칸만 바꿔 보인다. data-view=hub 는 목록에서만, make 는 만들기에서만 */
 body:not(.view-make) #makeBox,body:not(.view-make) #appsBox,body:not(.view-make) [data-view=make],body.view-make [data-view=hub]{display:none!important}
+/* 만들기는 만들기 칸만, 내 앱(?view=make#appsBox)은 내 앱 칸만. 실행 기록은 만들기에서 실행을 골랐을 때(has-sel)만 — 빈 검은 로그 칸을 늘 띄우지 않는다 */
+body.view-make:not(.view-apps) #appsBox,body.view-apps #makeBox,body.view-apps #runsBox,body.view-make:not(.has-sel) #runsBox{display:none!important}
 main{display:flex;flex-direction:column;gap:26px;min-width:0}
 body.view-make main,body.view-make .pagehead{max-width:920px;width:100%}
 
@@ -111,8 +113,27 @@ button.exp[aria-expanded=true] svg{transform:rotate(90deg)}
 /* ---------- 만들기(?view=make) ---------- */
 #makeBox{border-top:0;padding-top:0}
 .mk-intro{margin:0 0 14px;font-size:13px;color:var(--muted)}
-/* 세 가지 방법 — 위 굵은 줄 + 칸 사이 세로줄, 고른 칸만 면 색, 칸 위 작은 명조 「하나·둘·셋」 */
-.mk-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:2px solid var(--rule);border-bottom:1px solid var(--line)}
+/* 칸 하나로 시작 — 위 굵은 줄 아래 큰 입력 칸, 비슷한 견본 · 보여 주기 권유 · 접은 옵션(쓸 AI · 언제) */
+.mk-start{padding:0 0 18px;display:flex;flex-direction:column;gap:10px}
+.mk-start textarea{width:100%;resize:vertical;font-size:15px}
+.mk-start .mk-go{align-items:flex-start}
+.mk-opts>summary{cursor:pointer;font-size:12.5px;color:var(--muted);padding:6px 0;list-style:none}
+.mk-opts>summary::-webkit-details-marker{display:none}
+.mk-opts>summary::before{content:'▸ ';font-size:10px}
+.mk-opts[open]>summary::before{content:'▾ '}
+.mk-opts>summary:hover{color:var(--accent)}
+.mk-opts .row{flex-wrap:wrap;gap:14px;padding:4px 0}
+.mk-suggest{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.mk-suggest[hidden],.mk-hint[hidden]{display:none}
+.mk-suggest>.lbl{font-size:12px;color:var(--muted);padding:8px 0 2px}
+.mk-sug{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.mk-sug .grow{min-width:0}
+.mk-sug .grow small{display:block;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk-hint{font-size:12.5px;color:var(--muted);border-left:2px solid var(--accent);padding:4px 10px}
+.linkbtn{all:unset;cursor:pointer;color:var(--accent);border-bottom:1px solid currentColor}
+.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* 다른 방법 둘 — 칸 사이 세로줄, 펼친 칸만 면 색, 칸 위 작은 명조 「또는」 */
+.mk-pick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .mk-pick button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:12px 16px 14px;min-width:0;color:var(--text)}
 .mk-pick button+button{border-left:1px solid var(--line)}
 .mk-pick button:hover{background:var(--soft)}
@@ -257,29 +278,35 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
   </section>
     <section class="box" id="makeBox" aria-labelledby="makeH">
       <h2 class="sr" id="makeH">나만의 자동화 만들기</h2>
-      <p class="mk-intro">반복하는 일을 한 번 보여 주거나 말로 부탁하면, 다음부터 그대로 합니다.</p>
-      <!-- 세 가지 방법 — 고른 칸의 내용만 아래에 보인다(mkPick). 고른 것은 이 브라우저에 기억 -->
-      <div class="mk-pick" id="mkPick" role="group" aria-label="만드는 방법">
-        <button type="button" data-pick="rec" aria-controls="mkRec"><span class="num">하나</span><b>보여 주기</b><small>웹에서 한 번 해 보이면 그대로</small></button>
-        <button type="button" data-pick="ask" aria-controls="mkAsk"><span class="num">둘</span><b>말로 부탁하기</b><small>프로그램 조작·조건·알림까지</small></button>
-        <button type="button" data-pick="gal" aria-controls="galBox"><span class="num">셋</span><b>견본에서 고르기</b><small>자주 쓰는 견본을 내 것으로 복사</small></button>
-      </div>
-      <div class="mk-panel" id="mkRec" data-pick="rec">
-        <label class="sr" for="recUrl">시작할 웹 주소</label>
-        <input id="recUrl" type="text" placeholder="시작할 웹 주소 (예: https://example.com/login)">
-        <div class="row"><label class="sr" for="recName">자동화 이름</label><input id="recName" type="text" placeholder="자동화 이름 (예: 일일 주문 확인)" class="grow"><button id="recBtn" class="pri">녹화 시작</button></div>
-        <small class="mk-note">Chrome 이 열리면 평소대로 조작하고 창을 닫으면 저장됩니다. 비밀번호 칸의 값은 파일에 남지 않고 이 PC 비밀 보관함으로 옮겨집니다.</small>
-      </div>
-      <div class="mk-panel" id="mkAsk" data-pick="ask" hidden>
-        <label class="mk-ai">쓸 AI <select id="aiSel" aria-label="쓸 AI" title="말로 부탁하기·고쳐 달라기를 맡길 AI — 이 PC 에 깔린 명령줄 도구를 씁니다"></select></label>
-        <label class="sr" for="askWhat">무엇을 해 줄까요</label>
-        <textarea id="askWhat" rows="3" placeholder="무엇을 해 줄까요? (예: 공지 게시판 첫 글이 바뀌면 알려 줘)"></textarea>
-        <div class="row"><label class="sr" for="askWhen">언제</label><select id="askWhen" class="grow">
-            <option value="">언제 — 내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select>
+      <p class="mk-intro">반복하는 일을 평소 말하듯 적으면, 다음부터 그대로 합니다.</p>
+      <!-- 칸 하나로 시작(2026-10-27) — 적는 동안 비슷한 견본이 아래에 뜨고(mkSuggest), 보내면 말로 부탁하기와 같다.
+           웹에서 하는 일 같으면 「직접 보여 주기」를 권한다(mkRecHint). 쓸 AI·언제는 접어 둔다(mkOpts) -->
+      <div class="mk-start" id="mkAsk">
+        <label class="sr" for="askWhat">무엇을 자동화할까요</label>
+        <textarea id="askWhat" rows="3" placeholder="무엇을 자동화할까요? (예: 공지 게시판 첫 글이 바뀌면 알려 줘)"></textarea>
+        <div class="mk-suggest" id="mkSuggest" hidden></div>
+        <div class="mk-hint" id="mkRecHint" hidden>웹에서 하는 일 같아요 — 한 번 <button type="button" class="linkbtn" id="mkToRec">직접 보여 주기</button>가 더 정확할 수 있어요.</div>
+        <div class="row mk-go">
+          <details class="mk-opts grow" id="mkOpts"><summary id="mkOptsSum">쓸 AI · 언제</summary>
+            <div class="row"><label class="mk-ai">쓸 AI <select id="aiSel" aria-label="쓸 AI" title="말로 부탁하기·고쳐 달라기를 맡길 AI — 이 PC 에 깔린 명령줄 도구를 씁니다"></select></label>
+              <label class="mk-ai">언제 <select id="askWhen" aria-label="언제">
+                <option value="">내가 누를 때만</option><option>평일 아침 9시마다</option><option>30분마다</option><option>매시간</option><option>PC 를 켤 때</option></select></label></div>
+          </details>
           <button id="askBtn" class="pri">대화로 부탁하기</button></div>
         <small class="mk-note" id="askDirect" hidden>누르면 <b id="aiName"></b> 가 이 PC 에서 바로 만듭니다. 진행은 아래 실행 기록에서, 다 되면 자동화 목록에 나타납니다. <span id="aiNote"></span></small>
         <small class="mk-note" id="askOn">누르면 대화로 보냅니다. Claude 가 만든 뒤 <b>스스로 시험하고, 안 되면 고쳐서</b> 결과를 대화로 알립니다(메일 보내기·제출은 시험 때 건너뜀). 다 되면 자동화 목록에 나타납니다.</small>
         <div class="mk-off" id="askOff" hidden>디스패치 대화(설정 <code>dispatch.enabled</code>)를 켜면 여기서 바로 맡길 수 있습니다. 지금은 위 단추로 부탁 글을 복사해 이 PC 의 Claude Code 에 붙여 넣으세요.</div>
+      </div>
+      <!-- 다른 방법 둘 — 누르면 그 칸이 펼쳐지고, 다시 누르면 접힌다(mkPick) -->
+      <div class="mk-pick" id="mkPick" role="group" aria-label="다른 방법">
+        <button type="button" data-pick="rec" aria-controls="mkRec"><span class="num">또는</span><b>직접 보여 주기</b><small>웹에서 한 번 해 보이면 그대로</small></button>
+        <button type="button" data-pick="gal" aria-controls="galBox"><span class="num">또는</span><b>견본 전체 보기</b><small>자주 쓰는 견본을 내 것으로 복사</small></button>
+      </div>
+      <div class="mk-panel" id="mkRec" data-pick="rec" hidden>
+        <label class="sr" for="recUrl">시작할 웹 주소</label>
+        <input id="recUrl" type="text" placeholder="시작할 웹 주소 (예: https://example.com/login)">
+        <div class="row"><label class="sr" for="recName">자동화 이름</label><input id="recName" type="text" placeholder="자동화 이름 (예: 일일 주문 확인)" class="grow"><button id="recBtn" class="pri">녹화 시작</button></div>
+        <small class="mk-note">Chrome 이 열리면 평소대로 조작하고 창을 닫으면 저장됩니다. 비밀번호 칸의 값은 파일에 남지 않고 이 PC 비밀 보관함으로 옮겨집니다.</small>
       </div>
       <details class="mk-panel" id="galBox" data-pick="gal" hidden>
         <summary>견본에서 고르기</summary>
@@ -383,9 +410,16 @@ if(VIEW_MAKE)document.body.classList.add('view-make');
 const navKey=()=>VIEW_MAKE?(location.hash==='#appsBox'?'apps':'make'):'hub';
 HubMode.mount(null,TOKEN);HubLook.mount(null,TOKEN,{layout:true,pets:'petCtl'});
 HubNav.mount('#side',{active:navKey(),dot:true,pets:true});
-addEventListener('hashchange',()=>HubNav.setActive(navKey()));
+// 만들기(?view=make)와 내 앱(?view=make#appsBox)은 같은 페이지 — 주소의 # 로 칸만 바꿔 보인다(위 CSS view-apps)
+function viewByHash(){
+  if(!VIEW_MAKE)return;
+  const apps=location.hash==='#appsBox';
+  document.body.classList.toggle('view-apps',apps);
+  document.title=(apps?'내 앱':'만들기')+' — Taskhand';$h('#headline',apps?'내 앱':'만들기');$h('#subline','');
+}
+addEventListener('hashchange',()=>{HubNav.setActive(navKey());viewByHash()});
 for(const s of document.querySelectorAll('[data-icon]'))s.append(hubIcon(s.dataset.icon));
-if(VIEW_MAKE){document.title='만들기 — Taskhand';$h('#headline','만들기');$h('#subline','보여 주기 · 말로 부탁하기 · 견본에서 고르기 · 여러 일 잇기')}
+viewByHash();
 function $h(s,t){document.querySelector(s).textContent=t}
 const $=s=>document.querySelector(s);
 let macros=[],deleted=[],runs=[],sel=null,toolRuns=new Map(),paramVals={},query='',lastLoad=0;
@@ -586,7 +620,7 @@ function drawRuns(){
   }
 }
 async function select(id){
-  sel=id;drawRuns();
+  sel=id;document.body.classList.add('has-sel');drawRuns();
   const r=await api('/api/run?id='+id).catch(()=>null);if(!r||sel!==id)return;
   $('#logTitle').textContent=r.name+' · '+hm(r.started)+' · '+(STATUS[r.status]||r.status);
   showFix(r);showShot(r);showConfirm(r);
@@ -718,8 +752,13 @@ const guard=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
 $('#newBtn').onclick=guard(async()=>{const r=await api('/api/new',{name:$('#newName').value,kind:$('#newKind').value});$('#newName').value='';toast('만들었습니다: '+r.id+' — 내 자동화 폴더에서 편집하세요');loadMacros()});
 $('#recBtn').onclick=guard(async()=>{await api('/api/record/web',{url:$('#recUrl').value,name:$('#recName').value});toast('녹화 창이 열립니다. 조작한 뒤 창을 닫으면 저장됩니다')});
 /* 자동화 갤러리 — 견본(gallery\*.py)을 「내 자동화로 복사」 한 번에 macros.local 로(꺼진 채, 이름이 겹치면 _2) */
+let galItems=null;
+async function galFetch(){if(!galItems){try{galItems=await api('/api/gallery')}catch(e){return[]}}return galItems}
+const galCopy=g=>guard(async()=>{const r=await api('/api/gallery/copy',{file:g.file});
+  toast('복사했습니다 ('+r.id+') — 자동화 목록에서 칸을 채우고 값 저장 → 시험 실행'+(g.secrets.length?' · secrets.local.json 에 '+g.secrets.join(', '):''));
+  if(g.hint)setTimeout(()=>toast(g.hint),3600);loadMacros()});
 async function loadGallery(){
-  let items=[];try{items=await api('/api/gallery')}catch(e){return}
+  const items=await galFetch();
   const box=$('#galList');box.replaceChildren();
   if(!items.length){box.append(el('div','mk-note','견본이 없습니다'));return}
   for(const g of items){
@@ -730,24 +769,52 @@ async function loadGallery(){
     if(g.secrets.length)need.push('비밀값: '+g.secrets.join(' · '));
     if(g.triggers.length)need.push('예약: '+g.triggers.map(trgText).join(' · ')+' (켜야 돎)');
     if(need.length)c.append(el('div','gal-need',need.join('  /  ')));
-    const b=el('button','pri','내 자동화로 복사');
-    b.onclick=guard(async()=>{const r=await api('/api/gallery/copy',{file:g.file});
-      toast('복사했습니다 ('+r.id+') — 자동화 목록에서 칸을 채우고 값 저장 → 시험 실행'+(g.secrets.length?' · secrets.local.json 에 '+g.secrets.join(', '):''));
-      if(g.hint)setTimeout(()=>toast(g.hint),3600);loadMacros()});
+    const b=el('button','pri','내 자동화로 복사');b.onclick=galCopy(g);
     c.append(b);box.append(c);
   }
 }
 $('#galBox').addEventListener('toggle',()=>{if($('#galBox').open)loadGallery()});
-/* 만드는 방법 셋 — 고른 칸의 내용만 보인다. 견본(galBox)은 펼치면 목록을 불러오는 details 라 open 으로 연다 */
+/* 다른 방법 둘(직접 보여 주기 · 견본 전체) — 누르면 그 칸만 펼치고, 펼친 것을 다시 누르면 접는다. 처음엔 둘 다 접혀 있다 */
 function mkPick(k){
-  if(!['rec','ask','gal'].includes(k))k='rec';
+  if(!['rec','gal'].includes(k))k='';
   for(const b of document.querySelectorAll('#mkPick button'))b.setAttribute('aria-pressed',String(b.dataset.pick===k));
   for(const pnl of document.querySelectorAll('.mk-panel[data-pick]'))pnl.hidden=pnl.dataset.pick!==k;
   $('#galBox').open=k==='gal';
-  try{localStorage.setItem('mk.pick',k)}catch(e){}
 }
-for(const b of document.querySelectorAll('#mkPick button'))b.onclick=()=>mkPick(b.dataset.pick);
-{let k='rec';try{k=localStorage.getItem('mk.pick')||'rec'}catch(e){}mkPick(k)}
+for(const b of document.querySelectorAll('#mkPick button'))b.onclick=()=>mkPick(b.getAttribute('aria-pressed')==='true'?'':b.dataset.pick);
+mkPick('');
+/* 칸 하나로 시작 — 적는 동안 ① 비슷한 견본 ② 웹 일 같으면 보여 주기 권유.
+   견본은 META keywords(말 줄기 — 「바뀌」면 바뀌면·바뀌었다 다 맞는다)가 적은 말에 몇 개 들었나로 고른다:
+   둘 이상, 또는 짧게 적었을 때(낱말 셋 중 하나꼴) 하나. 글자 겹침만 보면 「사이트·확인」 같은 흔한 말로 엉뚱한 견본이 떠서 바꿨다 */
+const WEBISH=/https?:\/\/|사이트|웹|홈페이지|로그인|게시판|페이지|브라우저|크롬|chrome|클릭/i;
+let sugT=0;
+async function mkSuggest(){
+  const what=$('#askWhat').value.trim(),box=$('#mkSuggest');
+  $('#mkRecHint').hidden=!WEBISH.test(what);
+  const q=what.toLowerCase(),words=q.split(/\s+/).filter(Boolean).length;
+  if(q.length<2){$('#mkSuggest').hidden=true;return}
+  const items=await galFetch();
+  if($('#askWhat').value.trim()!==what)return;            // 그 사이 더 적었다
+  const hits=items.map(g=>({g,n:(g.keywords||[]).filter(k=>q.includes(String(k).toLowerCase())).length}))
+    .filter(x=>x.n>=2||(x.n===1&&x.n/words>=0.3)).sort((a,b)=>b.n-a.n).slice(0,3);
+  box.replaceChildren();box.hidden=!hits.length;
+  if(!hits.length)return;
+  box.append(el('div','lbl','비슷한 견본이 있어요 — 복사해서 칸만 채우면 바로 써요'));
+  for(const {g} of hits){
+    const r=el('div','mk-sug'),t=el('div','grow');t.append(el('b','',g.name));if(g.desc)t.append(el('small','',g.desc));
+    const b=el('button','','이걸로 시작');b.onclick=galCopy(g);r.append(t,b);box.append(r);
+  }
+}
+$('#askWhat').addEventListener('input',()=>{clearTimeout(sugT);sugT=setTimeout(mkSuggest,250)});
+$('#mkToRec').onclick=()=>{
+  const what=$('#askWhat').value.trim(),url=(what.match(/https?:\/\/\S+/)||[''])[0];
+  if(url&&!$('#recUrl').value)$('#recUrl').value=url;
+  if(!$('#recName').value)$('#recName').value=what.replace(/https?:\/\/\S+/g,'').trim().slice(0,30);
+  mkPick('rec');$('#mkRec').scrollIntoView({behavior:'smooth',block:'center'});$('#recUrl').focus();
+};
+// 접은 옵션 줄 — 지금 고른 AI · 언제를 그대로 보여 준다
+function drawOpts(){const a=($('#aiSel').selectedOptions[0]||{}).textContent||'AI',w=($('#askWhen').selectedOptions[0]||{}).textContent||'';$('#mkOptsSum').textContent=a+' · '+w}
+$('#askWhen').addEventListener('change',drawOpts);
 /* 묶어 돌리기 — 고른 순서대로 단계를 쌓아 묶음 파일(kind chain)을 만든다 */
 let chainSteps=[];
 function drawChain(reset){
@@ -818,7 +885,9 @@ function drawAi(){
     ai.engine==='ollama'?'(무료 · PC 밖으로 안 나감 — Claude·Codex 보다 약해 간단한 일에 맞습니다'+(ai.ollama_test?'':', 시험은 목록의 시험 실행으로')+')':'');
   $('#askDirect').hidden=!direct();$('#askOn').hidden=direct()||!chatUp;$('#askOff').hidden=direct()||chatUp;
   $('#askBtn').textContent=direct()?(cur.name||'AI')+' 로 만들기':(chatUp?'대화로 부탁하기':'부탁 글 복사');
+  drawOpts();
 }
+function askReset(){$('#askWhat').value='';$('#askWhen').value='';$('#mkSuggest').hidden=$('#mkRecHint').hidden=true;drawOpts()}
 async function loadAi(){try{ai=await api('/api/ai');drawAi()}catch(e){}}
 // 내 앱 — 목록·권한 허락·열기(앱은 <id>.localhost:8631, 허브와 다른 출처 — apphost.py)
 const engineName=()=>(ai.engines.find(e=>e.id===ai.engine)||{}).name||'AI';
@@ -942,14 +1011,14 @@ $('#askBtn').onclick=guard(async()=>{
   // 부탁 글은 허브가 만든다(ask_prompt) — 작성 안내서(AUTHORING.md)·시험 실행 명령을 넣어 '만들기 → 시험 → 고치기' 로 돌게
   if(direct()){
     btn.disabled=true;
-    try{const r=await api('/api/ask',{what,when,send:true});$('#askWhat').value='';$('#askWhen').value='';toast('만들기 시작 — 실행 기록에서 진행을 볼 수 있습니다');select(r.run)}
+    try{const r=await api('/api/ask',{what,when,send:true});askReset();toast('만들기 시작 — 실행 기록에서 진행을 볼 수 있습니다');select(r.run)}
     finally{btn.disabled=false}
     return;
   }
   if(chatUp){
     btn.disabled=true;btn.textContent='보내는 중…';
     try{await api('/api/ask',{what,when,send:true})}finally{btn.disabled=false;btn.textContent='대화로 부탁하기'}
-    $('#askWhat').value='';$('#askWhen').value='';
+    askReset();
     toast('부탁을 보냈습니다 — 대화에서 진행을 볼 수 있습니다');
     window.open(CHAT_URL,'_blank');
     return;
