@@ -4,151 +4,163 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI 작업 회고</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233b6ef5'/%3E%3Cpath d='M9 8h10l4 4v12H9z' fill='%23fff'/%3E%3Cpath d='M12 15h8M12 19h8' stroke='%233b6ef5' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23f4efe6'/%3E%3Cpath d='M9 7h10l4 4v14H9z' fill='none' stroke='%232b2723' stroke-width='2'/%3E%3Cpath d='M12 15h8M12 19h8' stroke='%239a3f1d' stroke-width='2'/%3E%3C/svg%3E">
 <style>
+/* 디자인 B 「종이 노트」(2026-10-26) — 미색 종이 바탕 · 먹색 글자 · 벽돌색 포인트 · 칸은 카드 대신 가로줄 ·
+   둥근 모서리 4px 이하 · 그림자·그라데이션 없음. D&C 허브 theme.css 와 같은 값. 웹 글꼴은 안 부른다(exe 안에서도 돌아야 함) */
 :root {
-  --bg: #f4f6fb; --panel: #ffffff; --line: #e4e8f0; --text: #1b2333; --muted: #6b7487;
-  --accent: #3b6ef5; --accent-bg: #e8efff; --ok: #16a34a; --ok-bg: #e5f6ea; --violet: #8b5cf6; --rose: #e11d74; --teal: #0d9488;
-  --warn: #d97706; --warn-bg: #fff3dc; --danger: #e5484d; --danger-bg: #ffe9ea;
-  --code-bg: #f0f3f9; --hover: #f3f6fc; --sel: #e8efff;
+  --bg: #f4efe6; --panel: #f4efe6; --solid: #fffaf2; --soft: #ece5d9; --line: #ddd3c3; --rule: #2b2723; --field: #8c8276;
+  --text: #2b2723; --muted: #6a6157; --accent: #9a3f1d; --accent-bg: #efe1d3; --onaccent: #f4efe6;
+  --ok: #3f6b3a; --warn: #9a6412; --danger: #b42318; --info: #355a78;
+  --violet: var(--muted); --rose: var(--accent); --teal: var(--info);
+  --code-bg: #ece5d9; --hover: #ede6da; --sel: #fffaf2;
+  --serif: 'Gowun Batang', 'Batang', 'AppleMyungjo', serif;
+  --sans: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
   color-scheme: light;
 }
 /* 다크 — 테마 버튼이 "자동"이면 Windows 설정을 따르고, "어둡게"를 고르면 강제로 켠다 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #12151c; --panel: #1a1f2a; --line: #2a3242; --text: #e7ebf3; --muted: #8e98ab;
-    --accent: #6d94ff; --accent-bg: #1d2a4a; --ok: #4ade80; --ok-bg: #15301f; --violet: #a78bfa; --rose: #f472b6; --teal: #2dd4bf;
-    --warn: #fbbf24; --warn-bg: #3a2c10; --danger: #ff7a7e; --danger-bg: #3d1d20;
-    --code-bg: #222a38; --hover: #202838; --sel: #1d2a4a;
+    --bg: #1f1c19; --panel: #1f1c19; --solid: #27231f; --soft: #2b2722; --line: #3a342e; --rule: #ece5da; --field: #8a8074;
+    --text: #ece5da; --muted: #b3a998; --accent: #d9875f; --accent-bg: #352820; --onaccent: #1f1c19;
+    --ok: #8fbb86; --warn: #d9a55a; --danger: #f08a7a; --info: #93b4cf;
+    --code-bg: #2b2722; --hover: #26221e; --sel: #27231f;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #12151c; --panel: #1a1f2a; --line: #2a3242; --text: #e7ebf3; --muted: #8e98ab;
-  --accent: #6d94ff; --accent-bg: #1d2a4a; --ok: #4ade80; --ok-bg: #15301f; --violet: #a78bfa; --rose: #f472b6; --teal: #2dd4bf;
-  --warn: #fbbf24; --warn-bg: #3a2c10; --danger: #ff7a7e; --danger-bg: #3d1d20;
-  --code-bg: #222a38; --hover: #202838; --sel: #1d2a4a;
+  --bg: #1f1c19; --panel: #1f1c19; --solid: #27231f; --soft: #2b2722; --line: #3a342e; --rule: #ece5da; --field: #8a8074;
+  --text: #ece5da; --muted: #b3a998; --accent: #d9875f; --accent-bg: #352820; --onaccent: #1f1c19;
+  --ok: #8fbb86; --warn: #d9a55a; --danger: #f08a7a; --info: #93b4cf;
+  --code-bg: #2b2722; --hover: #26221e; --sel: #27231f;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.55 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
-header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
-  border-bottom: 1px solid var(--line); background: var(--panel); }
-header h1 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 8px; }
-header h1::before { content: ""; width: 22px; height: 22px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), var(--violet)); }
+body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.55 var(--sans); }
+h1, h2, h3 { font-family: var(--serif); }
+a { color: var(--accent); }
+::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px 9px;
+  border-bottom: 2px solid var(--rule); background: var(--bg); }
+header h1 { font-size: 22px; font-weight: 700; margin: 0; line-height: 1.2; }
 .spacer { flex: 1; }
-.tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-input, select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 8px; }
-button { cursor: pointer; }
-button:hover { background: var(--hover); }
-button.primary { background: linear-gradient(135deg, var(--accent), var(--violet)); color: #fff; border-color: transparent;
-  font-weight: 600; padding: 4px 14px; }
-button.primary:hover { filter: brightness(1.08); background: linear-gradient(135deg, var(--accent), var(--violet)); }
+.tools { display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; }
+#report { max-width: 240px; }
+input, select { font: inherit; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--field);
+  border-radius: 0; padding: 3px 2px; min-width: 0; }
+select { cursor: pointer; }
+select option { background: var(--solid); color: var(--text); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--text); }
+button { font: inherit; font-size: 13px; color: var(--text); background: transparent; border: 1px solid var(--field);
+  border-radius: 3px; padding: 3px 10px; cursor: pointer; }
+button:hover { background: var(--hover); border-color: var(--text); }
+button.primary { background: var(--text); color: var(--onaccent); border-color: var(--text); font-weight: 600; padding: 3px 14px; }
+button.primary:hover { background: color-mix(in srgb, var(--text) 85%, var(--bg)); }
 button:disabled { opacity: .5; cursor: wait; }
 main { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); flex: 1; min-height: 0; }
 .pane { overflow: auto; min-height: 0; }
 .left { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line);
+.filters { display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line);
   position: sticky; top: 0; background: var(--bg); z-index: 2; }
 .filters input[type=search] { flex: 1; min-width: 160px; }
 .list { overflow: auto; flex: 1; }
-table.tk { width: 100%; border-collapse: collapse; }
+table.tk { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.tk th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 600; font-size: 12px;
-  color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; }
+  color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--rule); cursor: pointer; white-space: nowrap; }
 table.tk th.on { color: var(--text); }
 table.tk td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.tk tr { cursor: pointer; }
 table.tk tbody tr:hover { background: var(--hover); }
 table.tk tr.cur { background: var(--sel); }
-table.tk tr.s-발표고정 td:first-child { box-shadow: inset 3px 0 var(--ok); }
+table.tk tr.cur td:first-child { box-shadow: inset 2px 0 var(--accent); }
+table.tk tr.s-발표고정 td:first-child { box-shadow: inset 2px 0 var(--ok); }
 table.tk tr.s-발표제외 td, table.tk tr.s-비공개 td { color: var(--muted); }
-table.tk tr.s-비공개 td:first-child { box-shadow: inset 3px 0 var(--danger); }
+table.tk tr.s-비공개 td:first-child { box-shadow: inset 2px 0 var(--danger); }
 td.key { white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.title { max-width: 360px; }
 td.title .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.part { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--code-bg); color: var(--muted); margin-right: 4px; }
+.part { font-size: 11px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); margin-right: 4px; }
 .h-grilling { color: var(--ok); font-weight: 600; }
 .h-doc { color: var(--warn); }
-select.st { padding: 1px 4px; font-size: 12px; }
-select.st.v-발표고정 { background: var(--ok-bg); color: var(--ok); }
-select.st.v-발표제외 { background: var(--warn-bg); color: var(--warn); }
-select.st.v-비공개 { background: var(--danger-bg); color: var(--danger); }
-.right { background: var(--panel); }
-.bar { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 20px;
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; z-index: 2; }
+select.st { padding: 0 2px; font-size: 12px; }
+select.st.v-발표고정 { color: var(--ok); font-weight: 600; }
+select.st.v-발표제외 { color: var(--warn); }
+select.st.v-비공개 { color: var(--danger); }
+.right { background: var(--bg); }
+.bar { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); padding: 10px 20px;
+  display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; z-index: 2; }
 .bar .memo { flex: 1; min-width: 160px; }
 .doc { padding: 4px 24px 40px; max-width: 980px; }
 .teamform { padding: 16px 24px 40px; max-width: 760px; }
-.teamform h2 { font-size: 17px; margin: 4px 0 4px; }
+.teamform h2 { font-size: 19px; margin: 4px 0 4px; padding-top: 8px; border-top: 2px solid var(--rule); }
 .teamform .hint { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
 .teamform label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 4px; }
 .teamform label small { font-weight: 400; color: var(--muted); margin-left: 6px; }
-.teamform textarea { width: 100%; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 8px; padding: 8px 10px; resize: vertical; }
-.teamform .btns { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+.teamform textarea { width: 100%; font: inherit; color: var(--text); background: transparent; border: 1px solid var(--line);
+  border-radius: 3px; padding: 6px 8px; resize: vertical; }
+.teamform .btns { display: flex; gap: 8px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
 .teamform .msg { font-size: 12.5px; color: var(--muted); }
-.prompts { margin: 12px 24px 0; max-width: 932px; border: 1px dashed color-mix(in srgb, var(--violet) 45%, var(--line));
-  border-radius: 10px; background: color-mix(in srgb, var(--violet) 5%, var(--panel)); }
-.prompts summary { cursor: pointer; padding: 8px 12px; font-size: 13px; color: var(--violet); font-weight: 600; }
+.prompts { margin: 12px 24px 0; max-width: 932px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.prompts summary { cursor: pointer; padding: 7px 0; font-size: 13px; color: var(--text); font-weight: 600; }
 .prompts summary span { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 6px; }
-.prompts .sess { padding: 4px 14px 8px; border-top: 1px solid var(--line); }
+.prompts .sess { padding: 4px 0 8px; border-top: 1px solid var(--line); }
 .prompts .sh { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
 .prompts ol { margin: 0; padding-left: 22px; font-size: 13px; }
 .prompts li { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
-.doc h1 { font-size: 20px; } .doc h2 { font-size: 17px; border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 28px; }
+.doc h1 { font-size: 24px; } .doc h2 { font-size: 18px; border-top: 2px solid var(--rule); padding-top: 6px; margin-top: 28px; }
 .doc h3 { font-size: 15px; } .doc h4, .doc h5, .doc h6 { font-size: 14px; }
-.doc code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; font: 12.5px/1.5 Consolas, "D2Coding", monospace; }
-.doc pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow: auto; }
+.doc code { background: var(--code-bg); padding: 1px 4px; border-radius: 2px; font: 12.5px/1.5 Consolas, "D2Coding", monospace; }
+.doc pre { background: var(--code-bg); padding: 10px 12px; border-radius: 3px; overflow: auto; }
 .doc pre code { padding: 0; background: none; }
-.doc blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.doc blockquote { margin: 8px 0; padding: 2px 12px; border-left: 2px solid var(--field); color: var(--muted); }
+.doc hr { border: 0; border-top: 1px solid var(--line); }
 .doc ul { padding-left: 20px; } .doc li.n { list-style: none; margin-left: -16px; }
 .doc .tw { overflow: auto; } .doc table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-.doc th, .doc td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.doc th, .doc td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.doc thead th { border-bottom: 1px solid var(--rule); font-weight: 600; }
 .doc th, .doc td.s { white-space: nowrap; }
 .doc table.fm { font-size: 12px; color: var(--muted); } .doc table.fm th { width: 90px; font-weight: 500; }
-.doc a { color: var(--accent); }
 .empty { padding: 40px 24px; color: var(--muted); }
 #status { font-size: 12px; color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.period { font-size: 12px; color: var(--muted); }
-.me { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
-  background: var(--accent-bg); color: var(--accent); }
+.period { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.me { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.me::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  margin-right: 6px; vertical-align: 2px; }
 .me:empty { display: none; }
 td.owner { white-space: nowrap; font-size: 12.5px; }
 td.shop { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
-.who { display: inline-block; padding: 0 7px; border-radius: 999px; background: var(--code-bg); color: var(--muted); }
-.who.mine { background: var(--accent-bg); color: var(--accent); }
+.who { color: var(--muted); }
+.who.mine { color: var(--accent); font-weight: 600; }
 .shown { align-self: center; font-size: 12px; color: var(--muted); margin-left: auto; }
-/* 요약 대시보드 — 내 파트 기준 숫자. 카드를 누르면 아래 목록이 그 조건으로 걸러진다 */
-.dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
-.card { --c: var(--accent); background: color-mix(in srgb, var(--c) 7%, var(--panel));
-  border: 1px solid color-mix(in srgb, var(--c) 22%, var(--line)); border-top: 3px solid var(--c);
-  border-radius: 12px; padding: 10px 14px; cursor: pointer; text-align: left; font: inherit; color: inherit;
-  transition: transform .12s, box-shadow .12s; }
-.card:hover, .card.on { transform: translateY(-1px); box-shadow: 0 4px 14px color-mix(in srgb, var(--c) 22%, transparent);
-  background: color-mix(in srgb, var(--c) 11%, var(--panel)); }
-.card.c-blue { --c: var(--accent); } .card.c-green { --c: var(--ok); } .card.c-amber { --c: var(--warn); }
-.card.c-violet { --c: var(--violet); } .card.c-gray { --c: var(--muted); } .card.c-rose { --c: var(--rose); } .card.c-teal { --c: var(--teal); }
-.rec { color: var(--rose); margin-right: 3px; }
-.why { display: block; font-size: 11.5px; color: var(--rose); margin-top: 2px; }
-button.toggle.on { background: color-mix(in srgb, var(--rose) 14%, var(--panel)); border-color: var(--rose); color: var(--rose); font-weight: 600; }
+/* 요약 — 내 파트 기준 숫자. 위 굵은 선 + 칸 사이 세로줄, 고른 칸만 면 색. 칸을 누르면 아래 목록이 그 조건으로 걸러진다 */
+.dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0;
+  margin: 12px 16px 0; border-top: 2px solid var(--rule); border-bottom: 1px solid var(--line); overflow: hidden; }
+.card { --c: var(--accent); background: transparent; border: 0; border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+  margin: -1px 0 0 -1px; border-radius: 0; padding: 9px 14px 10px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.card:hover { background: var(--hover); border-color: var(--line); }
+.card.on, .card.on:hover { background: var(--solid); }
+.card.c-blue { --c: var(--info); } .card.c-green { --c: var(--ok); } .card.c-amber { --c: var(--warn); }
+.card.c-violet { --c: var(--muted); } .card.c-gray { --c: var(--muted); } .card.c-rose { --c: var(--accent); } .card.c-teal { --c: var(--info); }
+.rec { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 2px; }
+.why { display: block; font-size: 11.5px; color: var(--accent); margin-top: 2px; }
+button.toggle.on { background: var(--solid); border-color: var(--text); color: var(--text); font-weight: 600; }
 .card .k { font-size: 12px; color: var(--muted); font-weight: 600; }
-.card .v { font-size: 26px; font-weight: 800; line-height: 1.25; font-variant-numeric: tabular-nums; color: var(--c); }
-.card .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.card .k::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--c);
+  margin-right: 6px; vertical-align: 1px; }
+.card .v { font: 700 26px/1.25 var(--serif); font-variant-numeric: tabular-nums; color: var(--text); }
+.card .v small { font: 500 12.5px var(--sans); color: var(--muted); margin-left: 4px; }
 .card .sub { font-size: 12px; color: var(--muted); }
-.card .meter { height: 4px; border-radius: 2px; background: var(--code-bg); margin: 4px 0 3px; overflow: hidden; }
+.card .meter { height: 2px; background: var(--line); margin: 4px 0 3px; overflow: hidden; }
 .card .meter i { display: block; height: 100%; background: var(--c); }
 .card.shops { cursor: default; grid-column: span 2; }
+.card.shops:hover { background: transparent; }
 .shops .list2 { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
-.shops .list2 button { font-size: 12px; padding: 2px 9px; border-radius: 10px; background: var(--code-bg); border: 1px solid transparent; }
-.shops .list2 button { background: var(--panel); }
-.shops .list2 button:hover { border-color: var(--c); background: var(--panel); }
-.shops .list2 b { font-variant-numeric: tabular-nums; color: var(--c); margin-left: 3px; }
-.card.other { border-style: dashed; }
+.shops .list2 button { font-size: 12px; padding: 1px 7px; border-radius: 2px; background: transparent; border: 1px solid var(--line); }
+.shops .list2 button:hover { border-color: var(--text); background: transparent; }
+.shops .list2 b { font-variant-numeric: tabular-nums; color: var(--accent); margin-left: 4px; }
+.card.other .k::before { background: transparent; border: 1px solid var(--muted); }
 .weekly { padding: 12px 24px 40px; max-width: 980px; }
 .weekly .btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
 .weekly .msg { font-size: 12.5px; color: var(--muted); }
@@ -157,9 +169,15 @@ button.toggle.on { background: color-mix(in srgb, var(--rose) 14%, var(--panel))
 @media (max-width: 900px) {
   .dash { grid-template-columns: repeat(2, 1fr); } .card.shops { grid-column: span 2; }
   body { display: block; height: auto; }
-  main { grid-template-columns: 1fr; }
+  main { grid-template-columns: minmax(0, 1fr); }
   .pane { overflow: visible; } .left { border-right: 0; } .list { overflow: visible; }
   td.title { max-width: none; }
+}
+@media (max-width: 600px) {
+  header { padding: 8px 12px; } header h1 { font-size: 20px; }
+  .dash { margin: 10px 12px 0; } .filters { padding: 8px 12px; } .bar { padding: 8px 12px; }
+  .doc, .teamform { padding-left: 12px; padding-right: 12px; } .prompts { margin: 10px 12px 0; }
+  .list { overflow-x: auto; min-width: 0; } .doc table.fm { display: block; overflow-x: auto; }
 }
 </style>
 </head>
@@ -171,9 +189,9 @@ button.toggle.on { background: color-mix(in srgb, var(--rose) 14%, var(--panel))
   <div class="spacer"></div>
   <div class="tools">
     <button id="btnTheme" title="화면 테마: 자동(Windows 설정) → 밝게 → 어둡게"></button>
-    <button id="btnTeam" title="팀 명단·이름 별칭 편집">👥 팀 명단</button>
+    <button id="btnTeam" title="팀 명단·이름 별칭 편집">팀 명단</button>
     <button id="btnIndex">INDEX</button>
-    <button id="btnWeekly" title="이번 주(월요일~오늘) 주간 업무 보고 초안 — LLM 을 부른다">📝 주간 보고 초안</button>
+    <button id="btnWeekly" title="이번 주(월요일~오늘) 주간 업무 보고 초안 — LLM 을 부른다">주간 보고 초안</button>
     <select id="report"><option value="">보고·발표 자료…</option></select>
     <input type="date" id="since" title="수집 시작일"> ~ <input type="date" id="until" title="수집 종료일">
     <button id="btnCollect" class="primary" title="이슈·git·기록 다시 수집 (LLM 없음)">수집</button>
@@ -189,7 +207,7 @@ button.toggle.on { background: color-mix(in srgb, var(--rose) 14%, var(--panel))
       <select id="fOwner"><option value="">담당 전체</option></select>
       <select id="fHarness" title="하네스 기록 · AI 리뷰"><option value="">하네스 전체</option><option value="grilling">grilling</option><option value="doc">doc</option><option value="none">기록 없음</option><option value="bot" id="optBot">AI 리뷰 지적 있음</option></select>
       <select id="fSel"><option value="">선택 전체</option><option value="-">미지정</option><option>발표고정</option><option>발표제외</option><option>비공개</option></select>
-      <button class="toggle" id="btnRec" title="발표 사례 추천 점수 상위 10건만 보기">⭐ 추천만</button>
+      <button class="toggle" id="btnRec" title="발표 사례 추천 점수 상위 10건만 보기">추천만</button>
       <span class="shown" id="shown"></span>
     </div>
     <div class="list">
@@ -202,8 +220,8 @@ button.toggle.on { background: color-mix(in srgb, var(--rose) 14%, var(--panel))
       </table>
     </div>
   </section>
-  <section class="pane right" id="viewer"><div class="empty">왼쪽에서 이슈를 고르면 내용이 여기 보입니다. <b>📝 주간 보고 초안</b> 은 이번 주 한 일을 보고서 초안으로 씁니다.<br>
-    <b>⭐ 추천</b> 건은 따로 고르지 않아도 발표 자료 후보로 먼저 들어갑니다.<br>선택: <b>발표고정</b> 추천 밖이어도 발표 사례로 꼭 넣음 · <b>발표제외</b> 기록엔 두고 발표에선 뺌 · <b>비공개</b> 내 PC에만, 발표 프롬프트에서도 제외</div></section>
+  <section class="pane right" id="viewer"><div class="empty">왼쪽에서 이슈를 고르면 내용이 여기 보입니다. <b>주간 보고 초안</b> 은 이번 주 한 일을 보고서 초안으로 씁니다.<br>
+    <b>추천</b> 건은 따로 고르지 않아도 발표 자료 후보로 먼저 들어갑니다.<br>선택: <b>발표고정</b> 추천 밖이어도 발표 사례로 꼭 넣음 · <b>발표제외</b> 기록엔 두고 발표에선 뺌 · <b>비공개</b> 내 PC에만, 발표 프롬프트에서도 제외</div></section>
 </main>
 <script>
 const STATES = ["발표고정", "발표제외", "비공개"];
@@ -312,7 +330,7 @@ function renderRows() {
     <td>${stSelect(t)}</td>
     <td class="key"><span class="part">${esc(t.part)}</span>${esc(t.disp || t.key)}</td>
     <td class="owner">${(t.owner || "").split(", ").filter(Boolean).map(w => `<span class="who${S.meNames.includes(w) ? " mine" : ""}">${esc(w)}</span>`).join(" ")}</td>
-    ${S.F.tag ? `<td class="shop" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec">⭐</span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${t.memo ? `<br><small style="color:var(--muted)">📝 ${esc(t.memo)}</small>` : ""}</td>
+    ${S.F.tag ? `<td class="shop" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec"></span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${t.memo ? `<br><small style="color:var(--muted)">메모 · ${esc(t.memo)}</small>` : ""}</td>
     <td>${esc(t.status)}</td><td class="num">${t.commits || ""}</td>
     ${S.F.harness ? `<td class="h-${t.harness}">${t.harness === "none" ? "" : t.harness}</td>` : ""}<td class="key">${t.updated}</td></tr>`).join("");
   document.querySelectorAll("table.tk th").forEach(th => {
@@ -346,7 +364,7 @@ function renderDash() {
   const myAi = ms && ms.commits ? Math.round(ms.ai * 100 / ms.commits) : null;
   const owTop = Object.entries(ow).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w, c]) => `${esc(w)} ${c}`).join(" · ");
   $("dash").innerHTML = `
-    <button class="card c-rose${S.recOnly ? " on" : ""}" data-act="rec"><div class="k">⭐ 추천 사례</div>
+    <button class="card c-rose${S.recOnly ? " on" : ""}" data-act="rec"><div class="k">추천 사례</div>
       <div class="v">${S.rec.size}<small>건</small></div>
       <div class="sub">최근 ${S.recDays}일 · 되돌림·규모·최근${S.F.harness ? "·grilling" : ""}${S.F.review ? "·AI 리뷰" : ""} 점수 상위</div></button>
     <button class="card c-blue" data-act="all"><div class="k">내 티켓</div>
@@ -361,7 +379,7 @@ function renderDash() {
       <div class="sub">제외 ${n(t => t.select === "발표제외")} · 비공개 ${n(t => t.select === "비공개")}</div></button>
     ${S.F.tag ? `<div class="card c-violet shops"><div class="k">자주 나온 ${esc(S.F.tag)}</div>
       <div class="list2">${top.map(([s, c]) => `<button data-shop="${esc(s)}">${esc(s)}<b>${c}</b></button>`).join("")}</div></div>` : ""}
-    ${myAi !== null ? `<button class="card c-green" data-act="${S.F.review ? "bot" : "all"}"><div class="k">🤖 Claude 공동작성 커밋</div>
+    ${myAi !== null ? `<button class="card c-green" data-act="${S.F.review ? "bot" : "all"}"><div class="k">Claude 공동작성 커밋</div>
       <div class="v">${myAi}<small>%</small></div>
       <div class="meter"><i style="width:${myAi}%"></i></div>
       <div class="sub">${ms.ai}/${ms.commits} 커밋${S.F.review ? ` · AI 리뷰 지적 MR ${ms.bot_mrs}/${ms.mrs}` : ""}</div></button>` : ""}
@@ -379,7 +397,7 @@ function renderDash() {
 function promptsBox(sessions) {
   if (!sessions.length) return "";
   const n = sessions.reduce((a, s) => a + s.prompts.length, 0);
-  return `<details class="prompts"><summary>🔒 내 프롬프트 <b>${sessions.length}</b>세션 · ${n}개
+  return `<details class="prompts"><summary>내 프롬프트 <b>${sessions.length}</b>세션 · ${n}개
       <span>이 PC에서만 보임 · 발표 자료·공유 기록에는 안 들어감</span></summary>
     ${sessions.sort((a, b) => a.date < b.date ? 1 : -1).map(s => `<div class="sess">
       <div class="sh">${esc(s.date)} · ${esc(s.title || "(제목 없음)")}${s.branch ? ` · <code>${esc(s.branch)}</code>` : ""}</div>
@@ -463,7 +481,7 @@ document.addEventListener("click", e => {
 ["q", "fPart", "fOwner", "fHarness", "fSel"].forEach(id => $(id).addEventListener("input", () => { S.recOnly = false; renderRows(); }));
 $("btnRec").onclick = () => { S.recOnly = !S.recOnly; renderRows(); };
 // 테마 — 자동/밝게/어둡게 순환. 고른 값은 이 브라우저에만 기억한다(저장 실패해도 화면은 정상)
-const THEMES = [["auto", "◐ 자동"], ["light", "☀ 밝게"], ["dark", "🌙 어둡게"]];
+const THEMES = [["auto", "◐ 자동"], ["light", "☀ 밝게"], ["dark", "☾ 어둡게"]];
 function applyTheme(mode) {
   if (mode === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", mode);
@@ -488,7 +506,7 @@ async function openTeam() {
   const t = await api("/api/team");
   const ali = Object.entries(t.aliases).map(([k, v]) => `${k}=${v}`).join("\n");
   $("viewer").innerHTML = `<div class="teamform">
-    <h2>👥 팀 명단</h2>
+    <h2>팀 명단</h2>
     <p class="hint">${t.tracker ? esc(t.tracker) + " 에 보이는 이름이나 아이디를" : "git 커밋 이름(author)을"} 쉼표나 줄바꿈으로 적습니다. 나는 자동으로 빠집니다.
       저장한 명단은 <b>다음 수집부터</b> 반영됩니다. 저장 위치: <code>${esc(t.file)}</code> 의 ai_share</p>
     <label>내 팀 (${esc(t.part)})<small>팀원 티켓을 함께 모아 담당자별로 봅니다</small></label>
@@ -521,14 +539,14 @@ $("btnWeekly").onclick = async () => {
   if (!confirm(`이번 주(${S.week.since} ~ ${S.week.until}) 주간 보고 초안을 만들까요?\n수집 뒤 ${eng} 를 불러 1~3분 걸립니다. 메일은 보내지 않습니다.`)) return;
   const b = $("btnWeekly"); b.disabled = true; status("주간 보고 초안 만드는 중… (1~3분)");
   S.cur = null; renderRows();
-  $("viewer").innerHTML = '<div class="weekly"><h2>📝 주간 보고 초안</h2><p class="msg">수집하고 초안을 쓰는 중입니다…</p></div>';
+  $("viewer").innerHTML = '<div class="weekly"><h2>주간 보고 초안</h2><p class="msg">수집하고 초안을 쓰는 중입니다…</p></div>';
   try {
     const j = await api("/api/weekly", { since: S.week.since, until: S.week.until });
     if (!j.ok) { $("viewer").innerHTML = `<div class="doc"><h2>주간 보고 실패</h2><pre><code>${esc(j.log)}</code></pre></div>`; status("주간 보고 실패"); }
     else {
       lastWeekly = j.name;
-      $("viewer").innerHTML = `<div class="weekly"><div class="btns"><b>📝 ${esc(j.name)}</b>
-        <button id="wkSend" class="primary" title="메일 설정의 받는 사람(ai_share.weekly_report.to, 비면 내 주소)에게">✉ 메일로 보내기</button>
+      $("viewer").innerHTML = `<div class="weekly"><div class="btns"><b>${esc(j.name)}</b>
+        <button id="wkSend" class="primary" title="메일 설정의 받는 사람(ai_share.weekly_report.to, 비면 내 주소)에게">메일로 보내기</button>
         <span class="msg" id="wkMsg">${esc(j.why || "")}</span></div><div class="doc">${render(j.text)}</div></div>`;
       status(j.llm_ok ? "초안 완료 — 확인 후 보내기" : "LLM 실패 — 원자료로 대신 만들었습니다");
       await load();
@@ -550,8 +568,8 @@ $("report").onchange = e => {
   openDoc("report", v).then(() => {
     if (!v.includes("주간보고")) return;
     lastWeekly = v;
-    $("viewer").insertAdjacentHTML("afterbegin", `<div class="weekly" style="padding-bottom:0"><div class="btns"><b>📝 ${esc(v)}</b>
-      <button id="wkSend" class="primary">✉ 메일로 보내기</button><span class="msg" id="wkMsg"></span></div></div>`);
+    $("viewer").insertAdjacentHTML("afterbegin", `<div class="weekly" style="padding-bottom:0"><div class="btns"><b>${esc(v)}</b>
+      <button id="wkSend" class="primary">메일로 보내기</button><span class="msg" id="wkMsg"></span></div></div>`);
   });
 };
 $("btnCollect").onclick = async () => {
@@ -589,7 +607,7 @@ async function load() {
   $("period").textContent = `${j.period.since} ~ ${j.period.until}`;
   const me = j.me || {};
   S.meNames = [me.display, me.name, ...(me.authors || [])].filter(Boolean);
-  $("me").textContent = me.display || me.name ? `👤 ${me.display || me.name}` : "";
+  $("me").textContent = me.display || me.name ? `${me.display || me.name}` : "";
   // 담당자 필터 — 티켓 수 많은 순. 고른 값은 다시 불러와도 유지
   const cnt = {};
   j.tickets.forEach(t => (t.owner || "").split(", ").filter(Boolean).forEach(w => cnt[w] = (cnt[w] || 0) + 1));
