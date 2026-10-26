@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""업무 자동화 키트 설치 프로그램 — WorkKitSetup.exe 로 묶인다(build_installer.py). 표준 라이브러리(tkinter)만 쓴다.
+"""Taskhand(업무 자동화) 설치 프로그램 — TaskhandSetup.exe 로 묶인다(build_installer.py). 표준 라이브러리(tkinter)만 쓴다.
 
-    WorkKitSetup.exe                 설치 화면
-    WorkKitSetup.exe /S              무인 설치(IT 담당자 일괄 배포용) — 기본 폴더 · 바로가기 · 로그온 자동 시작, 설정 마법사는 띄우지 않음
-    WorkKitSetup.exe /S /D=D:\\Kit    무인 설치 + 폴더 지정
+    TaskhandSetup.exe                  설치 화면
+    TaskhandSetup.exe /S               무인 설치(IT 담당자 일괄 배포용) — 기본 폴더 · 바로가기 · 로그온 자동 시작, 설정 마법사는 띄우지 않음
+    TaskhandSetup.exe /S /D=D:\\Kit     무인 설치 + 폴더 지정
 
 - 관리자 권한이 필요 없다 — 사용자 폴더(%LOCALAPPDATA%\\WorkKit)에 깔고 HKCU 에만 등록한다.
 - 키트 파일과 내장 파이썬(runtime\\)이 이 exe 안의 payload.zip 에 들어 있다 — 받는 PC 에 파이썬·인터넷이 없어도 된다.
 - 다시 설치(업데이트)해도 설정·기록은 그대로 둔다: config.local.json, 허브의 state/secrets/runs, data.local, macros.local.
   zip 에 든 파일만 덮어쓰고, 내장 파이썬(runtime\\)만 통째로 갈아 끼운다. 지난 설치에 있었는데 새 버전에서 빠진 키트 파일은
   지운다(install.json 'files' 로 기억 — 그 목록에 없던 파일·사용자 파일은 손대지 않는다).
-- 제거는 '앱 및 기능' 또는 시작 메뉴 「업무 자동화 키트 제거」(uninstall.py).
+- 제거는 '앱 및 기능' 또는 시작 메뉴 「Taskhand 제거」(uninstall.py).
 """
 import json
 import os
@@ -21,8 +21,9 @@ import threading
 import time
 import zipfile
 
-APP_NAME = '업무 자동화 키트'
-APP_ID = 'WorkKit'
+APP_NAME = 'Taskhand'
+OLD_NAMES = ('업무 자동화 키트',)          # 2026-10-26 이름을 바꾸기 전 바로가기·시작 메뉴 폴더 — 업데이트 때 지운다
+APP_ID = 'WorkKit'                        # 설치 폴더·레지스트리 이름 — 기존 설치와 이어지게 그대로 둔다
 NO_WINDOW = 0x08000000
 NEW_CONSOLE = 0x00000010
 DETACHED = 0x00000008
@@ -168,10 +169,23 @@ def _ps_shortcut(path, target, args, workdir, icon, desc):
                 q(path), q(target), q(args), q(workdir), q(icon), q(desc))
 
 
+def remove_old_shortcuts():
+    """예전 이름(OLD_NAMES)의 시작 메뉴 폴더·바탕화면 바로가기 지우기 — 이름을 바꾼 뒤 업데이트해도 두 개가 남지 않게."""
+    import shutil
+    programs = os.path.dirname(START_DIR)
+    for old in OLD_NAMES:
+        shutil.rmtree(os.path.join(programs, old), ignore_errors=True)
+        try:
+            os.remove(os.path.join(desktop_dir(), old + '.lnk'))
+        except OSError:
+            pass
+
+
 def make_shortcuts(target, desktop):
     py, pyw = os.path.join(target, 'runtime', 'python.exe'), os.path.join(target, 'runtime', 'pythonw.exe')
     hub = os.path.join(target, 'tools', 'macro-hub')
     icon = os.path.join(hub, 'web', 'app.ico')
+    remove_old_shortcuts()
     os.makedirs(START_DIR, exist_ok=True)
     cmds = ['$w = New-Object -ComObject WScript.Shell;',
             _ps_shortcut(os.path.join(START_DIR, APP_NAME + '.lnk'), pyw, '"%s"' % os.path.join(hub, 'launcher.py'),

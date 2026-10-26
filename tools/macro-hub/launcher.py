@@ -29,7 +29,7 @@ else:
 PORT = 8630
 URL = 'http://127.0.0.1:%d' % PORT
 def _pick_python(exe):
-    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(WorkKitSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
+    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(TaskhandSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
     for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
         if os.path.isfile(cand):
             return os.path.normpath(cand)
@@ -118,7 +118,8 @@ def install():
     ps = r'''
 $w = New-Object -ComObject WScript.Shell
 foreach ($dir in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
-  $s = $w.CreateShortcut((Join-Path $dir '업무 자동화 키트.lnk'))
+  Remove-Item -LiteralPath (Join-Path $dir '업무 자동화 키트.lnk') -ErrorAction SilentlyContinue   # 2026-10-26 이름 바꾸기 전 바로가기
+  $s = $w.CreateShortcut((Join-Path $dir 'Taskhand.lnk'))
   $s.TargetPath = '%s'; $s.Arguments = '%s'; $s.WorkingDirectory = '%s'; $s.IconLocation = '%s,0'
   $s.Description = '자동화 허브 — 자동화·상시 서비스·예약 작업'; $s.Save(); Write-Output $s.FullName
 }

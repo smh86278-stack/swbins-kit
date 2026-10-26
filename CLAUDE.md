@@ -1,4 +1,7 @@
-# 업무 자동화 키트 — 개발 규칙
+# Taskhand(업무 자동화, 옛 이름 「업무 자동화 키트·WorkKit」) — 개발 규칙
+
+보이는 이름은 「Taskhand」(2026-10-26). 설치 폴더·레지스트리 APP_ID·`WorkKit.exe`·뮤텍스 같은 내부 이름은 기존 설치와 이어지게 그대로 — 바꾸지 말 것.
+옛 이름 바로가기는 설치·제거가 OLD_NAMES 로 지운다(installer\install_main.py · uninstall.py).
 
 어느 회사에서나 쓰는 범용 키트다. 사용 설명은 `README.md`, 허브 내부는 `tools\macro-hub\README.md`.
 
@@ -37,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File tests\verify.ps1   커밋 전 — py_co
 
 ```
 1. VERSION 을 새 버전으로 고쳐 커밋 (빌드는 git archive HEAD — 커밋 안 한 것은 빠진다)
-2. 설치 시험: installer\dist\WorkKitSetup-<버전>.exe /S → runtime\pythonw.exe tools\macro-hub\launcher.py --background → 8630 확인 → runtime\python.exe uninstall.py --yes
+2. 설치 시험: installer\dist\TaskhandSetup-<버전>.exe /S → runtime\pythonw.exe tools\macro-hub\launcher.py --background → 8630 확인 → runtime\python.exe uninstall.py --yes
    (Git Bash 는 /S 를 경로로 바꾼다 — PowerShell Start-Process 로. 남는 %LOCALAPPDATA%\WorkKit-설정백업 은 시험 로그뿐이면 지운다)
 3. <PyInstaller 있는 파이썬> installer\release.py v<버전> notes.md   빌드 → 태그 push → GitHub 릴리스 + 설치 파일 첨부 → dist 엔 최신 하나만
 ```

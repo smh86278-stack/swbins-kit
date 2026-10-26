@@ -215,12 +215,12 @@ def build():
         ('start', '시작하기'), ('features', '기능'), ('config', '기능별 설정'), ('notify', '알림 받는 쪽'),
         ('macro', '자동화 만들기'), ('api', '허브 API'), ('trouble', '문제 해결')))
     body = []
-    body.append('<header><h1>업무 자동화 키트 — 도움말</h1>'
-                '<p class="lead">어느 회사에서나 쓰는 Windows 업무 자동화 키트. 트레이에 상주하는 <b>자동화 허브</b>가 예약 작업·감시·알림을 맡고, '
+    body.append('<header><h1>Taskhand — 도움말</h1>'
+                '<p class="lead">어느 회사에서나 쓰는 Windows 업무 자동화 — Taskhand. 트레이에 상주하는 <b>자동화 허브</b>가 예약 작업·감시·알림을 맡고, '
                 '회사마다 다른 값은 <code>config.local.json</code> 한 곳에 둔다.</p>'
                 '<nav class="toc">%s</nav></header>' % toc)
     body.append('<h2 id="start">시작하기</h2><ol>'
-                '<li>설치 파일(<code>WorkKitSetup-…exe</code>)을 실행하거나, 저장소를 받아 <code>python setup.py</code> — 처음 설정(회사 이름·메일 계정·알림 받는 곳).</li>'
+                '<li>설치 파일(<code>TaskhandSetup-…exe</code>)을 실행하거나, 저장소를 받아 <code>python setup.py</code> — 처음 설정(회사 이름·메일 계정·알림 받는 곳).</li>'
                 '<li>허브를 띄운다(트레이 아이콘). 화면은 이 PC 에서만 열린다: <code>http://127.0.0.1:8630/</code></li>'
                 '<li>운영 화면 <code>/ops</code> 의 「⏰ 예약 작업」에서 쓸 기능을 켜고, 대상은 <code>config.local.json</code> 에 적는다(아래 견본).</li>'
                 '<li>슬랙·Teams 로도 받으려면 <code>python setup.py --webhook</code>. 알림 시험은 <code>python setup.py --test</code>.</li></ol>'
@@ -271,7 +271,7 @@ def build():
                 '<li><b>마켓 공지가 안 읽힌다</b> — 그 사이트 robots.txt 가 자동 수집을 막으면 읽지 않는다(끄는 설정 없음). 로그인 뒤에 있는 공지는 넣을 수 없다.</li></ul>')
     body.append('<footer>이 문서는 <code>docs/build_docs.py</code> 가 코드(config.example.json·자동화 설명·runner.py)에서 만든다 — 직접 고치지 말 것.</footer>')
     return ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-            '<title>업무 자동화 키트 도움말</title>\n<style>%s</style>\n</head>\n<body>\n<div class="wrap">\n%s\n</div>\n</body>\n</html>\n'
+            '<title>Taskhand 도움말</title>\n<style>%s</style>\n</head>\n<body>\n<div class="wrap">\n%s\n</div>\n</body>\n</html>\n'
             % (CSS, '\n'.join(body)))
 
 

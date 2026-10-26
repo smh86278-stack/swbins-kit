@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""설치 파일(WorkKitSetup-<버전>.exe) 만들기 — 키트 파일 + 내장 파이썬 + 필요한 패키지를 exe 하나로 묶는다.
+"""설치 파일(TaskhandSetup-<버전>.exe) 만들기 — 키트 파일 + 내장 파이썬 + 필요한 패키지를 exe 하나로 묶는다.
 
     <PyInstaller 가 있는 파이썬> installer\\build_installer.py --site-packages <패키지를 가져올 site-packages>
 
@@ -12,7 +12,7 @@
      패키지는 --site-packages 에서 복사하되 빌드 전용·웹 자동화 전용(playwright, 100MB 넘음)은 뺀다.
      ⚠ 패키지를 가져오는 site-packages 와 이 파이썬은 같은 버전(예: 3.10)이어야 한다 — 확인하고 다르면 멈춘다.
   3. 1+2 를 payload.zip 으로 → install_main.py 와 함께 PyInstaller 한 파일 exe(창 모드)로.
-결과: installer\\dist\\WorkKitSetup-<VERSION>.exe  (git 에 넣지 않는다)
+결과: installer\\dist\\TaskhandSetup-<VERSION>.exe  (git 에 넣지 않는다)
 웹 자동화(playwright)가 필요한 회사는 설치 뒤:  runtime\\python.exe -m pip install playwright
 """
 import argparse
@@ -152,7 +152,7 @@ def main():
         r, p = runtime_files(zf, sp)
     log('  키트 %d개 · 파이썬 %d개 · 패키지 %d개 → %.1f MB' % (k, r, p, os.path.getsize(payload) / 1048576))
     shutil.copy(ICON, os.path.join(BUILD, 'app.ico'))
-    name = 'WorkKitSetup-%s' % ver
+    name = 'TaskhandSetup-%s' % ver   # 2026-10-26 까지 WorkKitSetup
     cmd = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--onefile', '--windowed', '--name', name,
            '--icon', ICON, '--add-data', payload + os.pathsep + '.', '--add-data', os.path.join(BUILD, 'app.ico') + os.pathsep + '.',
            '--distpath', DIST, '--workpath', os.path.join(BUILD, 'pyi'), '--specpath', BUILD,

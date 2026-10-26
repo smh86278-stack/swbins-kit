@@ -173,8 +173,8 @@ const HubNav = (() => {
     if (!nav) return;
     o = o || {};
     nav.classList.add('side'); nav.setAttribute('aria-label', '메뉴');
-    const brand = document.createElement('a'); brand.className = 'brand'; brand.href = '/'; brand.setAttribute('aria-label', 'WorkKit 첫 화면');
-    brand.innerHTML = '<span class="logo" aria-hidden="true">W</span><b>WorkKit</b>';   // 이름 — 명조, 아래 굵은 줄
+    const brand = document.createElement('a'); brand.className = 'brand'; brand.href = '/'; brand.setAttribute('aria-label', 'Taskhand 첫 화면');
+    brand.innerHTML = '<span class="logo" aria-hidden="true">T</span><b>Taskhand</b>';   // 이름 — 명조, 아래 굵은 줄
     nav.append(brand);
     for (const it of ITEMS) {
       if (!it) { const d = document.createElement('div'); d.className = 'divider'; d.setAttribute('aria-hidden', 'true'); nav.append(d); continue; }

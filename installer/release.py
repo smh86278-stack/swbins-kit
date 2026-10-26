@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GitHub 릴리스 올리기 — 설치 파일을 빌드하고 태그·릴리스·WorkKitSetup-<버전>.exe 첨부까지.
+"""GitHub 릴리스 올리기 — 설치 파일을 빌드하고 태그·릴리스·TaskhandSetup-<버전>.exe 첨부까지.
 
     <PyInstaller 가 있는 파이썬> installer\\release.py v0.3.2 notes.md
     ... --no-build                        (installer\\dist 의 설치 파일을 그대로 올림)
@@ -81,7 +81,7 @@ def main(argv):
     ver = check(tag)
     with open(notes, encoding='utf-8') as f:
         body = f.read()
-    exe = os.path.join(DIST, 'WorkKitSetup-%s.exe' % ver)
+    exe = os.path.join(DIST, 'TaskhandSetup-%s.exe' % ver)
     if '--no-build' not in argv:
         sp = argv[argv.index('--site-packages') + 1] if '--site-packages' in argv else DEFAULT_SP
         subprocess.run([sys.executable, '-X', 'utf8', os.path.join(HERE, 'build_installer.py'), '--site-packages', sp],
@@ -89,16 +89,16 @@ def main(argv):
     if not os.path.isfile(exe):
         raise SystemExit('설치 파일이 없습니다: ' + exe)
     repo = repo_name()
-    git('tag', '-a', tag, '-m', 'WorkKit ' + tag)
+    git('tag', '-a', tag, '-m', 'Taskhand ' + tag)
     git('push', 'origin', 'main')
     git('push', 'origin', tag)
     tok = token(repo.split('/')[0])
     rel = api('https://api.github.com/repos/%s/releases' % repo, tok,
-              json.dumps({'tag_name': tag, 'name': 'WorkKit ' + tag, 'body': body}, ensure_ascii=False).encode('utf-8'),
+              json.dumps({'tag_name': tag, 'name': 'Taskhand ' + tag, 'body': body}, ensure_ascii=False).encode('utf-8'),
               'application/json; charset=utf-8')
     with open(exe, 'rb') as f:
         asset = api(rel['upload_url'].split('{')[0] + '?name=' + os.path.basename(exe), tok, f.read(), 'application/octet-stream')
-    for old in glob.glob(os.path.join(DIST, 'WorkKitSetup-*.exe')):
+    for old in glob.glob(os.path.join(DIST, 'TaskhandSetup-*.exe')) + glob.glob(os.path.join(DIST, 'WorkKitSetup-*.exe')):
         if os.path.normcase(old) != os.path.normcase(exe):
             os.remove(old)                                # dist 엔 최신 하나만
     print('릴리스:', rel['html_url'])

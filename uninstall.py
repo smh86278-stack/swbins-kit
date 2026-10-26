@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""업무 자동화 키트 제거 — '앱 및 기능' · 시작 메뉴 「업무 자동화 키트 제거」가 부른다(설치본의 runtime\\python.exe 로).
+"""Taskhand 제거 — '앱 및 기능' · 시작 메뉴 「Taskhand 제거」가 부른다(설치본의 runtime\\python.exe 로).
 
     python uninstall.py           묻고 지운다
     python uninstall.py --yes     묻지 않고 지운다(설정은 백업해 둔다)
@@ -15,7 +15,8 @@ import shutil
 import subprocess
 import sys
 
-APP_NAME = '업무 자동화 키트'
+APP_NAME = 'Taskhand'
+OLD_NAMES = ('업무 자동화 키트',)          # 이름을 바꾸기 전 바로가기도 지운다(installer\install_main.py 와 같게)
 APP_ID = 'WorkKit'
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOCAL = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
@@ -90,10 +91,13 @@ def unregister():
     except OSError:
         pass
     shutil.rmtree(START_DIR, ignore_errors=True)
-    try:
-        os.remove(DESKTOP_LNK)
-    except OSError:
-        pass
+    for lnk in [DESKTOP_LNK] + [os.path.join(_desktop_dir(), o + '.lnk') for o in OLD_NAMES]:
+        try:
+            os.remove(lnk)
+        except OSError:
+            pass
+    for old in OLD_NAMES:
+        shutil.rmtree(os.path.join(os.path.dirname(START_DIR), old), ignore_errors=True)
 
 
 def remove_later(target):

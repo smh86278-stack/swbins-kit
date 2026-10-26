@@ -33,7 +33,7 @@ URL = 'http://127.0.0.1:%d/' % PORT
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 RUN_NAME = 'WorkKit'
 def _pick_python(exe):
-    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(WorkKitSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
+    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(TaskhandSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
     for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
         if os.path.isfile(cand):
             return os.path.normpath(cand)

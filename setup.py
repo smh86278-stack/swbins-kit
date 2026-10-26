@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""업무 자동화 키트 — 처음 설정 마법사.
+"""Taskhand(업무 자동화) — 처음 설정 마법사.
 
     python setup.py            묻는 대로 답하면 config.local.json 을 만들고 메일 계정을 채운다
     python setup.py --test     알림 메일 시험만 (설정대로 실제로 한 통 보낸다)
@@ -318,7 +318,7 @@ def webhook_wizard():
     print('\n저장했습니다: %s' % kit.F_CONFIG)
     if yes('지금 시험 알림을 이 출구로 한 번 보낼까요?'):
         try:
-            code = kit.post_channel(ch, '알림 시험 — 업무 자동화 키트', '이 글이 보이면 자동화 허브의 실패 알림·감시 알림이 이 방에도 옵니다.')
+            code = kit.post_channel(ch, '알림 시험 — Taskhand', '이 글이 보이면 자동화 허브의 실패 알림·감시 알림이 이 방에도 옵니다.')
             print('보냈습니다 (HTTP %s). 방을 확인하세요.' % code)
         except Exception as e:
             print('실패: %s — 주소가 맞는지, 그 웹훅이 켜져 있는지 확인하세요.' % e)
@@ -349,7 +349,7 @@ def send_test():
     target = '내 받은편지함(INBOX)' if m.get('alert_via') == 'append' else (m.get('alert_to') or m['user'])
     print('알림 시험 메일을 보냅니다 → %s ...' % target)
     try:
-        kit.alert('알림 시험 — 업무 자동화 키트',
+        kit.alert('알림 시험 — Taskhand',
                   '이 메일이 보이면 자동화 허브의 실패 알림·감시 알림이 이 주소로 옵니다.\n\n'
                   '설정 파일: %s\n다시 설정: python setup.py' % kit.F_CONFIG)
     except Exception as e:
@@ -373,7 +373,7 @@ def show():
 
 def wizard():
     print('=' * 60)
-    print(' 업무 자동화 키트 — 처음 설정')
+    print(' Taskhand — 처음 설정')
     print(' Enter 를 누르면 [ ] 안의 값을 그대로 씁니다. 그만두려면 Ctrl+C.')
     print('=' * 60)
     if ensure_config():
@@ -452,7 +452,7 @@ def main(argv=None):
         sys.stdout.reconfigure(errors='replace')
     except (AttributeError, ValueError):
         pass
-    ap = argparse.ArgumentParser(description='업무 자동화 키트 — 처음 설정')
+    ap = argparse.ArgumentParser(description='Taskhand — 처음 설정')
     ap.add_argument('--test', action='store_true', help='알림 시험 메일만 보낸다')
     ap.add_argument('--show', action='store_true', help='지금 설정을 보여 준다(비밀번호는 가림)')
     ap.add_argument('--jira', action='store_true', help='Jira 새 이슈 감시 — 주소·인증·토큰 넣기')

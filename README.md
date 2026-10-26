@@ -1,4 +1,4 @@
-# 업무 자동화 키트 (WorkKit)
+# Taskhand — 반복 업무를 맡기는 Windows 자동화
 
 [![test](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml/badge.svg)](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
@@ -44,7 +44,7 @@ Windows 10/11 · Python 3.10 이상 · 관리자 권한 불필요.
    트레이에 아이콘이 뜨고 <http://127.0.0.1:8630/> 이 열린다. 운영 화면 `/ops` 에서 기능을 켠다(처음엔 모두 꺼져 있다).
 
 파이썬이 없는 PC 에 배포할 때는 내장 파이썬을 품은 단일 설치 파일을 만든다 — `installer\build_installer.py` →
-`WorkKitSetup-<버전>.exe` (무인 설치 `/S`). 자세한 설치·업데이트·제거는 [`docs/GUIDE.md`](docs/GUIDE.md#설치--파일-하나-권장).
+`TaskhandSetup-<버전>.exe` (무인 설치 `/S`). 자세한 설치·업데이트·제거는 [`docs/GUIDE.md`](docs/GUIDE.md#설치--파일-하나-권장).
 
 ## 주요 기능
 

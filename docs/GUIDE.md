@@ -1,4 +1,6 @@
-# 업무 자동화 키트 — 사용 안내서
+# Taskhand — 사용 안내서
+
+> 2026-10-26 이름을 「업무 자동화 키트(WorkKit)」에서 **Taskhand**으로 바꿨습니다. 설치 폴더(`%LOCALAPPDATA%\WorkKit`)·`WorkKit.exe` 같은 내부 이름은 기존 설치와 이어지도록 그대로입니다.
 
 > 첫 소개·설치 요약·구조 그림은 저장소 맨 위 [`README.md`](../README.md), 설계 설명은 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 > 이 문서는 기능별 설정과 켜는 순서를 자세히 적은 **사용 안내서**다. 아래 경로는 저장소 맨 위 기준이다.
@@ -158,18 +160,18 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
 
 ## 설치 — 파일 하나 (권장)
 
-`WorkKitSetup-<버전>.exe` 를 실행하고 「설치」를 누르면 끝이다. **파이썬·인터넷이 없는 PC 에도 된다**(내장 파이썬을 함께 깐다).
+`TaskhandSetup-<버전>.exe` 를 실행하고 「설치」를 누르면 끝이다. **파이썬·인터넷이 없는 PC 에도 된다**(내장 파이썬을 함께 깐다).
 
 - 관리자 권한이 필요 없다 — 내 계정 폴더(`%LOCALAPPDATA%\WorkKit`)에 깔린다.
-- 시작 메뉴 「업무 자동화 키트」(허브 열기) · 「메일·계정 설정」(설정 창, `setup_gui.py`) · 「업무 자동화 키트 제거」, 바탕화면 바로가기, 로그온 자동 시작이 생긴다.
+- 시작 메뉴 「Taskhand」(허브 열기) · 「메일·계정 설정」(설정 창, `setup_gui.py`) · 「Taskhand 제거」, 바탕화면 바로가기, 로그온 자동 시작이 생긴다.
 - 처음 설치하면 「메일·계정 설정」 창이 이어서 뜬다(회사 이름·메일 서비스·주소·비밀번호 → 저장 → 시험 메일 보내기). 허브는 <http://127.0.0.1:8630/> (이 PC 에서만).
 - **다시 설치하면 업데이트**다 — 설정·기록은 그대로 남는다.
 - 제거는 '설정 → 앱 → 설치된 앱' 또는 시작 메뉴의 「제거」. 설정을 남기면 다음 설치 때 되살아난다.
-- IT 담당자 일괄 배포: `WorkKitSetup-<버전>.exe /S` (무인 설치, 폴더 지정은 `/D=D:\WorkKit`).
+- IT 담당자 일괄 배포: `TaskhandSetup-<버전>.exe /S` (무인 설치, 폴더 지정은 `/D=D:\WorkKit`).
 - 서명되지 않은 exe 라 처음 실행 때 Windows SmartScreen 이 경고할 수 있다 — 「추가 정보 → 실행」.
 - 웹 자동화(playwright)는 용량이 커서 기본으로 넣지 않는다. 필요하면 설치 폴더에서 `runtime\python.exe -m pip install playwright`.
 
-설치 파일 만들기(개발 PC): `installer\build_installer.py` 맨 위 설명 참고 → `installer\dist\WorkKitSetup-<버전>.exe`.
+설치 파일 만들기(개발 PC): `installer\build_installer.py` 맨 위 설명 참고 → `installer\dist\TaskhandSetup-<버전>.exe`.
 
 ## 5분 시작 — 소스로 직접 (개발용)
 

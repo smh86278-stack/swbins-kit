@@ -1,4 +1,6 @@
-# WorkKit — personal automation hub for a Windows work PC
+# Taskhand — personal automation hub for a Windows work PC
+
+> Renamed from "WorkKit" on 2026-10-26. Internal names (install folder `%LOCALAPPDATA%\WorkKit`, `WorkKit.exe`) are unchanged so existing installs keep updating.
 
 [![test](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml/badge.svg)](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml)
 

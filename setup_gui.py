@@ -144,7 +144,7 @@ def run():
     init = initial_values(cfg)
 
     root = tk.Tk()
-    root.title('메일·계정 설정 — 업무 자동화 키트')
+    root.title('메일·계정 설정 — Taskhand')
     root.resizable(False, False)
     try:
         root.iconbitmap(os.path.join(ROOT, 'tools', 'macro-hub', 'web', 'app.ico'))
@@ -277,7 +277,7 @@ def run():
 
         def work():
             try:
-                kit.alert('알림 시험 — 업무 자동화 키트',
+                kit.alert('알림 시험 — Taskhand',
                           '이 메일이 보이면 자동화 허브의 실패 알림·감시 알림이 여기로 옵니다.\n\n설정 파일: %s' % kit.F_CONFIG)
                 err = None
             except Exception as e:      # 서버마다 예외 종류가 달라 그대로 보여 준다

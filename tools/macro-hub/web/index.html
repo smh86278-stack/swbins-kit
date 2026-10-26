@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>자동화 — WorkKit</title>
+<title>자동화 — Taskhand</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
@@ -385,7 +385,7 @@ HubMode.mount(null,TOKEN);HubLook.mount(null,TOKEN,{layout:true,pets:'petCtl'});
 HubNav.mount('#side',{active:navKey(),dot:true,pets:true});
 addEventListener('hashchange',()=>HubNav.setActive(navKey()));
 for(const s of document.querySelectorAll('[data-icon]'))s.append(hubIcon(s.dataset.icon));
-if(VIEW_MAKE){document.title='만들기 — WorkKit';$h('#headline','만들기');$h('#subline','보여 주기 · 말로 부탁하기 · 견본에서 고르기 · 여러 일 잇기')}
+if(VIEW_MAKE){document.title='만들기 — Taskhand';$h('#headline','만들기');$h('#subline','보여 주기 · 말로 부탁하기 · 견본에서 고르기 · 여러 일 잇기')}
 function $h(s,t){document.querySelector(s).textContent=t}
 const $=s=>document.querySelector(s);
 let macros=[],deleted=[],runs=[],sel=null,toolRuns=new Map(),paramVals={},query='',lastLoad=0;
