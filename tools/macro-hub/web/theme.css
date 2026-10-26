@@ -66,7 +66,7 @@ nav.side{width:212px;flex:none;position:sticky;top:0;height:100vh;overflow-y:aut
 .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:4px 8px 0}
 .conn .ct::after{content:'허브 연결 끊김'}
 #dot{width:7px;height:7px;border-radius:50%;background:var(--bad);flex:none}
-#dot.on{background:var(--ok)}
+#dot.on{background:light-dark(#2f9e44,var(--ok))}  /* 라이트 --ok(#3f6b3a)는 7px 점에선 검게 보인다 */
 #dot.on+.ct::after{content:'허브 연결됨'}
 .content{flex:1;min-width:0;padding:30px 36px 44px;display:flex;flex-direction:column;gap:18px}
 /* 좁은 창·허브 창 안 — 목차를 위쪽 한 줄로. 허브 창은 왼쪽 아이콘 줄(shell/rail.html)과 겹치는 메뉴를 숨긴다 */
