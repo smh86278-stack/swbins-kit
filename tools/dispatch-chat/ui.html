@@ -7,7 +7,7 @@
 <style>
 /* D&C 메신저 화면 — 디자인 B 「종이 노트」(2026-10-26): 미색 종이·먹색 글자·벽돌색 포인트·명조 제목, 카드 대신 가로줄.
    색은 자동화 허브(tools\macro-hub\web\theme.css)와 같은 값. 이 화면은 다른 PC·폰·맥의 exe 에서도 혼자 돌아야 해서 값을 옮겨 왔다(웹 글꼴·CDN 없이 이 PC 글꼴만).
-   바탕 테마(<html data-theme>)·강조색(data-accent)은 설정 맨 아래 「화면」에서 고르고 이 PC 에 기억한다(2026-10-27, 허브 꾸미기·폰 페이지와 같은 이름·색). */
+   바탕 테마(<html data-theme>)·강조색(data-accent)은 목록 위 단추 줄의 「화면」에서 고르고 이 PC 에 기억한다(2026-10-27, 허브 꾸미기·폰 페이지와 같은 이름·색). */
 :root{color-scheme:light dark;
   --bg:light-dark(#f4efe6,#1f1c19);--solid:light-dark(#fffaf2,#27231f);--panel:var(--bg);--soft:light-dark(#ece5d9,#2b2722);
   --text:light-dark(#2b2723,#ece5da);--muted:light-dark(#6a6157,#b3a998);--line:light-dark(#ddd3c3,#3a342e);
@@ -216,11 +216,16 @@ dialog::backdrop{background:rgba(31,28,25,.4)}
 .two.half{grid-template-columns:1fr 1fr}
 .run .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:-2px 0 10px;cursor:pointer}
 .run .chk input{accent-color:var(--accent)}
-.swatches{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.swatches button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:3px;padding:3px 10px;font-size:12.5px;color:var(--muted)}
-.swatches button:hover{border-color:var(--field);color:var(--text)}
-.swatches button.on{border-color:var(--text);color:var(--text);font-weight:700;background:var(--bg)}
-.swatches i{width:12px;height:12px;border-radius:2px;border:1px solid var(--line);flex:none}
+.filters{position:relative}
+.filters button.lookon{color:var(--text);border-bottom-color:var(--field)}
+.lookpop{position:absolute;left:8px;right:8px;top:calc(100% + 4px);z-index:30;background:var(--solid);border:1px solid var(--line);border-top:2px solid var(--rule);
+  border-radius:2px;padding:10px 12px 4px;box-shadow:0 6px 18px color-mix(in srgb,var(--text) 14%,transparent)}
+.lookpop .lt{font:700 12.5px/1.3 var(--sans);margin:0 0 6px}
+.lookpop .swatches{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.lookpop .swatches button{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:3px;margin:0;padding:3px 8px;font-size:12px;color:var(--muted)}
+.lookpop .swatches button:hover{border-color:var(--field);color:var(--text)}
+.lookpop .swatches button.on{border-color:var(--text);color:var(--text);font-weight:700;background:var(--bg)}
+.lookpop .swatches i{width:11px;height:11px;border-radius:2px;border:1px solid var(--line);flex:none}
 @media (max-width:480px){.two.half{grid-template-columns:1fr}}
 /* Jira 새 티켓 감시 — 대화 목록 위 자리비움 단추(켜져 있으면 눈에 띄게) · 설정 칸 */
 .away{margin:0 16px 10px;display:flex;flex-direction:column;gap:4px}
@@ -284,7 +289,13 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--soft);padding:0 
     <button data-f="all" class="on">전체</button><button data-f="wait">답할 것</button><button data-f="busy">진행 중</button><button data-f="urgent" title="급건 표시한 대화만">급건</button>
     <button class="iconbtn" id="refreshBtn" style="margin-left:auto" title="메일함 다시 읽기">↻</button>
     <button class="iconbtn" id="clearBtn" title="대화 전체 지우기 — 메일은 그대로, 이 화면 목록에서만 뺍니다(일하는 중인 대화는 남김)">비우기</button>
+    <button class="iconbtn" id="lookBtn" title="바탕·강조색 고르기 — 이 PC 에만 기억">화면</button>
     <button class="iconbtn" id="setBtn" title="메일 계정">설정</button>
+    <!-- 화면 — 바탕 테마·강조색(누르면 바로 바뀐다, 라이트·다크는 시스템 설정을 따른다) -->
+    <div class="lookpop" id="lookBox" hidden>
+      <div class="lt">바탕</div><div class="swatches" id="lookTheme"></div>
+      <div class="lt">강조색</div><div class="swatches" id="lookAccent"></div>
+    </div>
   </div>
   <div id="list"></div>
   <div class="petstage off" id="petStage" title="강아지는 메일함을 지키고, 고양이는 맡긴 일을 합니다 — 마우스를 올려 보세요">
@@ -406,13 +417,6 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--soft);padding:0 
     <div class="jwlast" id="jwLast"></div>
     <div id="jwErr"></div>
     <div class="acts" style="display:flex;justify-content:flex-end;gap:8px"><button type="button" class="ghost" id="jwCheck">지금 확인</button><button type="button" class="ghost" id="jwSave">저장</button></div>
-  </div>
-  <!-- 화면 — 바탕 테마·강조색(이 PC 에만 기억, 누르면 바로 바뀐다) -->
-  <div class="run" id="lookBox">
-    <h3>화면</h3>
-    <p>바탕과 강조색을 고릅니다. 누르면 바로 바뀌고 이 PC 에만 기억합니다. 라이트·다크는 시스템 설정을 따릅니다.</p>
-    <div class="field"><label>바탕</label><div class="swatches" id="lookTheme"></div></div>
-    <div class="field"><label>강조색</label><div class="swatches" id="lookAccent"></div></div>
   </div>
 </dialog>
 <div id="toast"></div>
@@ -982,6 +986,11 @@ function lookApply() {
 }
 darkMq.addEventListener('change', lookApply);
 lookApply();
+function lookShow(on) { $('#lookBox').hidden = !on; $('#lookBtn').classList.toggle('lookon', on); }
+$('#lookBtn').onclick = e => { e.stopPropagation(); lookShow($('#lookBox').hidden); };
+$('#lookBox').onclick = e => e.stopPropagation();                 // 고르는 동안은 열어 둔다
+document.addEventListener('click', () => lookShow(false));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') lookShow(false); });
 
 const PET_PICK = 'dnc-pet-breed';
 function petPick() { try { return JSON.parse(localStorage.getItem(PET_PICK) || '{}'); } catch (e) { return {}; } }
