@@ -223,6 +223,7 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
   pre#log{height:240px}
   .run .grow+.t{display:none}.run .grow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
+html[data-os=mac] [data-winonly]{display:none}  /* 맥 — 데스크톱 자동화(요소 찍기·구조 보기)는 윈도우 전용 */
 </style>
 <link rel="stylesheet" href="/static/pets.css">
 </head>
@@ -349,10 +350,10 @@ pre#log{background:var(--code);color:var(--codetext);border-radius:var(--r-sm);p
       <div class="tool" data-hide="tool:new">
         <div class="lbl">새 자동화 (템플릿)</div>
         <div class="row"><input id="newName" type="text" placeholder="이름" aria-label="새 자동화 이름" class="grow">
-          <select id="newKind" aria-label="종류"><option value="web">웹</option><option value="desktop">데스크톱</option></select>
+          <select id="newKind" aria-label="종류"><option value="web">웹</option><option value="desktop" data-winonly>데스크톱</option></select>
           <button id="newBtn">만들기</button></div>
       </div>
-      <div class="tool" data-hide="tool:desktop">
+      <div class="tool" data-hide="tool:desktop" data-winonly>
         <div class="lbl">데스크톱 — 요소 찍기: 누르고 3초 안에 찍을 컨트롤에 마우스를 올립니다</div>
         <div class="row"><button id="pickBtn">요소 찍기</button>
           <input id="inspTitle" type="text" placeholder="창 제목 일부(비우면 창 목록)" aria-label="창 제목 일부" class="grow"><button id="inspBtn">구조 보기</button></div>

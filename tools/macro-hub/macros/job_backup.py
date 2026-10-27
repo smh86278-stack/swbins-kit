@@ -26,6 +26,7 @@ import kit
 FEATURE = 'backups'
 SNAP_FMT = '%Y-%m-%d_%H%M'
 SNAP_RE = re.compile(r'^\d{4}-\d{2}-\d{2}_\d{4}$')
+WINDOWS = os.name == 'nt'          # robocopy(윈도우) · rsync(맥) — 테스트가 바꿔 끼운다
 FAILED_SUFFIX = '_실패'
 
 META = {
@@ -42,9 +43,14 @@ META = {
 
 # ---------------------------------------------------------------- 순수 로직 (테스트 대상)
 
-def robocopy_ok(code):
-    """robocopy 종료 코드 0~7 은 성공(복사함·추가 파일 있음 등), 8 이상은 실패."""
-    return isinstance(code, int) and 0 <= code < 8
+def robocopy_ok(code, windows=None):
+    """robocopy 종료 코드 0~7 은 성공(복사함·추가 파일 있음 등), 8 이상은 실패.
+    맥(rsync)은 0 과 24(복사 도중 사라진 파일)만 성공."""
+    if not isinstance(code, int):
+        return False
+    if windows is None:
+        windows = WINDOWS
+    return 0 <= code < 8 if windows else code in (0, 24)
 
 
 def prune_plan(names, keep, current=None):
@@ -87,9 +93,17 @@ def check_paths(source, dest):
     return ''
 
 
-def robocopy_args(source, snapshot, exclude=None, dry_run=False):
-    args = ['robocopy', kit.expand(source), snapshot, '/E', '/R:1', '/W:1', '/NP', '/NFL', '/NDL']
+def robocopy_args(source, snapshot, exclude=None, dry_run=False, windows=None):
+    """복사 명령 — 윈도우는 robocopy, 맥은 rsync(-a, 원본 폴더 '안의 것'을 스냅숏 폴더로)."""
+    if windows is None:
+        windows = WINDOWS
     ex = [str(x) for x in (exclude or []) if str(x).strip()]
+    if not windows:
+        args = ['rsync', '-a'] + (['-n', '-v'] if dry_run else [])
+        for x in ex:
+            args += ['--exclude', x]
+        return args + [kit.expand(source).rstrip('/') + '/', snapshot]
+    args = ['robocopy', kit.expand(source), snapshot, '/E', '/R:1', '/W:1', '/NP', '/NFL', '/NDL']
     if ex:
         args += ['/XF'] + ex
     if dry_run:
@@ -164,7 +178,7 @@ def backup_one(item, now, dry_run=False, runner=None):
     code, out = runner(robocopy_args(source, snapshot, item.get('exclude'), dry_run))
     tail = summary_tail(out)
     if not robocopy_ok(code):
-        text = 'robocopy 실패 (코드 %s)' % code
+        text = '%s 실패 (코드 %s)' % ('robocopy' if os.name == 'nt' else 'rsync', code)
         if not dry_run and os.path.isdir(snapshot):
             failed = snapshot + FAILED_SUFFIX
             try:

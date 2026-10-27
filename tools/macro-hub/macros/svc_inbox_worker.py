@@ -18,6 +18,7 @@ META = {
     "name": "작업 인박스 워커",
     "desc": "작업 인박스 워커(inbox-worker.ps1) — inbox\\jobs 의 지시를 claude -p 로 하나씩 실행한다. dispatch.enabled 가 켜져 있어야 돈다.",
     "kind": "ctx",
+    "windows_only": True,
     "target": "desktop",
     "motion": "write",
     "service": True,

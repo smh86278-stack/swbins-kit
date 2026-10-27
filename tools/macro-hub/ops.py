@@ -27,7 +27,7 @@ import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))          # 저장소 맨 위
-NO_WINDOW = 0x08000000
+NO_WINDOW = 0x08000000 if os.name == 'nt' else 0      # 윈도우 밖에서는 creationflags 를 쓰면 ValueError
 KST = datetime.timezone(datetime.timedelta(hours=9))             # 시간대 없는 시각은 한국 시간으로 본다
 
 if HERE not in sys.path:
@@ -246,6 +246,9 @@ def claude_home():
 
 def claude_cli():
     """claude 실행 파일 — 네이티브 설치(~/.local/bin) 먼저, 없으면 npm 전역. 못 찾으면 None."""
+    if os.name != 'nt':                                        # 맥 — 허브가 PATH 를 로그인 셸 것으로 늘려 둔다(plat.fix_path)
+        import shutil
+        return shutil.which('claude')
     home = os.environ.get('USERPROFILE') or ''
     appdata = os.environ.get('APPDATA') or ''
     for c in (home + '\\.local\\bin\\claude.exe', appdata + '\\npm\\claude.cmd'):
@@ -257,6 +260,16 @@ def claude_cli():
 def _pids_alive(pids):
     """살아있는 pid 집합. 접근 거부도 '있다'로 센다(PHP 는 Get-Process -Id 로 봤다)."""
     alive = set()
+    if os.name != 'nt':
+        for pid in pids:
+            try:
+                os.kill(int(pid), 0)
+                alive.add(pid)
+            except PermissionError:
+                alive.add(pid)
+            except (OSError, ValueError):
+                pass
+        return alive
     k32 = ctypes.WinDLL('kernel32', use_last_error=True)
     k32.OpenProcess.restype = ctypes.c_void_p
     k32.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)

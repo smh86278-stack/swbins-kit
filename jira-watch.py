@@ -26,7 +26,6 @@ Jira 새 이슈 감시 — 조건(JQL)에 맞는 새 Jira 이슈를 찾으면 �
     python jira-watch.py           상주 (허브의 svc_jira_watch 가 띄운다)
 """
 import base64
-import ctypes
 import json
 import os
 import random
@@ -164,10 +163,7 @@ def status(ok, text: str, note: str = "") -> None:
 
 
 def single_instance(name: str = "WorkKitJiraWatch"):
-    h = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\" + name)
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        return None
-    return h
+    return True if kit.plat.single_instance(name) else None     # 윈도우 뮤텍스 · 맥 잠금 파일
 
 
 # ----------------------------------------------------------------- 설정

@@ -39,7 +39,6 @@
     python mail-gateway.py             상주
 """
 import base64
-import ctypes
 import email
 import email.header
 import email.utils
@@ -273,11 +272,8 @@ def notify(title: str, text: str, level: str = "Info") -> None:
 
 
 def single_instance(name: str = "WorkKitMailGateway"):
-    """허브가 죽은 프로세스를 다시 띄우므로 중복 방지가 필요하다."""
-    h = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\" + name)
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        return None
-    return h
+    """허브가 죽은 프로세스를 다시 띄우므로 중복 방지가 필요하다(윈도우 뮤텍스 · 맥 잠금 파일)."""
+    return True if kit.plat.single_instance(name) else None
 
 
 # ----------------------------------------------------------------- 메일 파싱

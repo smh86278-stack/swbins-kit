@@ -3,6 +3,7 @@ META = {
     "name": "예제 · 계산기 조작",
     "desc": "계산기를 새로 띄워 두 수를 더하고 결과를 읽은 뒤 닫는다. 마우스·키보드를 쓰지 않는다(UIA invoke).",
     "kind": "ctx",
+    "windows_only": True,
     "target": "desktop",
     "no_mouse": True,          # 마우스·키보드가 필요한 순간이 오면 몰래 쓰지 않고 오류로 멈춘다
     "params": {"a": "12", "b": "30"},

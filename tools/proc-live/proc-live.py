@@ -17,7 +17,7 @@
 import argparse
 import atexit
 import ctypes
-import ctypes.wintypes as wt
+import subprocess
 import json
 import os
 import queue
@@ -70,109 +70,135 @@ def load_rules():
 
 # ---------------------------------------------------------------- Win32
 
-k32 = ctypes.WinDLL('kernel32', use_last_error=True)
-ntdll = ctypes.WinDLL('ntdll')
+if os.name == 'nt':
+    import ctypes.wintypes as wt
 
-TH32CS_SNAPPROCESS = 0x2
-PROCESS_QUERY_LIMITED = 0x1000
-PROCESS_QUERY_INFO = 0x0400
-PROCESS_VM_READ = 0x0010
-BAD_HANDLE = ctypes.c_void_p(-1).value
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    ntdll = ctypes.WinDLL('ntdll')
 
-
-class PROCESSENTRY32W(ctypes.Structure):
-    _fields_ = [('dwSize', wt.DWORD), ('cntUsage', wt.DWORD), ('th32ProcessID', wt.DWORD),
-                ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wt.DWORD),
-                ('cntThreads', wt.DWORD), ('th32ParentProcessID', wt.DWORD),
-                ('pcPriClassBase', wt.LONG), ('dwFlags', wt.DWORD), ('szExeFile', wt.WCHAR * 260)]
+    TH32CS_SNAPPROCESS = 0x2
+    PROCESS_QUERY_LIMITED = 0x1000
+    PROCESS_QUERY_INFO = 0x0400
+    PROCESS_VM_READ = 0x0010
+    BAD_HANDLE = ctypes.c_void_p(-1).value
 
 
-class PROCESS_BASIC_INFORMATION(ctypes.Structure):
-    _fields_ = [('ExitStatus', ctypes.c_long), ('PebBaseAddress', ctypes.c_void_p),
-                ('AffinityMask', ctypes.c_void_p), ('BasePriority', ctypes.c_long),
-                ('UniqueProcessId', ctypes.c_void_p), ('InheritedFromUniqueProcessId', ctypes.c_void_p)]
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [('dwSize', wt.DWORD), ('cntUsage', wt.DWORD), ('th32ProcessID', wt.DWORD),
+                    ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wt.DWORD),
+                    ('cntThreads', wt.DWORD), ('th32ParentProcessID', wt.DWORD),
+                    ('pcPriClassBase', wt.LONG), ('dwFlags', wt.DWORD), ('szExeFile', wt.WCHAR * 260)]
 
 
-k32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
-k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-k32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-k32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-k32.CloseHandle.argtypes = [ctypes.c_void_p]
-k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
-k32.OpenProcess.restype = ctypes.c_void_p
-k32.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, wt.DWORD, wt.LPWSTR, ctypes.POINTER(wt.DWORD)]
-k32.ReadProcessMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
-                                  ctypes.POINTER(ctypes.c_size_t)]
-ntdll.NtQueryInformationProcess.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p,
-                                            ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
+    class PROCESS_BASIC_INFORMATION(ctypes.Structure):
+        _fields_ = [('ExitStatus', ctypes.c_long), ('PebBaseAddress', ctypes.c_void_p),
+                    ('AffinityMask', ctypes.c_void_p), ('BasePriority', ctypes.c_long),
+                    ('UniqueProcessId', ctypes.c_void_p), ('InheritedFromUniqueProcessId', ctypes.c_void_p)]
 
 
-def snapshot():
-    """{pid: (ppid, name)} — 프로세스 전체 목록 한 번."""
-    h = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if h in (None, BAD_HANDLE):
-        return {}
-    out = {}
-    try:
-        e = PROCESSENTRY32W()
-        e.dwSize = ctypes.sizeof(e)
-        ok = k32.Process32FirstW(h, ctypes.byref(e))
-        while ok:
-            out[e.th32ProcessID] = (e.th32ParentProcessID, e.szExeFile)
-            ok = k32.Process32NextW(h, ctypes.byref(e))
-    finally:
-        k32.CloseHandle(h)
-    return out
+    k32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+    k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    k32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
+    k32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, wt.DWORD, wt.LPWSTR, ctypes.POINTER(wt.DWORD)]
+    k32.ReadProcessMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                                      ctypes.POINTER(ctypes.c_size_t)]
+    ntdll.NtQueryInformationProcess.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p,
+                                                ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
 
 
-def image_path(pid):
-    h = k32.OpenProcess(PROCESS_QUERY_LIMITED, False, pid)
-    if not h:
-        return ''
-    try:
-        buf = ctypes.create_unicode_buffer(1024)
-        size = wt.DWORD(1024)
-        return buf.value if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else ''
-    finally:
-        k32.CloseHandle(h)
+    def snapshot():
+        """{pid: (ppid, name)} — 프로세스 전체 목록 한 번."""
+        h = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if h in (None, BAD_HANDLE):
+            return {}
+        out = {}
+        try:
+            e = PROCESSENTRY32W()
+            e.dwSize = ctypes.sizeof(e)
+            ok = k32.Process32FirstW(h, ctypes.byref(e))
+            while ok:
+                out[e.th32ProcessID] = (e.th32ParentProcessID, e.szExeFile)
+                ok = k32.Process32NextW(h, ctypes.byref(e))
+        finally:
+            k32.CloseHandle(h)
+        return out
 
 
-def _read(h, addr, size):
-    buf = ctypes.create_string_buffer(size)
-    got = ctypes.c_size_t(0)
-    if not k32.ReadProcessMemory(h, ctypes.c_void_p(addr), buf, size, ctypes.byref(got)):
-        return None
-    return buf.raw[:got.value]
-
-
-def command_line(pid):
-    """PEB 를 읽어 명령줄을 얻는다(64비트 파이썬 기준). 권한이 없거나 이미 끝났으면 ''."""
-    if sys.maxsize <= 2 ** 32:
-        return ''
-    h = k32.OpenProcess(PROCESS_QUERY_INFO | PROCESS_VM_READ, False, pid)
-    if not h:
-        return ''
-    try:
-        pbi = PROCESS_BASIC_INFORMATION()
-        if ntdll.NtQueryInformationProcess(h, 0, ctypes.byref(pbi), ctypes.sizeof(pbi), None) != 0 or not pbi.PebBaseAddress:
+    def image_path(pid):
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED, False, pid)
+        if not h:
             return ''
-        raw = _read(h, pbi.PebBaseAddress + 0x20, 8)               # PEB.ProcessParameters
-        if not raw:
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wt.DWORD(1024)
+            return buf.value if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else ''
+        finally:
+            k32.CloseHandle(h)
+
+
+    def _read(h, addr, size):
+        buf = ctypes.create_string_buffer(size)
+        got = ctypes.c_size_t(0)
+        if not k32.ReadProcessMemory(h, ctypes.c_void_p(addr), buf, size, ctypes.byref(got)):
+            return None
+        return buf.raw[:got.value]
+
+
+    def command_line(pid):
+        """PEB 를 읽어 명령줄을 얻는다(64비트 파이썬 기준). 권한이 없거나 이미 끝났으면 ''."""
+        if sys.maxsize <= 2 ** 32:
             return ''
-        params = int.from_bytes(raw, 'little')
-        raw = _read(h, params + 0x70, 16)                          # CommandLine (UNICODE_STRING)
-        if not raw:
+        h = k32.OpenProcess(PROCESS_QUERY_INFO | PROCESS_VM_READ, False, pid)
+        if not h:
             return ''
-        length = int.from_bytes(raw[0:2], 'little')
-        buf_addr = int.from_bytes(raw[8:16], 'little')
-        if not length or not buf_addr:
+        try:
+            pbi = PROCESS_BASIC_INFORMATION()
+            if ntdll.NtQueryInformationProcess(h, 0, ctypes.byref(pbi), ctypes.sizeof(pbi), None) != 0 or not pbi.PebBaseAddress:
+                return ''
+            raw = _read(h, pbi.PebBaseAddress + 0x20, 8)               # PEB.ProcessParameters
+            if not raw:
+                return ''
+            params = int.from_bytes(raw, 'little')
+            raw = _read(h, params + 0x70, 16)                          # CommandLine (UNICODE_STRING)
+            if not raw:
+                return ''
+            length = int.from_bytes(raw[0:2], 'little')
+            buf_addr = int.from_bytes(raw[8:16], 'little')
+            if not length or not buf_addr:
+                return ''
+            data = _read(h, buf_addr, min(length, 4096))
+            return data.decode('utf-16-le', 'replace') if data else ''
+        except Exception:
             return ''
-        data = _read(h, buf_addr, min(length, 4096))
-        return data.decode('utf-16-le', 'replace') if data else ''
-    except Exception:
-        return ''
-    finally:
-        k32.CloseHandle(h)
+        finally:
+            k32.CloseHandle(h)
+
+else:
+    # 맥·리눅스 — ps 로 같은 모양을 돌려준다(이름은 실행 파일 이름만, 명령줄은 전체)
+    def _ps(*args):
+        try:
+            return subprocess.run(['ps'] + list(args), capture_output=True, text=True, errors='replace', timeout=10).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return ''
+
+    def snapshot():
+        """{pid: (ppid, name)} — 프로세스 전체 목록 한 번."""
+        out = {}
+        for line in _ps('-axo', 'pid=,ppid=,comm=').splitlines():
+            parts = line.split(None, 2)
+            if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+                out[int(parts[0])] = (int(parts[1]), os.path.basename(parts[2].strip()))
+        return out
+
+    def image_path(pid):
+        return _ps('-o', 'comm=', '-p', str(pid)).strip()
+
+    def command_line(pid):
+        return _ps('-ww', '-o', 'command=', '-p', str(pid)).strip()
 
 
 # ---------------------------------------------------------------- 상태 · 방송

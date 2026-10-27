@@ -248,6 +248,12 @@ class Disk(unittest.TestCase):
 # ---------------------------------------------------------------- 백업
 
 class BackupLogic(unittest.TestCase):
+    def setUp(self):
+        self._win, bak.WINDOWS = bak.WINDOWS, True        # 아래는 robocopy 기준 — 맥 CI 에서도 같게
+
+    def tearDown(self):
+        bak.WINDOWS = self._win
+
     def test_robocopy_ok(self):
         for c in range(8):
             self.assertTrue(bak.robocopy_ok(c))
@@ -264,10 +270,18 @@ class BackupLogic(unittest.TestCase):
         self.assertEqual(bak.prune_plan(['2026-10-05_0000', '2026-10-04_0000'], 1, current='2026-10-04_0000'), [])
 
     def test_args(self):
-        a = bak.robocopy_args('C:\\src', 'D:\\b\\2026-10-07_1230', ['*.tmp', ''], dry_run=True)
+        a = bak.robocopy_args('C:\\src', 'D:\\b\\2026-10-07_1230', ['*.tmp', ''], dry_run=True, windows=True)
         self.assertEqual(a[:3], ['robocopy', 'C:\\src', 'D:\\b\\2026-10-07_1230'])
         self.assertEqual(a[a.index('/XF') + 1:], ['*.tmp', '/L'])
-        self.assertNotIn('/XF', bak.robocopy_args('C:\\s', 'D:\\d'))
+        self.assertNotIn('/XF', bak.robocopy_args('C:\\s', 'D:\\d', windows=True))
+
+    def test_args_mac(self):
+        a = bak.robocopy_args('/Users/a/src/', '/Volumes/b/2026-10-07_1230', ['*.tmp', ''], dry_run=True, windows=False)
+        self.assertEqual(a[:6], ['rsync', '-a', '-n', '-v', '--exclude', '*.tmp'])
+        self.assertTrue(a[6].endswith('src/') and not a[6].endswith('//'))      # 원본 '안의 것'을 복사(끝 / 하나)
+        self.assertEqual(a[7], '/Volumes/b/2026-10-07_1230')
+        self.assertTrue(bak.robocopy_ok(24, windows=False))
+        self.assertFalse(bak.robocopy_ok(1, windows=False))
 
     def test_truthy(self):
         self.assertTrue(bak.truthy('true') and bak.truthy(True) and bak.truthy('1'))
@@ -276,6 +290,8 @@ class BackupLogic(unittest.TestCase):
 
 class BackupFiles(unittest.TestCase):
     def setUp(self):
+        self._win, bak.WINDOWS = bak.WINDOWS, True        # 가짜 러너가 robocopy 인자 모양을 본다 — 맥 CI 에서도 같게
+        self.addCleanup(setattr, bak, 'WINDOWS', self._win)
         self.tmp = tempfile.mkdtemp()
         self.src = os.path.join(self.tmp, 'src')
         self.dest = os.path.join(self.tmp, 'dest')

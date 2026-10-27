@@ -24,7 +24,11 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))          # 저장소 맨 위
-NO_WINDOW = 0x08000000
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import plat  # noqa: E402  (윈도우·맥 차이)
+
+NO_WINDOW = plat.NO_WINDOW
 LAUNCH_MARK = '--extsvc-launch'
 # 허브가 러너에 넣는 환경변수 — 바깥 프로그램(claude 등)까지 새면 동작이 달라진다
 HUB_ENV = ('MACROHUB_CTX', 'PYTHONUTF8', 'PYTHONIOENCODING', 'PYTHONUNBUFFERED')
@@ -45,6 +49,9 @@ def _proclist():
 
 def system_python(windowed=True):
     """이 순서로 고른다: python-path.txt → 설치본의 내장 파이썬(runtime\\) → %LOCALAPPDATA%\\Python\\pythoncore-3.14-64 → PATH."""
+    if not plat.IS_WIN:                                       # 맥 — 허브의 .venv, 없으면 지금 파이썬
+        venv = plat.venv_python(HERE)
+        return venv if os.path.isfile(venv) else (sys.executable or 'python3')
     exe = 'pythonw.exe' if windowed else 'python.exe'
     bundled = os.path.join(ROOT, 'runtime', exe)
     try:
@@ -71,6 +78,8 @@ def fresh_env():
     """지금 레지스트리의 사용자 환경변수(API 토큰 등)를 다시 읽어 얹는다.
     허브는 로그온 때 뜬 환경을 계속 쓰므로, 나중에 바꾼 값이 반영되게 한다(스케줄러는 매번 새로 읽었다)."""
     env = {k: v for k, v in os.environ.items() if k not in HUB_ENV}
+    if not plat.IS_WIN:
+        return env
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Environment') as k:
@@ -96,9 +105,17 @@ def fresh_env():
 
 # ---------------------------------------------------------------- 프로세스 찾기 · 끄기
 
+def _name_ok(names, name):
+    """프로세스 이름이 owns 의 이름에 맞나. 맥은 .exe 가 없고 파이썬이 python3.12·Python 처럼 떠서 앞부분으로 본다."""
+    name = name.lower()
+    if plat.IS_WIN:
+        return name in names
+    return any(name.startswith(n[:-4] if n.endswith('.exe') else n) for n in names)
+
+
 def _matches(spec, name, cmdline):
     names = [n.lower() for n in (spec.get('name') or [])]
-    if names and name.lower() not in names:
+    if names and not _name_ok(names, name):
         return False
     low = (cmdline or '').lower()
     if LAUNCH_MARK in low:
@@ -112,7 +129,7 @@ def find(owns):
     names = {n.lower() for s in owns for n in (s.get('name') or [])}
     out = []
     for pid, (_ppid, name) in pl.snapshot().items():
-        if names and name.lower() not in names:
+        if names and not _name_ok(names, name):
             continue
         cmd = pl.command_line(pid)
         if cmd and any(_matches(s, name, cmd) for s in owns):
@@ -124,7 +141,7 @@ def kill(owns):
     """owns 에 맞는 프로세스를 자식까지 끈다. 끈 PID 목록."""
     pids = find(owns)
     for pid in pids:
-        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
+        plat.kill_tree(pid)
     return pids
 
 
@@ -143,11 +160,14 @@ import json, subprocess, sys
 a = json.loads(sys.argv[1])
 out = open(a["log"], "ab") if a.get("log") else subprocess.DEVNULL
 kw = dict(cwd=a.get("cwd"), stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
-flags = 0x08000000 | 0x00000200            # 창 없음 · 새 프로세스 그룹
-try:
-    p = subprocess.Popen(a["cmd"], creationflags=flags | 0x01000000, **kw)     # 작업 개체에서도 벗어나 본다
-except OSError:
-    p = subprocess.Popen(a["cmd"], creationflags=flags, **kw)
+if sys.platform != "win32":
+    p = subprocess.Popen(a["cmd"], start_new_session=True, **kw)               # 맥 — 새 세션(허브가 끝나도 남는다)
+else:
+    flags = 0x08000000 | 0x00000200            # 창 없음 · 새 프로세스 그룹
+    try:
+        p = subprocess.Popen(a["cmd"], creationflags=flags | 0x01000000, **kw)     # 작업 개체에서도 벗어나 본다
+    except OSError:
+        p = subprocess.Popen(a["cmd"], creationflags=flags, **kw)
 print(p.pid)
 '''
 
@@ -169,7 +189,7 @@ def launch(cmd, cwd=None, log=None, env=None):
         _rotate(log)
     arg = json.dumps({'cmd': cmd, 'cwd': cwd, 'log': log}, ensure_ascii=False)
     r = subprocess.run([sys.executable, '-c', _LAUNCHER, arg, LAUNCH_MARK], env=env or fresh_env(),
-                       capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW)
+                       capture_output=True, text=True, timeout=30, **plat.bg())
     if r.returncode != 0:
         raise RuntimeError('띄우기 실패: ' + (r.stderr or r.stdout).strip()[-300:])
     return int(r.stdout.strip() or 0)
@@ -304,7 +324,7 @@ def run_once(ctx, cmd, cwd=None, timeout=None):
     env = fresh_env()
     env['PYTHONIOENCODING'] = 'utf-8'                        # 출력만 utf-8 로 받는다(동작에는 영향 없음)
     p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+                         stderr=subprocess.STDOUT, **plat.bg())
 
     def pump():
         for raw in iter(p.stdout.readline, b''):
@@ -320,7 +340,7 @@ def run_once(ctx, cmd, cwd=None, timeout=None):
     try:
         code = p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
+        plat.kill_tree(p.pid)
         reader.join(5)
         raise RuntimeError('%d초 안에 끝나지 않아 껐습니다' % timeout)
     reader.join(5)

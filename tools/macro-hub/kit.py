@@ -30,6 +30,9 @@ from email.utils import formatdate, make_msgid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import plat  # noqa: E402  (윈도우·맥 차이 — 맥은 DPAPI 대신 키체인)
 F_CONFIG = os.path.join(ROOT, 'config.local.json')
 F_EXAMPLE = os.path.join(ROOT, 'config.example.json')
 DATA = os.path.join(HERE, 'data.local')
@@ -120,7 +123,10 @@ def _blob(data):
 
 
 def protect(text):
-    """이 PC·이 Windows 사용자에 묶어 암호화한다(base64). 다른 계정·PC 에서는 풀 수 없다."""
+    """이 PC·이 Windows 사용자에 묶어 암호화한다(base64). 다른 계정·PC 에서는 풀 수 없다.
+    맥은 로그인 키체인에 넣고 'keychain:<계정>' 표식을 돌려준다."""
+    if not plat.IS_WIN:
+        return plat.keychain_put(text)
     src, _keep = _blob(text.encode('utf-8'))
     out = _Blob()
     if not ctypes.windll.crypt32.CryptProtectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out)):
@@ -131,6 +137,8 @@ def protect(text):
 
 
 def unprotect(b64):
+    if b64.startswith(plat.KEYCHAIN_PREFIX):
+        return plat.keychain_get(b64)
     src, _keep = _blob(base64.b64decode(b64))
     out = _Blob()
     if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out)):
@@ -569,8 +577,11 @@ def read_status(feature):
 
 
 def expand(path):
-    """%USERPROFILE% · ~ 를 풀어 준다."""
-    return os.path.normpath(os.path.expanduser(os.path.expandvars(str(path))))
+    """%USERPROFILE% · ~ 를 풀어 준다(맥은 %USERPROFILE% 을 ~ 로 본다)."""
+    path = str(path)
+    if not plat.IS_WIN:
+        path = path.replace('%USERPROFILE%', '~').replace('%HOMEPATH%', '~')
+    return os.path.normpath(os.path.expanduser(os.path.expandvars(path)))
 
 
 def render(text, now=None):

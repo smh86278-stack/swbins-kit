@@ -20,7 +20,6 @@ import atexit
 import base64
 import binascii
 import ctypes
-import ctypes.wintypes as wt
 import datetime
 import importlib.util
 import json
@@ -45,15 +44,10 @@ F_STATE = os.path.join(HERE, 'state.local.json')
 F_RUNS = os.path.join(HERE, 'runs.jsonl')
 RUNNER = os.path.join(HERE, 'runner.py')
 EXPORTS = os.path.join(HERE, 'data.local', 'exports')     # ✨ 앱 exe 내보내기
-def _pick_python(exe):
-    """허브용 파이썬 — 개발 PC 는 .venv, 설치본(TaskhandSetup.exe)은 저장소 맨 위 runtime\\ 에 든 내장 파이썬."""
-    for cand in (os.path.join(HERE, '.venv', 'Scripts', exe), os.path.join(HERE, '..', '..', 'runtime', exe)):
-        if os.path.isfile(cand):
-            return os.path.normpath(cand)
-    return os.path.join(HERE, '.venv', 'Scripts', exe)
+sys.path.insert(0, HERE)
+import plat  # noqa: E402  (윈도우·맥 차이 — 맥은 일부 기능만)
 
-
-VENV_PY = _pick_python('python.exe')
+VENV_PY = plat.venv_python(HERE, 'python')       # 개발 PC 는 .venv, 윈도우 설치본은 저장소 맨 위 runtime\\ 의 내장 파이썬
 PYTHON = VENV_PY if os.path.exists(VENV_PY) else sys.executable
 WEB_DIR = os.path.join(HERE, 'web')
 WEB = os.path.join(WEB_DIR, 'index.html')
@@ -64,14 +58,13 @@ SKIN_DIR = os.path.join(WEB_DIR, 'skins')
 DEFAULT_SKIN = 'plush'                        # 기본 모습(인형 강아지·고양이). 저장소에 들어 있다 — web/pets.js 의 PetSkin.DEFAULT 와 같게
 
 TOKEN = secrets.token_urlsafe(24)
-NO_WINDOW = 0x08000000
+NO_WINDOW = plat.NO_WINDOW
 
 # 프로세스 스냅샷은 proc-live 와 같은 코드를 쓴다
 _spec = importlib.util.spec_from_file_location('proc_live', os.path.join(HERE, '..', 'proc-live', 'proc-live.py'))
 pl = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pl)
 
-sys.path.insert(0, HERE)
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
 import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
@@ -80,7 +73,8 @@ import apppack  # noqa: E402  (✨ 앱 내보내기·가져오기 — zip · HTM
 import aicli  # noqa: E402  (AI 고르기 — Claude Code · Codex · Gemini CLI)
 import kit  # noqa: E402  (변경 이력 kit.audit)
 import runner  # noqa: E402  (read_meta 재사용 — playwright 는 import 하지 않는다)
-import winevents  # noqa: E402
+if plat.IS_WIN:
+    import winevents  # noqa: E402  (창 트리거 — 윈도우 전용)
 
 lock = threading.RLock()
 subs = []
@@ -176,7 +170,8 @@ def render_page(path):
     """화면 HTML — 실행 토큰·화면 모드·꾸미기를 심는다(<html data-mode="__MODE__">). 요청마다 읽으니 고치면 새로고침만으로 보인다."""
     with open(path, encoding='utf-8') as f:
         page = f.read().replace('__TOKEN__', TOKEN)
-    return page.replace('data-mode="__MODE__"', 'data-mode="%s" %s' % (ui_mode(), look_attrs())).replace('__MODE__', ui_mode())
+    return page.replace('data-mode="__MODE__"', 'data-mode="%s" %s data-os="%s"' % (ui_mode(), look_attrs(), 'win' if plat.IS_WIN else 'mac')
+                        ).replace('__MODE__', ui_mode())
 
 
 def save_state():
@@ -235,6 +230,8 @@ def _discover_files():
     for path, local in files:
         stem = os.path.splitext(os.path.basename(path))[0]
         meta = runner.read_meta(path)
+        if meta.get('windows_only') and not plat.IS_WIN:
+            continue                                  # 데스크톱 자동화·PowerShell 워커 등 — 맥에서는 목록에 안 띄운다
         items.append({
             'id': ('local/' if local else '') + stem, 'path': path, 'local': local,
             'name': meta.get('name') or stem, 'desc': meta.get('desc', ''),
@@ -316,10 +313,7 @@ def busy_text(r):
 
 
 def kill_tree(proc):
-    try:
-        subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
-    except OSError:
-        pass
+    plat.kill_tree(proc.pid)
 
 
 def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=False, timeout=600, motion=None, extra=None):
@@ -336,7 +330,7 @@ def start_run(macro_id, params=None, trigger=None, path=None, name=None, tool=Fa
                MACROHUB_CTX=json.dumps(ctx, ensure_ascii=False))
     try:
         run.proc = subprocess.Popen([PYTHON, '-u', RUNNER, path], cwd=HERE, env=env, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+                                    stderr=subprocess.STDOUT, **plat.bg())
     except OSError as e:
         return None, '실행 실패: %s' % e
     with lock:
@@ -374,7 +368,7 @@ def start_ai_run(what, prompt, app_id=None, check=True):
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
     try:
         run.proc = subprocess.Popen(argv, cwd=HERE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, creationflags=NO_WINDOW, shell=shell)
+                                    stderr=subprocess.STDOUT, shell=shell, **plat.bg())
     except OSError as e:
         raise RuntimeError('%s 를 띄우지 못했습니다: %s' % (aicli.NAMES[s['engine']], e))
     if note:
@@ -843,13 +837,15 @@ def save_params(mid, values):
 
 # ---------------------------------------------------------------- 자동 실행 트리거
 
-user32 = ctypes.WinDLL('user32', use_last_error=True)
-WNDENUMPROC = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
-user32.IsWindowVisible.argtypes = [wt.HWND]
-user32.GetWindowTextLengthW.argtypes = [wt.HWND]
-user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
-user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
-user32.EnumWindows.argtypes = [WNDENUMPROC, wt.LPARAM]
+if plat.IS_WIN:                                  # 창 트리거 — 맥에는 없다(창 이벤트가 오지 않아 window_info 도 안 불린다)
+    import ctypes.wintypes as wt
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    user32.IsWindowVisible.argtypes = [wt.HWND]
+    user32.GetWindowTextLengthW.argtypes = [wt.HWND]
+    user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
+    user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+    user32.EnumWindows.argtypes = [WNDENUMPROC, wt.LPARAM]
 
 
 DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -1021,7 +1017,7 @@ def window_info(hwnd):
 
 def trigger_loop():
     """창 트리거는 Windows 창 이벤트가 올 때 바로 처리하고(폴링 아님), 프로세스·시간 예약은 0.5초마다 훑는다."""
-    prev_procs = pl.snapshot()
+    prev_procs = pl.snapshot() if plat.IS_WIN else None     # 맥은 ps 를 띄워야 해서 프로세스 트리거가 켜졌을 때만 훑는다
     seen_titles = {}                           # hwnd -> 마지막으로 본 제목 (같은 제목 반복 이벤트 무시)
     fired_hwnd = set()
     sched_done = set()
@@ -1053,9 +1049,13 @@ def trigger_loop():
             new_procs, cur = [], {}
             if polling:
                 last_poll = time.time()
-                cur = pl.snapshot()
-                new_procs = [(pid, v[1]) for pid, v in cur.items() if pid not in prev_procs or prev_procs[pid][1] != v[1]]
-                prev_procs = cur
+                if plat.IS_WIN or any(t.get('type') == 'process' for m in active for t in m['triggers']):
+                    cur = pl.snapshot()
+                    if prev_procs is not None:
+                        new_procs = [(pid, v[1]) for pid, v in cur.items() if pid not in prev_procs or prev_procs[pid][1] != v[1]]
+                    prev_procs = cur
+                else:
+                    prev_procs = None
             elif new_wins and any(t.get('type') == 'window' for m in active for t in m['triggers']):
                 cur = pl.snapshot()            # 창 소유 프로세스 이름을 알아야 할 때만
             now = datetime.datetime.now()
@@ -1351,7 +1351,7 @@ def start_app_check(app_id):
     run = Run('app-check:' + app_id, '🔍 앱 검사 — %s' % app['name'], {'kind': 'tool'}, tool=True)
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
     run.proc = subprocess.Popen([test_python(), '-u', os.path.join(HERE, 'appcheck.py'), app_id], cwd=HERE, env=env,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **plat.bg())
     with lock:
         runs.append(run)
         runs_by_id[run.id] = run
@@ -1682,7 +1682,7 @@ def record_web(url, name):
     tmp = os.path.join(HERE, '.codegen-%s.py' % stem)
     try:
         rec['proc'] = subprocess.Popen([PYTHON, '-m', 'playwright', 'codegen', '--channel', 'chrome', '-o', tmp, url],
-                                       cwd=HERE, creationflags=NO_WINDOW)
+                                       cwd=HERE, **plat.bg())
     except OSError as e:
         return '녹화 시작 실패: %s' % e
 
@@ -1735,6 +1735,8 @@ def pet_pids():
     key = os.path.join('macro-hub', 'pet', 'node_modules', 'electron').lower()
     window = os.path.join('macro-hub', 'shell').lower()      # 허브 창(shell\)도 같은 Electron 을 쓴다 — 펫으로 치지 않는다
     out = []
+    if not plat.IS_WIN:                                       # 펫은 윈도우 전용(electron.exe)
+        return out
     for pid, (_ppid, name) in pl.snapshot().items():
         cmd = (pl.command_line(pid) or '').lower()
         if name.lower() == 'electron.exe' and key in cmd and window not in cmd:
@@ -1752,7 +1754,7 @@ def start_pet():
 
 def stop_pet():
     for pid in pet_pids():
-        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True, creationflags=NO_WINDOW)
+        plat.kill_tree(pid)
 
 
 def set_pet(on):
@@ -2133,7 +2135,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {'error': str(e)})
             audit('앱 exe 만듦', app['id'], os.path.basename(out))
             try:
-                subprocess.Popen(['explorer', '/select,', out])
+                plat.reveal(out)
             except OSError:
                 pass
             return self._send(200, {'ok': True, 'path': out})
@@ -2287,10 +2289,10 @@ class Handler(BaseHTTPRequestHandler):
                 pyw = os.path.join(os.path.dirname(PYTHON), 'pythonw.exe')
                 gui = os.path.normpath(os.path.join(HERE, '..', '..', 'setup_gui.py'))
                 subprocess.Popen([pyw if os.path.isfile(pyw) else PYTHON, gui], cwd=os.path.dirname(gui),
-                                 creationflags=0x00000008)
+                                 **plat.bg(plat.DETACHED))
                 return self._send(200, {'ok': True})
             os.makedirs(DIR_LOCAL, exist_ok=True)
-            os.startfile(DIR_LOCAL if body.get('which') == 'local' else DIR_EXAMPLE)
+            plat.open_path(DIR_LOCAL if body.get('which') == 'local' else DIR_EXAMPLE)
             return self._send(200, {'ok': True})
         self._send(404, {'error': 'not found'})
 
@@ -2394,10 +2396,11 @@ def _app_notify(title, text, app):
 
 def start_services(host='127.0.0.1', port=8630):
     """상태를 읽고 감시 스레드(창 이벤트·트리거·상시 자동화)를 띄운 뒤 HTTP 서버 객체를 돌려준다(serve_forever 는 부르는 쪽이)."""
+    plat.fix_path()                                    # 맥: Finder·.app 으로 켜도 claude·node 를 찾게
     load_state()
     try:
-        hubutil.encrypt_secrets_file(runner.SECRETS)   # 사람이 평문으로 넣어 둔 비밀값은 바로 암호화(DPAPI)
-    except OSError:
+        hubutil.encrypt_secrets_file(runner.SECRETS)   # 사람이 평문으로 넣어 둔 비밀값은 바로 암호화(DPAPI · 맥은 키체인)
+    except (OSError, RuntimeError):
         pass
     load_last_runs()
     os.makedirs(DIR_LOCAL, exist_ok=True)
@@ -2410,7 +2413,8 @@ def start_services(host='127.0.0.1', port=8630):
             pass
 
     try:
-        winevents.WindowEvents(on_window).start()
+        if plat.IS_WIN:
+            winevents.WindowEvents(on_window).start()
     except OSError as e:
         print('창 이벤트 훅 실패 — 창 트리거가 동작하지 않습니다:', e, file=sys.stderr)
     threading.Thread(target=trigger_loop, daemon=True).start()
@@ -2436,11 +2440,15 @@ def main():
     url = 'http://127.0.0.1:%d/' % args.port
     print('자동화 허브 —', url, '(Ctrl+C 로 종료)')
     if PYTHON != VENV_PY:
-        print('⚠ .venv 가 없어 시스템 파이썬으로 실행합니다 — setup.bat 을 먼저 실행하세요', file=sys.stderr)
+        print('⚠ .venv 가 없어 시스템 파이썬으로 실행합니다 — %s 을 먼저 실행하세요'
+              % ('setup.bat' if plat.IS_WIN else 'setup.sh'), file=sys.stderr)
     if sys.stdout:
         sys.stdout.flush()
     if args.open:
         webbrowser.open(url)
+    if not plat.IS_WIN:                               # 맥 앱의 「끄기」(SIGTERM) — atexit 로 돌던 자동화까지 정리하고 끝낸다
+        import signal
+        signal.signal(signal.SIGTERM, lambda *_a: sys.exit(0))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

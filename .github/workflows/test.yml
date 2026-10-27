@@ -41,3 +41,68 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\verify.ps1
+
+  # 맥 — 일부 기능만(웹 자동화·예약·AI·일 순서·메일). 데스크톱 자동화·트레이·자동 시작은 윈도우 전용이라 시험도 건너뛴다
+  verify-mac:
+    name: verify mac (Python ${{ matrix.python }})
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    env:
+      KIT_BROWSER_TESTS: '0'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: py_compile
+        run: python -m compileall -q -x '(\.venv|node_modules)' .
+
+      - name: unittest
+        run: python -X utf8 -m unittest discover -s tests
+
+  # 맥 Taskhand.app — 만들어지고, 처음 열기(키트 옮기기·.venv·허브 띄우기)가 대화 상자 없이 끝까지 되는지
+  mac-app:
+    name: mac app (build + smoke)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build
+        run: |
+          python -m pip install pillow
+          python installer/build_mac.py
+
+      - name: Check bundle
+        run: |
+          test -x installer/dist/Taskhand.app/Contents/MacOS/Taskhand && test -f installer/dist/Taskhand-mac.zip
+          codesign --verify --deep --strict installer/dist/Taskhand.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" installer/dist/Taskhand.app/Contents/Info.plist
+
+      - name: Smoke (first open)
+        run: installer/dist/Taskhand.app/Contents/MacOS/Taskhand --smoke
+
+      - name: Hub log
+        if: always()
+        run: cat ~/Library/Logs/Taskhand/hub.log || true
+
+      # 서명·공증 없는 시험용 — 받으면 우클릭 → 열기 를 한 번 해야 한다
+      - name: Upload Taskhand-mac.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Taskhand-mac
+          path: installer/dist/Taskhand-mac.zip
+          retention-days: 14

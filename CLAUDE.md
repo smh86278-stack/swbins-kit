@@ -15,6 +15,16 @@
   기능 목록은 `ops.FEATURES`.
 - `kit.py` 의 기존 함수 이름·인자는 바꾸지 않는다(허브·자동화·게이트웨이가 함께 쓴다). 표준 라이브러리만.
 
+## 맥 (일부 기능 — README 「맥에서 쓰기」)
+
+- 윈도우·맥 차이는 **`tools\macro-hub\plat.py` 한곳에서** — Popen 은 `**plat.bg()`(creationflags 를 직접 쓰면 맥에서 ValueError),
+  끄기는 `plat.kill_tree`, 폴더 열기 `plat.open_path`·`plat.reveal`, 중복 실행 `plat.single_instance`. `taskkill`·`os.startfile`·
+  `ctypes.windll` 을 새로 쓰지 말 것. 윈도우 전용 모듈은 모듈 맨 위에서 import 하지 않는다(맥에서 허브가 뜨자마자 죽는다).
+- 비밀값은 맥에서 키체인(`keychain:<id>`) — `kit.protect`·`hubutil.seal` 이 알아서 고른다.
+- 윈도우 전용 자동화는 META `"windows_only": True`(맥 목록에서 빠짐), 화면 요소는 `data-winonly`(`<html data-os="mac">` 이면 숨김).
+- 맥 앱 `installer\build_mac.py` → `Taskhand-mac.zip`(실행기는 `tools\macro-hub\mac_launch.py`). 이 PC 에 맥이 없다 —
+  시험은 CI `verify-mac`·`mac-app` 잡으로 본다.
+
 ## 하지 말 것
 
 - **회사 이름·도메인·사내 주소·개인 경로·계정을 코드·문서·테스트에 박지 않는다.** 예시는 `example.com`, 경로는 `%USERPROFILE%`

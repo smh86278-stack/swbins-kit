@@ -10,54 +10,64 @@ protect_text 의 결과는 PowerShell 의 ConvertFrom-SecureString 과 같은 �
 자격증명 파일을 그대로 읽을 수 있고 그 반대도 된다.
 """
 import base64
-import ctypes
-import ctypes.wintypes as wt
 import hashlib
 import hmac
+import os
 import re
 import struct
 import time
 
-
-class _BLOB(ctypes.Structure):
-    _fields_ = [('cbData', wt.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+import plat
 
 
-_crypt32 = ctypes.WinDLL('crypt32', use_last_error=True)
-_kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-_crypt32.CryptProtectData.argtypes = [ctypes.POINTER(_BLOB), wt.LPCWSTR, ctypes.POINTER(_BLOB), ctypes.c_void_p,
-                                      ctypes.c_void_p, wt.DWORD, ctypes.POINTER(_BLOB)]
-_crypt32.CryptUnprotectData.argtypes = [ctypes.POINTER(_BLOB), ctypes.c_void_p, ctypes.POINTER(_BLOB),
-                                        ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(_BLOB)]
-_kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+if os.name == 'nt':
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class _BLOB(ctypes.Structure):
+        _fields_ = [('cbData', wt.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
 
 
-def _call(fn, data, *extra):
-    buf = ctypes.create_string_buffer(data, len(data))
-    src = _BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
-    out = _BLOB()
-    if not fn(ctypes.byref(src), *extra, ctypes.byref(out)):
-        raise OSError(ctypes.get_last_error(), 'DPAPI 호출 실패 — 다른 Windows 계정·PC 에서 만든 값이거나 손상됐습니다')
-    try:
-        return ctypes.string_at(out.pbData, out.cbData)
-    finally:
-        _kernel32.LocalFree(ctypes.cast(out.pbData, ctypes.c_void_p))
+    _crypt32 = ctypes.WinDLL('crypt32', use_last_error=True)
+    _kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    _crypt32.CryptProtectData.argtypes = [ctypes.POINTER(_BLOB), wt.LPCWSTR, ctypes.POINTER(_BLOB), ctypes.c_void_p,
+                                          ctypes.c_void_p, wt.DWORD, ctypes.POINTER(_BLOB)]
+    _crypt32.CryptUnprotectData.argtypes = [ctypes.POINTER(_BLOB), ctypes.c_void_p, ctypes.POINTER(_BLOB),
+                                            ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(_BLOB)]
+    _kernel32.LocalFree.argtypes = [ctypes.c_void_p]
 
 
-def protect_bytes(data):
-    return _call(lambda s, o: _crypt32.CryptProtectData(s, None, None, None, None, 0, o), data)
+    def _call(fn, data, *extra):
+        buf = ctypes.create_string_buffer(data, len(data))
+        src = _BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+        out = _BLOB()
+        if not fn(ctypes.byref(src), *extra, ctypes.byref(out)):
+            raise OSError(ctypes.get_last_error(), 'DPAPI 호출 실패 — 다른 Windows 계정·PC 에서 만든 값이거나 손상됐습니다')
+        try:
+            return ctypes.string_at(out.pbData, out.cbData)
+        finally:
+            _kernel32.LocalFree(ctypes.cast(out.pbData, ctypes.c_void_p))
 
 
-def unprotect_bytes(data):
-    return _call(lambda s, o: _crypt32.CryptUnprotectData(s, None, None, None, None, 0, o), data)
+    def protect_bytes(data):
+        return _call(lambda s, o: _crypt32.CryptProtectData(s, None, None, None, None, 0, o), data)
+
+
+    def unprotect_bytes(data):
+        return _call(lambda s, o: _crypt32.CryptUnprotectData(s, None, None, None, None, 0, o), data)
 
 
 def protect_text(plain):
-    """문자열을 DPAPI(현재 사용자)로 암호화해 16진수로 돌려준다 — ConvertFrom-SecureString 과 같은 형식."""
+    """문자열을 DPAPI(현재 사용자)로 암호화해 16진수로 돌려준다 — ConvertFrom-SecureString 과 같은 형식.
+    맥은 로그인 키체인에 넣고 'keychain:<계정>' 표식을 돌려준다."""
+    if not plat.IS_WIN:
+        return plat.keychain_put(plain)
     return protect_bytes(plain.encode('utf-16-le')).hex()
 
 
 def unprotect_text(hex_text):
+    if hex_text.startswith(plat.KEYCHAIN_PREFIX):
+        return plat.keychain_get(hex_text)
     return unprotect_bytes(bytes.fromhex(hex_text.strip())).decode('utf-16-le')
 
 
@@ -71,19 +81,24 @@ SECRET_PREFIX = 'dpapi:'
 
 
 def seal(plain):
+    if not plat.IS_WIN:
+        return plat.keychain_put(plain)          # 맥 — 'keychain:<계정>'
     return SECRET_PREFIX + protect_text(plain)
 
 
 def open_secret(value):
-    """'dpapi:…' 이면 풀고, 아니면(평문·숫자 등) 그대로."""
+    """'dpapi:…'·'keychain:…' 이면 풀고, 아니면(평문·숫자 등) 그대로."""
     if isinstance(value, str) and value.startswith(SECRET_PREFIX):
         return unprotect_text(value[len(SECRET_PREFIX):])
+    if isinstance(value, str) and value.startswith(plat.KEYCHAIN_PREFIX):
+        return plat.keychain_get(value)
     return value
 
 
 def _plain_keys(data):
     return [k for k, v in data.items()
-            if not k.startswith('_') and isinstance(v, str) and v and not v.startswith(SECRET_PREFIX)]
+            if not k.startswith('_') and isinstance(v, str) and v
+            and not v.startswith((SECRET_PREFIX, plat.KEYCHAIN_PREFIX))]
 
 
 def write_secrets(path, data):

@@ -135,8 +135,8 @@ class Ctx:
         try:
             try:
                 hubutil.encrypt_secrets_file(SECRETS)
-            except OSError:
-                pass                             # 못 바꿔 써도(잠김 등) 읽기는 한다
+            except (OSError, RuntimeError):
+                pass                             # 못 바꿔 써도(잠김·키체인 거절 등) 읽기는 한다
             with open(SECRETS, encoding='utf-8-sig') as f:
                 v = hubutil.open_secret(json.load(f)[key])
             if isinstance(v, str) and len(v) >= 4 and v not in SECRET_VALUES:
@@ -667,8 +667,8 @@ def macro_path(mid):
 
 def _kill_tree(proc):
     try:
-        import subprocess
-        subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True, creationflags=0x08000000)
+        import plat
+        plat.kill_tree(proc.pid)
     except OSError:
         proc.kill()
 

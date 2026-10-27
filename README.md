@@ -1,7 +1,7 @@
 # Taskhand — 반복 업무를 맡기는 Windows 자동화
 
 [![test](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml/badge.svg)](https://github.com/smh86278-stack/swbins-kit/actions/workflows/test.yml)
-![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%C2%B7%20macOS%20(%EC%9D%BC%EB%B6%80)-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 
 **회사 PC 한 대에서 반복 업무를 대신 돌려 주는, 설치형 개인 자동화 허브.** — [English summary](README.en.md)
@@ -47,6 +47,23 @@ Windows 10/11 · Python 3.10 이상 · 관리자 권한 불필요.
 
 파이썬이 없는 PC 에 배포할 때는 내장 파이썬을 품은 단일 설치 파일을 만든다 — `installer\build_installer.py` →
 `TaskhandSetup-<버전>.exe` (무인 설치 `/S`). 자세한 설치·업데이트·제거는 [`docs/GUIDE.md`](docs/GUIDE.md#설치--파일-하나-권장).
+
+## 맥에서 쓰기 (일부 기능, 시험판)
+
+macOS 11 이상 · [python.org](https://www.python.org/downloads/macos/) 의 Python 3.10 이상 · 웹 자동화는 Google Chrome.
+
+- **앱** — `Taskhand-mac.zip` 을 풀어 `Taskhand.app` 을 응용 프로그램 폴더로 옮기고 연다. 서명·공증이 없어 처음 한 번은
+  **우클릭 → 열기**. 처음 열면 키트를 `~/Library/Application Support/Taskhand/kit` 로 옮기고 `.venv`(Playwright)를 만든 뒤
+  허브(<http://127.0.0.1:8630/>)를 브라우저로 연다. 다시 열면 「열기 / 끄기」를 묻는다. 기록은 `~/Library/Logs/Taskhand/hub.log`.
+  앱은 `installer/build_mac.py` 가 만든다(CI 의 mac-app 잡이 만들어 14일 동안 올려 둔다).
+- **소스로** — `git clone` → `tools/macro-hub/setup.sh` (처음 한 번) → `tools/macro-hub/start.command`.
+
+| 맥에서 되는 것 | 윈도우 전용(맥에선 안 보임) |
+|---|---|
+| 허브 화면·운영 화면 · 웹 자동화(Chrome) · 시각 예약 · 프로세스 트리거 · 일 순서 · AI 도우미(Claude Code·Codex·Gemini·Ollama) · 메일·알림 출구 · 정기 작업(정기 메일·정리·브리핑·감시·백업=rsync) · 나만의 앱(zip·HTML 내보내기) | 데스크톱 자동화(pywinauto 녹화·요소 찍기) · 창 트리거 · 트레이 · 로그온 자동 시작 · 바로가기 · 작업 인박스 워커(PowerShell) · PC 옮기기 · 앱 exe 내보내기 · 화면 펫·허브 전용 창 |
+
+비밀번호·비밀값은 DPAPI 대신 **맥 로그인 키체인**(서비스 이름 `Taskhand`)에 들어가고, 설정 파일엔 `keychain:<id>` 표식만 남는다.
+윈도우에서 만든 `config.local.json`·`secrets.local.json` 의 암호화 값은 맥에서 풀리지 않는다 — 맥에서 다시 넣는다.
 
 ## 주요 기능
 
