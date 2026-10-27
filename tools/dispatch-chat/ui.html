@@ -6,17 +6,31 @@
 <title>디스패치 대화</title>
 <style>
 /* D&C 메신저 화면 — 디자인 B 「종이 노트」(2026-10-26): 미색 종이·먹색 글자·벽돌색 포인트·명조 제목, 카드 대신 가로줄.
-   색은 자동화 허브(tools\macro-hub\web\theme.css)와 같은 값. 이 화면은 다른 PC·폰·맥의 exe 에서도 혼자 돌아야 해서 값을 옮겨 왔다(웹 글꼴·CDN 없이 이 PC 글꼴만). */
+   색은 자동화 허브(tools\macro-hub\web\theme.css)와 같은 값. 이 화면은 다른 PC·폰·맥의 exe 에서도 혼자 돌아야 해서 값을 옮겨 왔다(웹 글꼴·CDN 없이 이 PC 글꼴만).
+   바탕 테마(<html data-theme>)·강조색(data-accent)은 설정 맨 아래 「화면」에서 고르고 이 PC 에 기억한다(2026-10-27, 허브 꾸미기·폰 페이지와 같은 이름·색). */
 :root{color-scheme:light dark;
   --bg:light-dark(#f4efe6,#1f1c19);--solid:light-dark(#fffaf2,#27231f);--panel:var(--bg);--soft:light-dark(#ece5d9,#2b2722);
   --text:light-dark(#2b2723,#ece5da);--muted:light-dark(#6a6157,#b3a998);--line:light-dark(#ddd3c3,#3a342e);
   --rule:light-dark(#2b2723,#ece5da);--field:light-dark(#8c8276,#8a8074);
-  --accent:light-dark(#9a3f1d,#d9875f);--accent2:var(--accent);--accentsoft:light-dark(#efe1d3,#352820);--onaccent:light-dark(#f4efe6,#1f1c19);
+  --accent:light-dark(#9a3f1d,#d9875f);--accent2:var(--accent);--accentsoft:color-mix(in srgb,var(--accent) 10%,var(--bg));--onaccent:var(--bg);
   --ok:light-dark(#3f6b3a,#8fbb86);--warn:light-dark(#9a6412,#d9a55a);--bad:light-dark(#b42318,#f08a7a);--info:light-dark(#355a78,#93b4cf);
   --shadow:none;--shadow2:none;
   --serif:'Gowun Batang','Batang','BatangChe','AppleMyungjo',serif;
   --sans:'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;
 }
+/* 바탕 테마 — paper(종이 노트)는 위 :root 그대로 */
+:root[data-theme=white]{--bg:light-dark(#fafaf8,#1b1b1d);--solid:light-dark(#ffffff,#232326);--soft:light-dark(#efefec,#28282b);
+  --text:light-dark(#222222,#ececec);--muted:light-dark(#62625f,#a9a9ad);--line:light-dark(#e2e2de,#353538);--rule:var(--text);--field:light-dark(#8a8a86,#7e7e84)}
+:root[data-theme=slate]{--bg:light-dark(#eef1f4,#181c21);--solid:light-dark(#fafbfc,#1f252c);--soft:light-dark(#e2e7ec,#252c34);
+  --text:light-dark(#1e2833,#e3e8ee);--muted:light-dark(#586472,#9ba8b5);--line:light-dark(#d2d9e0,#323b45);--rule:var(--text);--field:light-dark(#7b8795,#748191)}
+:root[data-theme=kraft]{--bg:light-dark(#e9dec9,#221d16);--solid:light-dark(#f5ecdc,#2a241b);--soft:light-dark(#ded1b9,#302920);
+  --text:light-dark(#2e2418,#efe4cf);--muted:light-dark(#6b5c47,#b6a68b);--line:light-dark(#cfbfa3,#3e3527);--rule:var(--text);--field:light-dark(#8a7860,#8b7a60)}
+/* 강조색 — brick(벽돌)은 위 :root 그대로 */
+:root[data-accent=ink]{--accent:light-dark(#2f5283,#8fb3e0)}
+:root[data-accent=pine]{--accent:light-dark(#2f6b4f,#7fc0a0)}
+:root[data-accent=plum]{--accent:light-dark(#7b3a6b,#d494c4)}
+:root[data-accent=ochre]{--accent:light-dark(#7d5a12,#d8b363)}
+:root[data-accent=mono]{--accent:var(--text)}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{color:var(--text);font:14px/1.55 var(--sans);background:var(--bg);
@@ -202,6 +216,11 @@ dialog::backdrop{background:rgba(31,28,25,.4)}
 .two.half{grid-template-columns:1fr 1fr}
 .run .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:-2px 0 10px;cursor:pointer}
 .run .chk input{accent-color:var(--accent)}
+.swatches{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.swatches button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:3px;padding:3px 10px;font-size:12.5px;color:var(--muted)}
+.swatches button:hover{border-color:var(--field);color:var(--text)}
+.swatches button.on{border-color:var(--text);color:var(--text);font-weight:700;background:var(--bg)}
+.swatches i{width:12px;height:12px;border-radius:2px;border:1px solid var(--line);flex:none}
 @media (max-width:480px){.two.half{grid-template-columns:1fr}}
 /* Jira 새 티켓 감시 — 대화 목록 위 자리비움 단추(켜져 있으면 눈에 띄게) · 설정 칸 */
 .away{margin:0 16px 10px;display:flex;flex-direction:column;gap:4px}
@@ -387,6 +406,13 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--soft);padding:0 
     <div class="jwlast" id="jwLast"></div>
     <div id="jwErr"></div>
     <div class="acts" style="display:flex;justify-content:flex-end;gap:8px"><button type="button" class="ghost" id="jwCheck">지금 확인</button><button type="button" class="ghost" id="jwSave">저장</button></div>
+  </div>
+  <!-- 화면 — 바탕 테마·강조색(이 PC 에만 기억, 누르면 바로 바뀐다) -->
+  <div class="run" id="lookBox">
+    <h3>화면</h3>
+    <p>바탕과 강조색을 고릅니다. 누르면 바로 바뀌고 이 PC 에만 기억합니다. 라이트·다크는 시스템 설정을 따릅니다.</p>
+    <div class="field"><label>바탕</label><div class="swatches" id="lookTheme"></div></div>
+    <div class="field"><label>강조색</label><div class="swatches" id="lookAccent"></div></div>
   </div>
 </dialog>
 <div id="toast"></div>
@@ -932,6 +958,31 @@ $('#setForm').onsubmit = async e => {
 let petSkin = null, petting = null, petBreedAt = 0;
 const petFlash = {bark: 0, happy: 0, sad: 0}, petSeen = {};
 /* 품종: 여기서 고른 게 있으면 그것(이 PC 에만 기억), '허브와 같게'면 이 PC 허브가 고른 것(허브가 없으면 첫 번째) */
+/* ---------- 화면 — 바탕 테마·강조색(허브 꾸미기와 같은 이름·색, 정본 swbins2 tools\macro-hub\web\theme.css). 견본은 [라이트, 다크] ---------- */
+const LOOK_THEMES = { paper: ['종이 노트', '#f4efe6', '#1f1c19'], white: ['흰 종이', '#fafaf8', '#1b1b1d'],
+  slate: ['청회색', '#eef1f4', '#181c21'], kraft: ['크라프트지', '#e9dec9', '#221d16'] };
+const LOOK_ACCENTS = { brick: ['벽돌', '#9a3f1d', '#d9875f'], ink: ['남색', '#2f5283', '#8fb3e0'], pine: ['초록', '#2f6b4f', '#7fc0a0'],
+  plum: ['자주', '#7b3a6b', '#d494c4'], ochre: ['황토', '#7d5a12', '#d8b363'], mono: ['먹', '#2b2723', '#ece5da'] };
+const LOOK_KEY = 'dnc-look', darkMq = matchMedia('(prefers-color-scheme: dark)');
+function lookGet() {
+  let l = {}; try { l = JSON.parse(localStorage.getItem(LOOK_KEY) || '{}') || {}; } catch (e) {}
+  return { theme: LOOK_THEMES[l.theme] ? l.theme : 'paper', accent: LOOK_ACCENTS[l.accent] ? l.accent : 'brick' };
+}
+function lookApply() {
+  const l = lookGet(), d = darkMq.matches ? 2 : 1;
+  document.documentElement.dataset.theme = l.theme; document.documentElement.dataset.accent = l.accent;
+  for (const [box, list, key] of [['#lookTheme', LOOK_THEMES, 'theme'], ['#lookAccent', LOOK_ACCENTS, 'accent']]) {
+    $(box).replaceChildren(...Object.entries(list).map(([id, v]) => {
+      const b = document.createElement('button'), i = document.createElement('i');
+      b.type = 'button'; b.className = id === l[key] ? 'on' : ''; i.style.background = v[d]; b.append(i, v[0]);
+      b.onclick = () => { try { localStorage.setItem(LOOK_KEY, JSON.stringify({ ...lookGet(), [key]: id })); } catch (e) {} lookApply(); };
+      return b;
+    }));
+  }
+}
+darkMq.addEventListener('change', lookApply);
+lookApply();
+
 const PET_PICK = 'dnc-pet-breed';
 function petPick() { try { return JSON.parse(localStorage.getItem(PET_PICK) || '{}'); } catch (e) { return {}; } }
 function petSetPick(kind, id) {
