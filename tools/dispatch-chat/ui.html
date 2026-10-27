@@ -658,7 +658,9 @@ function refreshBtns() {
   $('#newSend').disabled = busy || !$('#newText').value.trim();
   $('#jiraSend').disabled = busy || !$('#jiraNo').value.trim();
   $('#saySend').disabled = busy || !$('#sayText').value.trim() || !(cur && cur.no);
-  $('#stopBtn').disabled = busy || !(cur && cur.no);
+  const live = !!(cur && cur.no && ['sent', 'queued', 'running'].includes(cur.status));   // 멈출 일이 있을 때만 보인다
+  $('#stopBtn').hidden = !live;
+  $('#stopBtn').disabled = busy || !live;
 }
 for (const [id, fn] of [['#newText', () => $('#newSend').click()], ['#sayText', () => $('#saySend').click()]]) {
   $(id).addEventListener('input', e => { grow(e.target); refreshBtns(); });
