@@ -164,7 +164,7 @@ class LocalMarks(unittest.TestCase):
                                                                      "tools2": "C:\\work\\tools\\", "docs": r"C:\work\docs"}}})
         cfg, src = chat.load_cfg()
         self.assertEqual((src, cfg["workdir_keys"]), ("kit", ["tools", "docs", "hub"]))
-        self.assertEqual(chat.default_folder(cfg, False), ("main", r"C:\work\main"))
+        self.assertEqual(chat.default_folder(cfg, False), ("main", chat.expand(r"C:\work\main")))   # 맥은 \ → /
         self.assertEqual(chat.default_folder(dict(cfg, run_workdir=r"D:\proj\shop"), True), ("shop", r"D:\proj\shop"))
         self.assertEqual(chat.DEFAULTS["workdir_keys"], [])                     # 코드 기본값엔 이 PC 폴더 이름이 없다
 

@@ -1154,7 +1154,7 @@ def is_company_job(cfg: dict, job: dict) -> bool:
     wd = job.get("workdir")
     if not wd:
         return False
-    w = os.path.normcase(os.path.abspath(wd)).rstrip("\\/")
+    w = os.path.normcase(os.path.abspath(kit.expand(wd))).rstrip("\\/")       # 폴더 목록과 같은 모양으로(맥은 \ → /)
     return any(w == d or w.startswith(d + os.sep) for d in company_dirs(cfg))
 
 

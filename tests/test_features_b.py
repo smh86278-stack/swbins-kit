@@ -271,7 +271,7 @@ class BackupLogic(unittest.TestCase):
 
     def test_args(self):
         a = bak.robocopy_args('C:\\src', 'D:\\b\\2026-10-07_1230', ['*.tmp', ''], dry_run=True, windows=True)
-        self.assertEqual(a[:3], ['robocopy', 'C:\\src', 'D:\\b\\2026-10-07_1230'])
+        self.assertEqual(a[:3], ['robocopy', bak.kit.expand('C:\\src'), 'D:\\b\\2026-10-07_1230'])   # 맥 CI 는 \ → /
         self.assertEqual(a[a.index('/XF') + 1:], ['*.tmp', '/L'])
         self.assertNotIn('/XF', bak.robocopy_args('C:\\s', 'D:\\d', windows=True))
 

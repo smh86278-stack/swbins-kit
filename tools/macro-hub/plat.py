@@ -13,6 +13,7 @@
 
 맥 지원은 일부 기능만이다 — 데스크톱 자동화·창 트리거·트레이·자동 시작은 윈도우 전용(README 「맥에서 쓰기」).
 """
+import base64
 import os
 import signal
 import subprocess
@@ -93,12 +94,15 @@ def python_names():
 
 KEYCHAIN_PREFIX = 'keychain:'
 KEYCHAIN_SERVICE = 'Taskhand'
+KEYCHAIN_B64 = 'b64:'
 
 
 def keychain_put(text, account=None):
     """비밀값을 로그인 키체인에 넣고 설정 파일에 남길 표식 'keychain:<계정>' 을 돌려준다."""
     account = account or uuid.uuid4().hex
-    r = subprocess.run(['security', 'add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', account, '-w', text],
+    # base64 로 넣는다 — security -w 는 ASCII 가 아닌 값(한글 등)을 16진수로 돌려줘 그대로 읽으면 깨진다
+    data = KEYCHAIN_B64 + base64.b64encode(text.encode('utf-8')).decode('ascii')
+    r = subprocess.run(['security', 'add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', account, '-w', data],
                        capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError('키체인에 넣지 못했습니다: %s' % (r.stderr or r.stdout).strip())
@@ -111,7 +115,8 @@ def keychain_get(marker):
                        capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError('키체인에서 비밀값을 찾지 못했습니다 — 다른 맥·사용자에서 만든 설정이면 다시 넣으세요')
-    return r.stdout.rstrip('\n')
+    out = r.stdout.rstrip('\n')
+    return base64.b64decode(out[len(KEYCHAIN_B64):]).decode('utf-8') if out.startswith(KEYCHAIN_B64) else out
 
 
 # ---------------------------------------------------------------- 맥 PATH
