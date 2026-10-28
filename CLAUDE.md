@@ -52,5 +52,7 @@ powershell -ExecutionPolicy Bypass -File tests\verify.ps1   커밋 전 — py_co
 1. VERSION 을 새 버전으로 고쳐 커밋 (빌드는 git archive HEAD — 커밋 안 한 것은 빠진다)
 2. 설치 시험: installer\dist\TaskhandSetup-<버전>.exe /S → runtime\pythonw.exe tools\macro-hub\launcher.py --background → 8630 확인 → runtime\python.exe uninstall.py --yes
    (Git Bash 는 /S 를 경로로 바꾼다 — PowerShell Start-Process 로. 남는 %LOCALAPPDATA%\WorkKit-설정백업 은 시험 로그뿐이면 지운다)
-3. <PyInstaller 있는 파이썬> installer\release.py v<버전> notes.md   빌드 → 태그 push → GitHub 릴리스 + 설치 파일 첨부 → dist 엔 최신 하나만
+3. <PyInstaller 있는 파이썬> installer\release.py v<버전> notes.md   빌드 → main push → 그 커밋 CI 통과 기다림(실패면 멈춤)
+   → CI 아티팩트에서 맥 앱 받기 → 태그 push → GitHub 릴리스 + TaskhandSetup-<버전>.exe · Taskhand-<버전>-mac.zip 첨부 → dist 엔 최신 하나씩만
+   (맥 없이 올리려면 --no-mac)
 ```

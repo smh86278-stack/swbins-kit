@@ -52,10 +52,10 @@ Windows 10/11 · Python 3.10 이상 · 관리자 권한 불필요.
 
 macOS 11 이상 · [python.org](https://www.python.org/downloads/macos/) 의 Python 3.10 이상 · 웹 자동화는 Google Chrome.
 
-- **앱** — `Taskhand-mac.zip` 을 풀어 `Taskhand.app` 을 응용 프로그램 폴더로 옮기고 연다. 서명·공증이 없어 처음 한 번은
+- **앱** — [Releases](../../releases/latest) 의 `Taskhand-<버전>-mac.zip` 을 풀어 `Taskhand.app` 을 응용 프로그램 폴더로 옮기고 연다. 서명·공증이 없어 처음 한 번은
   **우클릭 → 열기**. 처음 열면 키트를 `~/Library/Application Support/Taskhand/kit` 로 옮기고 `.venv`(Playwright)를 만든 뒤
   허브(<http://127.0.0.1:8630/>)를 브라우저로 연다. 다시 열면 「열기 / 끄기」를 묻는다. 기록은 `~/Library/Logs/Taskhand/hub.log`.
-  앱은 `installer/build_mac.py` 가 만든다(CI 의 mac-app 잡이 만들어 14일 동안 올려 둔다).
+  앱은 `installer/build_mac.py` 가 만든다 — 릴리스엔 CI 의 mac-app 잡(맥에서 빌드·임시 서명·첫 열기 시험)이 만든 것을 붙인다.
 - **소스로** — `git clone` → `tools/macro-hub/setup.sh` (처음 한 번) → `tools/macro-hub/start.command`.
 
 | 맥에서 되는 것 | 윈도우 전용(맥에선 안 보임) |
