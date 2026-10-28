@@ -260,8 +260,14 @@ def dpapi_unprotect(b64):
 # ----------------------------------------------------------------- 설정
 
 def expand(path):
-    """%USERPROFILE% · ~ 를 푼다(kit.expand 와 같다). 빈 값은 ""."""
-    return os.path.normpath(os.path.expanduser(os.path.expandvars(str(path)))) if path else ""
+    """%USERPROFILE% · ~ 를 푼다(kit.expand 와 같다 — 맥은 %이름% 도 풀고 \\ 를 / 로). 빈 값은 ""."""
+    if not path:
+        return ""
+    path = str(path)
+    if os.name != "nt":
+        path = path.replace("%USERPROFILE%", "~").replace("%HOMEPATH%", "~")
+        path = re.sub(r"%(\w+)%", lambda m: os.environ.get(m.group(1), m.group(0)), path).replace("\\", "/")
+    return os.path.normpath(os.path.expanduser(os.path.expandvars(path)))
 
 
 def read_kit_full():
@@ -428,7 +434,7 @@ def default_folder(cfg, active):
     """(이름, 경로) — 폴더를 고르지 않은 지시가 도는 곳. 직접 실행 중이면 그 기본 작업 폴더, 게이트웨이면 default_workdir."""
     path = (cfg.get("run_workdir") if active else cfg.get("default_path")) or ""
     label = "" if active else (cfg.get("default_label") or "")
-    return label or os.path.basename(str(path).rstrip("\\/")), path
+    return label or re.split(r"[\\/]", str(path).rstrip("\\/"))[-1], path
 
 
 def password(cfg):

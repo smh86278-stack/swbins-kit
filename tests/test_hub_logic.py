@@ -566,7 +566,8 @@ class SecretizeRecording(unittest.TestCase):
             macrohub.save_secrets({'b': '비번'})
         with open(sec, encoding='utf-8') as f:
             data = json.load(f)
-        self.assertTrue(all(v.startswith('dpapi:') for v in data.values()))     # 녹화에서 옮긴 값도 암호화해서
+        mark = 'dpapi:' if os.name == 'nt' else macrohub.hubutil.plat.KEYCHAIN_PREFIX
+        self.assertTrue(all(v.startswith(mark) for v in data.values()))         # 녹화에서 옮긴 값도 암호화해서
         self.assertEqual({k: macrohub.hubutil.open_secret(v) for k, v in data.items()}, {'a': '1', 'b': '비번'})
 
     def test_encrypt_file_in_place(self):

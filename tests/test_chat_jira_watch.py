@@ -236,7 +236,7 @@ class JiraWatchTest(unittest.TestCase):
         with open(os.environ["FAKE_CLAUDE_LOG"], encoding="utf-8") as f:
             call = json.loads(f.readline())
         self.assertIn("--disallowedTools", call["args"])
-        self.assertEqual(os.path.normcase(call["cwd"]), os.path.normcase(self.work))
+        self.assertEqual(os.path.normcase(os.path.realpath(call["cwd"])), os.path.normcase(os.path.realpath(self.work)))   # 맥 /var → /private/var
         # 돌아온 사람이 답하면 — 그때부터 평소 Jira 권한(파일 도구 · git 허용)으로 이어 간다
         add(self.box, mail(subj, "1 적용해 줘", reply_to=email.message_from_bytes(raw)["Message-ID"])[0])
         self.r.cycle()

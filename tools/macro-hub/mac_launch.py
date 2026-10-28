@@ -121,18 +121,31 @@ def port_open(timeout=0.5):
         return False
 
 
-def start_hub(log):
+def start_hub(log, wait=30, abort=False):
     py = venv_python() if os.path.isfile(venv_python()) else sys.executable
-    p = subprocess.Popen([py, os.path.join(hub_dir(), 'macrohub.py'), '--port', str(PORT)], cwd=hub_dir(),
+    env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONFAULTHANDLER='1')   # 기록이 바로 남게 · 멈추면 스레드 위치를 찍을 수 있게
+    p = subprocess.Popen([py, os.path.join(hub_dir(), 'macrohub.py'), '--port', str(PORT)], cwd=hub_dir(), env=env,
                          stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     with open(PIDFILE, 'w') as f:
         f.write(str(p.pid))
-    for _ in range(80):
+    end = time.time() + wait
+    while time.time() < end:
         if port_open():
             return p.pid
         if p.poll() is not None:
             return None
         time.sleep(0.25)
+    if not abort:                                            # 늦게라도 뜰 수 있다 — 그대로 둔다
+        return None
+    # CI 시험: 어디서 멈췄는지 hub.log 에 남기고(faulthandler 가 SIGABRT 에 스레드 위치를 찍는다) 끈다
+    try:
+        os.kill(p.pid, signal.SIGABRT)
+        p.wait(5)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
     return None
 
 
@@ -199,7 +212,8 @@ def main(argv=None):
         if changed and not a.smoke:
             notify('처음 준비 중입니다 — 1~2분 걸릴 수 있어요' if first else '새 버전으로 바꾸는 중입니다')
         venv_ok = ensure_venv(log)
-        pid = start_hub(log)
+        log.flush()
+        pid = start_hub(log, 90 if a.smoke else 30, abort=a.smoke)
     if not pid:
         msg = '허브를 띄우지 못했습니다 — 기록: ' + os.path.join(LOGS, 'hub.log')
         if a.smoke:

@@ -209,7 +209,7 @@ class RunnerTest(unittest.TestCase):
         calls = self.calls_made()
         self.assertEqual(len(calls), 1)
         args = calls[0]["args"]
-        self.assertEqual(os.path.normcase(calls[0]["cwd"]), os.path.normcase(self.work))
+        self.assertEqual(os.path.normcase(os.path.realpath(calls[0]["cwd"])), os.path.normcase(os.path.realpath(self.work)))   # 맥 /var → /private/var
         self.assertEqual(calls[0]["prompt"], "로그 봐 줘 ASK\n\n자세히")
         self.assertIn("-p", args)
         self.assertEqual(args[args.index("--allowedTools") + 1:args.index("--allowedTools") + 4], ["Read", "Glob", "Grep"])

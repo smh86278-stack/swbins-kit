@@ -5,7 +5,7 @@
 - 폴더 바로 아래의 '파일'만 옮긴다(하위 폴더·보관 폴더 자체는 그대로). YYYY-MM 은 파일의 수정 시각 기준.
 - 같은 이름이 있으면 '이름 (2).확장자' 처럼 번호를 붙인다 — 덮어쓰지 않는다.
 - 숨김·시스템 파일, desktop.ini, Office 잠금 파일(~$*)은 건드리지 않는다.
-- 드라이브 맨 위·C:\\Windows·Program Files·사용자 폴더 맨 위는 실수 한 번이 크게 번지므로 거절한다.
+- 드라이브 맨 위·C:\\Windows·Program Files·사용자 폴더 맨 위는 실수 한 번이 크게 번지므로 거절한다(맥은 / · /System 등).
 - 매개변수 {"dry_run": true} 면 옮길 목록만 보여 준다(예약과 상관없이 모든 켜진 항목). 손으로 '지금 실행'하면
   예약 시각을 기다리지 않고 모든 켜진 항목을 정리한다.
 """
@@ -19,7 +19,9 @@ import time
 import kit
 
 FEATURE = 'tidy'
-SKIP_NAMES = {'desktop.ini', 'thumbs.db'}
+SKIP_NAMES = {'desktop.ini', 'thumbs.db', '.ds_store'}
+WINDOWS = os.name == 'nt'
+MAC_SYSTEM = ('/System', '/Library', '/Applications', '/usr', '/bin', '/sbin', '/etc', '/cores')
 
 META = {
     "name": "폴더 정리 (오래된 파일 보관)",
@@ -49,9 +51,24 @@ def _under(path, base):
     return path == base or path.startswith(base + os.sep)
 
 
+def _refuse_mac(folder, env):
+    p = os.path.normpath(os.path.abspath(str(folder))).rstrip('/') or '/'
+    if p == '/' or re.fullmatch(r'/Volumes/[^/]+', p):
+        return '디스크 맨 위(%s)는 정리하지 않습니다' % folder
+    for base in MAC_SYSTEM:
+        if _under(p, base):
+            return '시스템 폴더(%s) 아래는 정리하지 않습니다: %s' % (base, folder)
+    home = (env.get('HOME') or '').rstrip('/')
+    if p == '/Users' or (home and p == home):
+        return '사용자 폴더 맨 위(%s)는 정리하지 않습니다 — 그 아래 폴더(다운로드 등)를 지정하세요' % folder
+    return ''
+
+
 def refuse_reason(folder, env=None):
     """정리하면 안 되는 폴더면 이유를, 괜찮으면 '' 를 돌려준다."""
     env = os.environ if env is None else env
+    if not WINDOWS:
+        return _refuse_mac(folder, env)
     if re.fullmatch(r'\s*[A-Za-z]:\s*', str(folder)):
         # 'D:' 는 그 드라이브의 '현재 폴더'라 abspath 가 엉뚱한 폴더로 바꾼다 — 사람은 드라이브 맨 위를 뜻한 것
         return '드라이브 맨 위(%s)는 정리하지 않습니다' % folder

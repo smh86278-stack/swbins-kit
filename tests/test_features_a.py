@@ -116,8 +116,9 @@ class ScheduledMail(unittest.TestCase):
         self.assertEqual(self.sent, [])
 
 
+@unittest.skipUnless(os.name == 'nt', '윈도우 경로 — 맥은 TidyRefuseMac')
 class TidyRefuse(unittest.TestCase):
-    ENV = {'SystemRoot': r'C:\Windows', 'ProgramFiles': r'C:\Program Files',
+    ENV ={'SystemRoot': r'C:\Windows', 'ProgramFiles': r'C:\Program Files',
            'ProgramFiles(x86)': r'C:\Program Files (x86)', 'ProgramData': r'C:\ProgramData',
            'USERPROFILE': r'C:\Users\kim'}
 
@@ -135,6 +136,26 @@ class TidyRefuse(unittest.TestCase):
     def test_tidy_item_raises_on_refused(self):
         with self.assertRaises(ValueError):
             tidy.tidy_item({'folder': 'C:\\', 'older_than_days': 1}, DT.now(), env=self.ENV)
+
+
+@unittest.skipIf(os.name == 'nt', '맥 경로')
+class TidyRefuseMac(unittest.TestCase):
+    ENV = {'HOME': '/Users/kim'}
+
+    def test_refuses(self):
+        for bad in ('/', '/System/Library', '/Applications/App.app', '/usr/local', '/Library', '/Volumes/USB',
+                    '/Users', '/Users/kim', '/Users/kim/'):
+            with self.subTest(bad=bad):
+                self.assertTrue(tidy.refuse_reason(bad, self.ENV))
+
+    def test_allows(self):
+        for good in ('/Users/kim/Downloads', '/Volumes/USB/inbox', '/Users/kimchi', '/Systems'):
+            with self.subTest(good=good):
+                self.assertEqual(tidy.refuse_reason(good, self.ENV), '')
+
+    def test_tidy_item_raises_on_refused(self):
+        with self.assertRaises(ValueError):
+            tidy.tidy_item({'folder': '/', 'older_than_days': 1}, DT.now(), env=self.ENV)
 
 
 class TidyMoves(unittest.TestCase):

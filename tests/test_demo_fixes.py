@@ -184,6 +184,7 @@ class ProfileLock(unittest.TestCase):
 
 
 class ShortPaths(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', '윈도우 경로')
     def test_python_and_kit_paths(self):
         py = r'C:\Tools\proj\.venv\Scripts\python.exe'
         root = r'D:\WorkKit'
@@ -200,6 +201,7 @@ class ShortPaths(unittest.TestCase):
         for gone in ('.venv', 'WorkKit', 'someone', 'Tools'):
             self.assertNotIn(gone, got)
 
+    @unittest.skipUnless(os.name == 'nt', '윈도우 경로')
     def test_embedded_runtime_and_plain_text(self):
         py = r'D:\WorkKit\runtime\python.exe'
         got = hubutil.short_paths(r'D:\WorkKit\runtime\Lib\x.py · D:\WorkKit\tools\a.py', py, r'D:\WorkKit', r'C:\Users\u')

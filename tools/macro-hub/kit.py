@@ -21,6 +21,7 @@ import imaplib
 import json
 import mimetypes
 import os
+import re
 import smtplib
 import ssl
 import sys
@@ -577,10 +578,11 @@ def read_status(feature):
 
 
 def expand(path):
-    """%USERPROFILE% · ~ 를 풀어 준다(맥은 %USERPROFILE% 을 ~ 로 본다)."""
+    """%USERPROFILE% · ~ 를 풀어 준다(맥은 %USERPROFILE% 을 ~ 로, 다른 %이름% 도 풀고 \\ 를 / 로 — 윈도우용 견본 설정도 통하게)."""
     path = str(path)
     if not plat.IS_WIN:
         path = path.replace('%USERPROFILE%', '~').replace('%HOMEPATH%', '~')
+        path = re.sub(r'%(\w+)%', lambda m: os.environ.get(m.group(1), m.group(0)), path).replace('\\', '/')
     return os.path.normpath(os.path.expanduser(os.path.expandvars(path)))
 
 
