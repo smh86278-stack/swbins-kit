@@ -305,19 +305,29 @@ function Invoke-Job($entry) {
         # 명령 안전장치(PreToolUse 훅, tools\dispatch-chat\bash-guard.js — node 로 돈다) — Bash 가 정해진 명령만 허용된 작업
         # (읽기 지시의 Bash(git log:*) 등)에 붙인다. 허용 규칙은 명령 앞부분만 봐서 'git log --output=.git/config' 로 설정을 쓰고
         # 'git status' 로 아무 명령이나 돌릴 수 있었다. 훅을 못 붙이면(node·훅 파일 없음) Bash 규칙을 빼고 돌린다(fail-closed).
+        # 같은 훅이 읽기 도구(Read·Glob·Grep)의 비밀 자리(메일 암호 설정·SSH 키·브라우저 로그인 DB 등)도 막는다(2026-10-28).
+        # Bash 전체가 열린 작업은 어차피 무엇이든 읽어 붙이지 않고, node 가 없으면 Read 는 예전처럼 둔다(읽기 지시가 통째로 죽지 않게).
         $settingsArg = ''
+        $pre = @()
+        $nodeExe = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+        $bashGuard = Join-Path $root 'tools\dispatch-chat\bash-guard.js'
+        $canGuard = $nodeExe -and (Test-Path -LiteralPath $bashGuard)
+        $hook = if ($canGuard) { @{ type = 'command'; command = ('"' + ($nodeExe -replace '\\', '/') + '" "' + ($bashGuard -replace '\\', '/') + '"') } }
         if (-not ($tools -contains 'Bash') -and @($tools | Where-Object { [string]$_ -like 'Bash(*' }).Count -gt 0) {
-            $nodeExe = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-            $bashGuard = Join-Path $root 'tools\dispatch-chat\bash-guard.js'
-            if ($nodeExe -and (Test-Path -LiteralPath $bashGuard)) {
-                $hook = @{ type = 'command'; command = ('"' + ($nodeExe -replace '\\', '/') + '" "' + ($bashGuard -replace '\\', '/') + '"') }
-                $gsFile = Join-Path $logsDir 'guard-settings.json'
-                [System.IO.File]::WriteAllText($gsFile, (@{ hooks = @{ PreToolUse = @(@{ matcher = 'Bash'; hooks = @($hook) }) } } | ConvertTo-Json -Depth 8), $Utf8NoBom)
-                $settingsArg = '--settings "' + $gsFile + '" '
+            if ($canGuard) {
+                $pre += @{ matcher = 'Bash'; hooks = @($hook) }
             } else {
                 Write-Log "[$id] 명령 안전장치(node·bash-guard.js)를 붙일 수 없어 Bash 규칙을 뺍니다"
                 $tools = @($tools | Where-Object { [string]$_ -notlike 'Bash(*' })
             }
+        }
+        if ($canGuard -and -not ($tools -contains 'Bash') -and @($tools | Where-Object { [string]$_ -in 'Read', 'Glob', 'Grep' }).Count -gt 0) {
+            $pre += @{ matcher = 'Read|Glob|Grep'; hooks = @($hook) }
+        }
+        if ($pre.Count -gt 0) {
+            $gsFile = Join-Path $logsDir 'guard-settings.json'
+            [System.IO.File]::WriteAllText($gsFile, (@{ hooks = @{ PreToolUse = @($pre) } } | ConvertTo-Json -Depth 8), $Utf8NoBom)
+            $settingsArg = '--settings "' + $gsFile + '" '
         }
         $toolArgs = (($tools | ForEach-Object { '"' + $_ + '"' }) -join ' ')
 

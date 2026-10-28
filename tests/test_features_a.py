@@ -137,6 +137,23 @@ class TidyRefuse(unittest.TestCase):
         with self.assertRaises(ValueError):
             tidy.tidy_item({'folder': 'C:\\', 'older_than_days': 1}, DT.now(), env=self.ENV)
 
+    def test_refuses_junction_to_system(self):
+        """이름은 멀쩡해도 정션이 시스템 폴더를 가리키면 거절 — 실제 위치로도 본다(10-28)."""
+        import subprocess
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__('shutil').rmtree, tmp, True)
+        system = os.path.join(tmp, 'sys')
+        os.makedirs(os.path.join(system, 'inner'))
+        link = os.path.join(tmp, '정리')
+        r = subprocess.run(['cmd', '/c', 'mklink', '/J', link, os.path.join(system, 'inner')], capture_output=True)
+        if r.returncode:
+            self.skipTest('정션을 만들 수 없다')
+        self.addCleanup(os.rmdir, link)                     # 정션만 지운다(대상은 그대로)
+        env = dict(self.ENV, ProgramData=system)
+        self.assertIn('실제 위치', tidy.refuse_reason(link, env))
+        self.assertEqual(tidy.refuse_reason(link, self.ENV), '')    # 가리키는 곳이 괜찮으면 통과
+
 
 @unittest.skipIf(os.name == 'nt', '맥 경로')
 class TidyRefuseMac(unittest.TestCase):
@@ -156,6 +173,15 @@ class TidyRefuseMac(unittest.TestCase):
     def test_tidy_item_raises_on_refused(self):
         with self.assertRaises(ValueError):
             tidy.tidy_item({'folder': '/', 'older_than_days': 1}, DT.now(), env=self.ENV)
+
+    def test_refuses_symlink_to_system(self):
+        """이름은 멀쩡해도 링크가 시스템 폴더를 가리키면 거절 — 실제 위치로도 본다(10-28)."""
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__('shutil').rmtree, tmp, True)
+        link = os.path.join(tmp, 'tidy')
+        os.symlink('/usr/bin', link)
+        self.assertIn('실제 위치', tidy.refuse_reason(link, self.ENV))
 
 
 class TidyMoves(unittest.TestCase):

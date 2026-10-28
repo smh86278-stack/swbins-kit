@@ -38,6 +38,33 @@ class BashGuard(unittest.TestCase):
                   "git log\ncalc"):
             self.assertEqual(self.cmd(c), "deny", c)
 
+    def tool(self, name, **inp):
+        return self.run_guard(json.dumps({"tool_name": name, "tool_input": inp}).encode("utf-8"))
+
+    def test_plain_reads_pass(self):
+        for p in (r"C:\work\README.md", r"C:\work\services.json", "src/app.py",
+                  r"C:\work\tools\ca-bundle.pem", r"C:\Users\me\Downloads\report.xlsx"):
+            self.assertEqual(self.tool("Read", file_path=p), "allow", p)
+        self.assertEqual(self.tool("Grep", pattern="TODO", path=r"C:\work\tools"), "allow")
+        self.assertEqual(self.tool("Glob", pattern="**/*.py"), "allow")
+
+    def test_secret_reads_blocked(self):
+        """2026-10-28 — 10-19 점검의 남은 낮은 항목: Read 에 경로 제한이 없어 비밀 파일을 읽어 답장에 실을 수 있었다."""
+        for p in (r"C:\work\inbox\mail.local.json", r"C:\work\.keys\app.local.key",
+                  r"C:\Users\me\.ssh\id_ed25519", r"C:\Users\me\.claude\.credentials.json",
+                  r"C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Login Data",
+                  r"C:\Users\me\AppData\Local\DnC\pw-profile\Profile 1\Cookies",
+                  r"C:\work\data.local\otp\creds.json",
+                  r"C:\work\tools\macro-hub\secrets.local.json", "/Users/me/.aws/credentials", ".env"):
+            self.assertEqual(self.tool("Read", file_path=p), "deny", p)
+        self.assertEqual(self.tool("Grep", pattern="password", path=r"C:\Users\me\.ssh"), "deny")
+        self.assertEqual(self.tool("Glob", pattern=r"C:/Users/me/.ssh/*"), "deny")
+
+    def test_too_wide_search_blocked(self):
+        for p in ("C:\\", r"C:\Users\me", r"C:\Users\me\AppData\Roaming", "/Users/me"):
+            self.assertEqual(self.tool("Grep", pattern="password", path=p), "deny", p)
+        self.assertEqual(self.tool("Glob", pattern=r"C:\Users\me\**\*.json"), "deny")
+
     def test_other_tools_and_broken_input(self):
         self.assertEqual(self.run_guard(json.dumps({"tool_name": "Read", "tool_input": {}}).encode()), "allow")
         self.assertEqual(self.run_guard(b"not json"), "deny")          # fail-closed

@@ -246,6 +246,33 @@ def check_target(target):
     return target
 
 
+def needs_lock(target, home=None):
+    """사용자 폴더 밖에 까는가 — C:\\ 아래 새 폴더는 'Authenticated Users 수정' 권한을 물려받아, 이 PC 의 다른 계정이
+    허브가 돌리는 파이썬·자동화 파일을 바꿔 끼울 수 있다(2026-10-19 보안 점검의 남은 낮은 항목, 10-28 고침)."""
+    home = os.path.normcase(os.path.abspath(home or os.environ.get('USERPROFILE') or os.path.expanduser('~')))
+    t = os.path.normcase(os.path.abspath(target))
+    return not (t == home or t.startswith(home + os.sep))
+
+
+def lock_down(target):
+    """설치 폴더를 나·SYSTEM·관리자만 쓰게 — 물려받은 권한을 끊는다. 사용자 폴더 안이면 이미 그러니 손대지 않는다.
+    돌려주는 값: 잠갔으면 True. 실패해도 설치는 계속한다(권한이 없는 폴더면 애초에 여기까지 못 온다)."""
+    if os.name != 'nt' or not needs_lock(target):
+        return False
+    try:
+        out = subprocess.run(['whoami', '/user', '/fo', 'csv', '/nh'], capture_output=True, text=True,
+                             creationflags=NO_WINDOW).stdout
+        sid = out.strip().split(',')[-1].strip('"')
+        if not sid.startswith('S-1-'):
+            return False
+        r = subprocess.run(['icacls', target, '/inheritance:r', '/grant:r', '*%s:(OI)(CI)F' % sid,
+                            '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/Q'],
+                           capture_output=True, creationflags=NO_WINDOW)
+        return r.returncode == 0
+    except OSError:
+        return False
+
+
 def install(target, desktop=True, autostart=True, progress=lambda f: None, say=lambda s: None):
     """설치(또는 업데이트). 돌려주는 값: (설치 폴더, 처음 설치인가)."""
     if not os.path.isfile(PAYLOAD):
@@ -254,6 +281,8 @@ def install(target, desktop=True, autostart=True, progress=lambda f: None, say=l
     fresh = not os.path.isfile(os.path.join(target, 'install.json'))
     version = payload_version()
     os.makedirs(target, exist_ok=True)
+    if lock_down(target):                     # 풀기 전에 — 새 파일이 잠근 권한을 물려받게
+        say('사용자 폴더 밖이라 설치 폴더를 이 계정만 쓰게 잠갔습니다')
     old = None if fresh else (installed_files(target) or LEGACY_REMOVED)
     if not fresh:
         say('실행 중인 키트를 끄는 중…')

@@ -65,7 +65,25 @@ def _refuse_mac(folder, env):
 
 
 def refuse_reason(folder, env=None):
-    """정리하면 안 되는 폴더면 이유를, 괜찮으면 '' 를 돌려준다."""
+    """정리하면 안 되는 폴더면 이유를, 괜찮으면 '' 를 돌려준다.
+    적힌 경로와 실제 경로(정션·심볼릭 링크를 따라간 곳) 둘 다 본다 — 'D:\\정리' 가 C:\\Windows 를 가리키는
+    정션이면 이름만으로는 통과했다(2026-10-19 보안 점검의 남은 낮은 항목, 10-28 고침)."""
+    why = _refuse_one(folder, env)
+    if why:
+        return why
+    try:
+        real = os.path.realpath(str(folder))
+    except (OSError, ValueError):
+        return ''
+    if real.startswith('\\\\?\\'):                        # 정션을 따라가면 \\?\C:\… 로 올 때가 있다
+        real = real[4:]
+    if _norm(real) == _norm(str(folder)):
+        return ''
+    why = _refuse_one(real, env)
+    return '%s (실제 위치 %s)' % (why, real) if why else ''
+
+
+def _refuse_one(folder, env=None):
     env = os.environ if env is None else env
     if not WINDOWS:
         return _refuse_mac(folder, env)

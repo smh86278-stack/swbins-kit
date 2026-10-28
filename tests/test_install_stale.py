@@ -102,5 +102,33 @@ class RegisterKeepsList(unittest.TestCase):
                 self.assertEqual(json.load(f)['files'], ['README.md', 'tools/a.py'])
 
 
+class LockDown(unittest.TestCase):
+    """사용자 폴더 밖 설치 폴더는 이 계정·SYSTEM·관리자만 쓰게 잠근다(10-28)."""
+
+    def test_needs_lock(self):
+        home = r'C:\Users\kim' if os.name == 'nt' else '/Users/kim'
+        for t, want in ((os.path.join(home, 'AppData', 'Local', 'WorkKit'), False), (home, False),
+                        (r'C:\Taskhand' if os.name == 'nt' else '/opt/taskhand', True),
+                        (home + 'chi', True)):
+            with self.subTest(t=t):
+                self.assertEqual(im.needs_lock(t, home), want)
+
+    @unittest.skipUnless(os.name == 'nt', 'icacls 는 윈도우')
+    def test_lock_removes_inherited(self):
+        import subprocess
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        d = os.path.join(tmp.name, 'kit')
+        os.makedirs(d)
+        self.addCleanup(setattr, im, 'needs_lock', im.needs_lock)
+        im.needs_lock = lambda t, home=None: True        # 임시 폴더는 사용자 폴더 안이라 원래는 안 잠근다
+        self.assertTrue(im.lock_down(d))
+        touch(d, 'tools/a.py')                            # 잠근 뒤 생긴 파일도 같은 권한을 물려받는다
+        acl = subprocess.run(['icacls', d], capture_output=True).stdout.decode('mbcs', 'replace')
+        self.assertNotIn('(I)', acl)                      # 물려받은 항목이 없다
+        sub = subprocess.run(['icacls', os.path.join(d, 'tools', 'a.py')], capture_output=True).stdout.decode('mbcs', 'replace')
+        self.assertEqual(sub.count('(I)'), 3, sub)        # 나·SYSTEM·관리자 셋만
+
+
 if __name__ == '__main__':
     unittest.main()

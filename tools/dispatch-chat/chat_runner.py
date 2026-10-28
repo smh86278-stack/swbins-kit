@@ -1840,6 +1840,7 @@ def guard_settings(tools, base, C):
       보내기·삭제·결제 같은 단추는 사람이 '진행해도 됩니다' 라고 답하기 전엔 막는다.
     - Bash 가 정해진 명령만 허용된 작업(읽기 지시의 Bash(git log:*) 등)이면 bash-guard.js — git 의 파일 쓰기·외부 명령 옵션,
       명령 잇기를 막는다(2026-10-19 보안 점검: git log --output 으로 설정을 써서 아무 명령이나 돌릴 수 있었다).
+      Read·Glob·Grep 에도(matcher Read|Glob|Grep) — 비밀 자리와 홈·드라이브 맨 위 통째 검색을 막는다(2026-10-28).
     guard_tools 를 먼저 거친 목록이어야 한다(훅 파일이 없는 도구는 이미 빠져 있다)."""
     node = (find_tool("node") or "node").replace("\\", "/")
     hook = lambda js: {"type": "command", "command": '"%s" "%s"' % (node, js.replace("\\", "/"))}
@@ -1854,6 +1855,10 @@ def guard_settings(tools, base, C):
             pre.append({"matcher": "Bash", "hooks": [bg]})
     if bash and not bash_full and _guard_js(C, "bash-guard.js"):
         pre.append({"matcher": "Bash", "hooks": [hook(_guard_js(C, "bash-guard.js"))]})
+    # 같은 훅이 읽기 도구의 비밀 자리(메일 암호 설정·.keys·SSH 키·브라우저 로그인 DB)를 막는다 — Bash 전체가 열린 작업은
+    # 어차피 무엇이든 읽을 수 있어 붙이지 않는다. node 가 없으면 예전처럼 Read 는 그대로 둔다(읽기 지시가 통째로 죽지 않게).
+    if not bash_full and any(t in ("Read", "Glob", "Grep") for t in tools) and _guard_js(C, "bash-guard.js"):
+        pre.append({"matcher": "Read|Glob|Grep", "hooks": [hook(_guard_js(C, "bash-guard.js"))]})
     if not pre:
         return ""
     path = base + ".guard.json"
