@@ -40,7 +40,7 @@ SECTIONS = [
     ('apps', '나만의 앱', 'tools/macro-hub/apphost.py'),
     ('dispatch', '디스패치(메일 → Claude Code, 고급)', 'mail-gateway.py'),
     ('jira', 'Jira 새 이슈 감시(고급)', 'jira-watch.py'),
-    ('ai_share', 'AI 공유 위키 · 주간 보고 초안', 'tools/ai-share-agent/agent.py'),
+    ('ai_share', 'AI 작업 회고 · 주간 보고 초안', 'tools/ai-share-agent/agent.py'),
     ('migrate', 'PC 이전 묶음', None),
 ]
 FIXED = {

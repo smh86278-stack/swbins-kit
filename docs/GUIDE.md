@@ -31,7 +31,7 @@ Windows 10/11 · Python 3.10+ · 관리자 권한 불필요.
 | ☀ 아침 브리핑 | 정한 요일·시각에 어제 자동화(성공·실패)·맡긴 일·답 기다리는 질문·상시 서비스·기능 상태 ✖ 를 한 통으로(LLM 안 씀) | `morning_brief` |
 | 🔌 허브 MCP 서버 | Claude Code·Claude Desktop·Cursor 같은 AI 도구가 허브 상태(서비스·실행 기록·로그·기능 상태·맡긴 일)를 **읽기 전용** 도구로 바로 묻는다 — `python setup.py --mcp` 로 등록(실행·끄기·비밀값은 내주지 않음) | `dispatch.extra_tools` |
 | 🔗 바로가기 | 자주 여는 사내 사이트를 트레이 메뉴에 | `links` |
-| 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama·codex·gemini)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 공유 위키」 (기본 꺼짐) | `ai_share.weekly_report` |
+| 📝 주간 업무 보고 초안 | 이번 주 이슈·커밋을 모아 AI(claude CLI·ollama·codex·gemini)가 주간 보고 초안을 쓰고 메일로 보낸다 — 아래 「AI 작업 회고」 (기본 꺼짐) | `ai_share.weekly_report` |
 | 🧠 AI 고르기 | 「말로 부탁하기」·「고쳐 달라기」·주간 보고 초안을 **Claude Code · Codex(ChatGPT) · Gemini CLI · 로컬 AI(Ollama)** 중 이 PC 에 깔린 것으로. Codex·Gemini·Ollama 는 허브가 직접 띄워 실행 기록에서 진행을 보여 준다(Codex 는 허브 폴더 안에서만 쓰는 샌드박스). 로컬 AI 는 무료이고 PC 밖으로 안 나간다 — 모델이 돌려준 파일을 내 자동화 폴더에만 쓰고, 시험 실행은 `ai.ollama_test` 를 켰을 때만(`ollama_agent.py`). 메일·대화로 일 맡기기는 권한 묻기 때문에 Claude 전용 — `tools\macro-hub\aicli.py` | `ai` |
 | ✨ 나만의 앱 | 이 PC 에서만 도는 앱·게임을 AI 와 같이 만든다(🛠 만들기 화면) — 템플릿(목록 관리·기록 대시보드·변환 도구·2D 게임·빈 앱) → AI 가 **설계서** → 확인 뒤 **이대로 만들기** → 진짜 브라우저로 **자동 검사**(콘솔 오류·시나리오·스크린샷, `appcheck.py`) → 실패하면 고치기 → 「말로 고치기」 · 🕘 버전(맡기기 전·후 저절로 남음, 바뀐 곳 보기·되돌리기, `apphistory.py`) · 📦 내보내기(zip → 다른 PC 키트에서 📥 가져오기 · **HTML 한 장**/​**exe** — 허브 없이 도는 복사본, `apppack.py`). 동봉 라이브러리(Preact·Chart.js·Phaser, 설치·빌드 없음). 앱마다 `http://<id>.localhost:8631/` 로 따로 격리돼 허브·다른 앱 데이터에 손대지 못하고 바깥 주소로 자료를 못 내보낸다. 권한은 허브에서 허락해야 동작 — 이 앱 전용 DB · 파일 상자 · **고른 AI 에게 글 부탁**(결과에 「🤖 AI 작성」 표시, 「AI 도우미」 템플릿) · 허락한 내 자동화 실행 · 알림 보내기(시간당 상한 `apps.limits`) — 안내서 `APP_AUTHORING.md`, 내 앱 `apps.local\<id>\` (`apphost.py`) | `apps` |
 | 🤖 자동화 | 웹(Playwright)·윈도우 프로그램(pywinauto) 화면 조작을 파이썬 자동화로 — 녹화·요소 찍기·자동 실행 트리거 | `tools\macro-hub\macros.local\` |
@@ -94,7 +94,7 @@ Claude Code 가 깔려 있어야 하고, **`dispatch.enabled` 를 직접 켜야�
 4. 운영 화면 「🛡 상시 서비스」에서 **Jira 새 이슈 감시** 를 켠다. 처음 돌 때 지금 있는 이슈는 묻지 않고 '이미 본 것'으로만 기록한다
    (`jql`·`base_url` 을 바꿔도 다시 그렇게 한다). 그 뒤 새로 생긴 이슈부터 묻는다. 결과는 「📊 기능 상태」.
 
-### 고급 — AI 공유 위키 · 주간 업무 보고 초안 (기본 꺼짐)
+### 고급 — AI 작업 회고 · 주간 업무 보고 초안 (기본 꺼짐)
 
 `tools\ai-share-agent\` — 내가 이번 주에 한 일(이슈 도구의 담당 이슈 + git 커밋 + 선택 기능)을 **이슈 키로 묶어**
 주간 업무 보고 초안을 쓰고, 쌓인 기록으로 팀 "업무 공유" 발표 준비 자료도 만든다. 이슈 도구가 Jira 가 아니어도 된다
@@ -113,7 +113,7 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
   또는 웹 화면의 **📝 주간 보고 초안** 단추(미리 보고 **✉ 메일로 보내기** 는 따로 누른다).
 - 프롬프트는 `prompt_weekly.md` — 팀 양식이 다르면 복사해 고치고 `weekly_report.prompt_file` 로 가리킨다.
 
-**2) AI 공유 위키 화면** — 허브 상시 서비스 `svc_ai_share`, <http://127.0.0.1:8640/> (허브 머리의 📚 AI 위키)
+**2) AI 작업 회고 화면** — 허브 상시 서비스 `svc_ai_share`, <http://127.0.0.1:8640/> (허브 머리의 📚 AI 작업 회고)
 
 - 이슈 목록·검색·담당자/선택 필터, 이슈마다 커밋·댓글·(선택) MR·하네스 기록, 요약 카드. 이 PC 에서만 열린다(127.0.0.1,
   쓰기 요청은 전용 헤더 필수). **수집** 은 LLM 없이 몇 초. 팀 명단·이름 별칭은 👥 에서 고치면 `ai_share` 에 저장된다.
@@ -142,7 +142,7 @@ LLM 단계는 이 PC 에 로그인된 **claude CLI**(구독 — API 키 과금 �
 
    GitHub·GitLab 은 `type_labels`(라벨 중 유형으로 볼 것)를 줄 수 있다. 토큰은 DPAPI 로 암호화한 `token_enc` 로만 저장된다.
    브랜치 이름 규칙이 따로 있으면 `branch_ticket_re`(예 `feature/(\d+)-` — 숫자면 레포·프로젝트 키가 하나일 때 그것으로 붙인다).
-3. `ai_share.enabled` 를 켜고 운영 화면 「🛡 상시 서비스」에서 **AI 공유 위키** 를 켠다 → 화면에서 **수집**.
+3. `ai_share.enabled` 를 켜고 운영 화면 「🛡 상시 서비스」에서 **AI 작업 회고** 를 켠다 → 화면에서 **수집**.
 4. 주간 보고를 받으려면 `ai_share.weekly_report.enabled` 를 켜고 「⏰ 예약 작업」에서 **주간 업무 보고 초안** 을 켠다
    (메일 설정 필요, claude CLI 로그인 또는 ollama).
 
@@ -211,7 +211,7 @@ config.example.json      설정 견본 — 갈래별 설명은 이 파일 안 "_
 config.local.json        이 PC 의 실제 설정 (git 제외, setup.py 가 만든다)
 mail-gateway.py · inbox-worker.ps1   디스패치 — 메일 지시를 받아 Claude Code 로 실행하고 회신 (기본 꺼짐)
 jira-watch.py            Jira 새 이슈 감시 — 새 이슈를 디스패치 대화로 물어본다 (기본 꺼짐, setup.py --jira)
-tools\ai-share-agent\    AI 공유 위키 — 주간 업무 보고 초안 · 이슈별 작업 기록 · 발표 준비 (기본 꺼짐, ai_share)
+tools\ai-share-agent\    AI 작업 회고 — 주간 업무 보고 초안 · 이슈별 작업 기록 · 발표 준비 (기본 꺼짐, ai_share)
 tools\macro-hub\         자동화 허브 — 트레이 앱 · 웹 화면 · 예약 작업 · 상시 서비스 (자세히: tools\macro-hub\README.md)
     kit.py               공통 바탕 — 설정 · 메일 · DPAPI · 예약 시각 판정 · 기능 상태 파일
     macros\job_*.py      기능 (정기 메일 · 폴더 정리 · 감시 · PC 점검 · 백업)

@@ -120,7 +120,7 @@ flowchart LR
 
 | 위협 | 막는 방법 | 코드 |
 |---|---|---|
-| 같은 망에서 허브 원격 조작 | 허브·앱 호스트·대화 앱·AI 위키 모두 `127.0.0.1` 에만 바인딩 | `macrohub.start_services` · `apphost.make_server` · `chat.py` · `agent.py serve` |
+| 같은 망에서 허브 원격 조작 | 허브·앱 호스트·대화 앱·AI 작업 회고 모두 `127.0.0.1` 에만 바인딩 | `macrohub.start_services` · `apphost.make_server` · `chat.py` · `agent.py serve` |
 | 다른 웹 페이지의 요청 위조(CSRF) | 쓰기 요청은 허브가 시작할 때마다 새로 만드는 토큰(`X-Hub-Token`)이 있어야 함 — 화면 HTML 에만 심고 파일로 남기지 않음. `Origin` 검사 | `macrohub.Handler.do_POST` |
 | DNS 리바인딩 | `Host` 머리글이 `127.0.0.1:<포트>`·`localhost:<포트>` 가 아니면 403 | `Handler._host_ok` |
 | 클릭재킹 | `X-Frame-Options: DENY` · CSP `frame-ancestors 'none'` · `nosniff` | `Handler._send` |
@@ -154,7 +154,7 @@ config.example.json              설정 견본 — 갈래마다 "_설명"
 mail-gateway.py · inbox-worker.ps1 · jira-watch.py    디스패치 (기본 꺼짐)
 tools/macro-hub/                 자동화 허브 — 트레이 앱 · 웹 화면 · 러너 · 앱 호스트 · 예약 작업 (README.md)
 tools/dispatch-chat/             디스패치 대화(메신저) 앱 · Claude Code 훅
-tools/ai-share-agent/            주간 업무 보고 초안 · AI 공유 위키
+tools/ai-share-agent/            주간 업무 보고 초안 · AI 작업 회고
 tools/pc-migrate/                PC 이전 묶음
 dispatch-page/                   폰에서 지시 보내는 정적 페이지
 installer/                       단일 설치 파일 빌드

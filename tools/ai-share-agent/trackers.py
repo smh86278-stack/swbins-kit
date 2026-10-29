@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""이슈 출처(tracker) 어댑터 — AI 공유 위키(agent.py)가 이슈 도구를 모르고 일하게 해 주는 층.
+"""이슈 출처(tracker) 어댑터 — AI 작업 회고(agent.py)가 이슈 도구를 모르고 일하게 해 주는 층.
 
 ai_share.tracker.type 으로 고른다:  jira · github · gitlab · none(이슈 도구 없음 — 커밋·브랜치의 키로만 묶는다)
 

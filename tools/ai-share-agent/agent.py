@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI 공유 위키 — 내 작업 흔적(이슈 출처 + git 커밋 + 선택 기능)을 모아 주간 업무 보고 초안과 업무 공유 발표 준비 자료를 만든다.
+AI 작업 회고 — 내 작업 흔적(이슈 출처 + git 커밋 + 선택 기능)을 모아 주간 업무 보고 초안과 업무 공유 발표 준비 자료를 만든다.
 
   weekly    : 이번 주(월요일~오늘)를 모아 주간 보고 초안을 쓰게 하고(claude CLI 또는 ollama)
               <wiki_dir>\\reports\\YYYYMMDD_주간보고.md 로 저장한 뒤 메일로 보낸다(--no-mail 이면 파일만).
@@ -1440,12 +1440,21 @@ def weekly(since=None, until=None, send=True, gather_fn=None, llm=None, mailer=N
 
 
 # ---------------------------------------------------------------- serve (로컬 웹 화면)
+def body_of(text):
+    """앞머리(---) 뒤 본문."""
+    return text.split("\n---", 1)[1] if text.startswith("---") and "\n---" in text else text
+
+
 def list_tickets():
+    """이슈 목록 — 화면의 태그(labels·tag·유형·상태)와 「언급한 이슈」(refs → 화면이 거꾸로 모아 백링크)도 같이.
+    refs 는 이슈 출처의 키 모양(TR.key_re)으로 본문에서 찾는다 — 출처가 none 이면 기본 모양(ABC-123)."""
     sel, out = load_select(), []
     for p in sorted((WIKI / "tickets").glob("*/*.md")):
-        fm = front_matter(p.read_text(encoding="utf-8"))
+        text = p.read_text(encoding="utf-8")
+        fm = front_matter(text)
         key = fm.get("ticket") or p.stem
         s = sel.get(key, {})
+        refs = sorted({m.group(0) for m in TR.key_re.finditer(body_of(text))} - {key}) if TR else []   # 사용자 정규식에 묶음이 있어도 전체 일치로
         out.append({"part": p.parent.name, "key": key, "disp": fm.get("display") or key, "url": fm.get("source", ""),
                     "title": fm.get("title", ""), "tag": fm.get("tag", ""),
                     "status": fm.get("status", ""), "type": fm.get("type", ""), "updated": fm.get("updated", ""),
@@ -1454,7 +1463,27 @@ def list_tickets():
                     "score": int(fm.get("score") or 0), "why": fm.get("why", ""), "mine": fm.get("mine") == "Y",
                     "ai_commits": int(fm.get("ai_commits") or 0), "mrs": int(fm.get("mrs") or 0),
                     "bot_issues": int(fm.get("bot_issues") or 0),
+                    "labels": [x.strip() for x in fm.get("labels", "").split(",") if x.strip()], "refs": refs,
                     "select": s.get("state", ""), "memo": s.get("memo", "")})
+    return out
+
+
+def search_bodies(q, limit=500):
+    """본문(커밋·MR·댓글·하네스 기록)에 q 가 든 이슈 — [{"part", "key", "snip"}]. 대소문자 무시, 공백으로 나누면 모두 든 것."""
+    words = [w for w in q.lower().split() if w][:5]
+    if not words:
+        return []
+    out = []
+    for p in sorted((WIKI / "tickets").glob("*/*.md")):
+        text = p.read_text(encoding="utf-8")
+        body = body_of(text)
+        low = body.lower()
+        if all(w in low for w in words):
+            i = low.find(words[0])
+            out.append({"part": p.parent.name, "key": front_matter(text).get("ticket") or p.stem,
+                        "snip": " ".join(body[max(0, i - 25):i + 60].split())})
+            if len(out) >= limit:
+                break
     return out
 
 
@@ -1552,6 +1581,8 @@ def serve(port, open_browser=True):
                                         "reports": report_files(), "mine": MY_PART, "other": OTHER_PART,
                                         "me": read_json(WIKI / "_raw" / "me.json"), "features": features(),
                                         "stats": read_json(WIKI / "_raw" / "stats.json"), "rec_days": REC_DAYS})
+            if u.path == "/api/search":                      # 본문 검색 — 화면 검색칸이 제목 등과 함께 쓴다
+                return self.reply(200, {"hits": search_bodies(q.get("q", ""))})
             if u.path == "/api/team":
                 return self.reply(200, team_settings())
             if u.path == "/api/prompts":                     # 내 프롬프트 — 이 PC 화면에서만

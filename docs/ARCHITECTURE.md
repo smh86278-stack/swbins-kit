@@ -30,7 +30,7 @@ dispatch-chat/chat.py :8620  메일을 메신저처럼      mcp_server.py (stdio
 | 허브 | `macrohub.py` | `ThreadingHTTPServer` 하나로 화면(HTML)·JSON API·SSE(`/events`) 실시간 로그. 자동화 발견(`discover`)·실행·트리거·상시 감독·녹화·갤러리·일 순서 |
 | 러너 | `runner.py` | 자동화 1개를 `.venv` 파이썬 별도 프로세스로 실행. `ctx`(브라우저·창·비밀값·로그·알림) 제공, 시험 모드(`dry_run`), 실패 화면 캡처, 일 순서(`kind: chain` — 🤖 AI 단계·🙋 확인 모드) 실행 |
 | 창 이벤트 | `winevents.py` | `SetWinEventHook` 으로 창 생성·제목 변화를 받아 `window` 트리거를 폴링 없이 깨운다 |
-| 외부 서비스 | `extsvc.py` · `macros/svc_*.py` | 게이트웨이·워커·대화 앱·Jira 감시·AI 위키를 허브와 **분리된 프로세스**로 띄우고 `META["owns"]` 로 찾아 넘겨받는다 |
+| 외부 서비스 | `extsvc.py` · `macros/svc_*.py` | 게이트웨이·워커·대화 앱·Jira 감시·AI 작업 회고를 허브와 **분리된 프로세스**로 띄우고 `META["owns"]` 로 찾아 넘겨받는다 |
 | 기능(예약 작업) | `macros/job_*.py` | 정기 메일·폴더 정리·감시·백업·만료 예고·브리핑 등. 결과는 `kit.write_status` → 운영 화면 |
 | 키트 공통 | `kit.py` | 설정(`config.local.json`)·메일(IMAP/SMTP)·DPAPI·알림 출구·예약 판정·상태 파일·변경 이력. **함수 이름·인자를 바꾸지 않는 공개 계약** |
 | 운영 화면 | `ops.py` · `web/ops.html` | 예약 작업·상시 서비스·기능 상태·설정 준비 여부·에이전트 보드·변경 이력 |

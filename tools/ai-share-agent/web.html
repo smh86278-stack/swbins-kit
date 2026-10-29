@@ -165,6 +165,21 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
 .weekly .btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
 .weekly .msg { font-size: 12.5px; color: var(--muted); }
 .hide { display: none !important; }
+/* 태그 칩 · 이어진 이슈(언급한·언급된) · 본문 검색에 걸린 줄 */
+.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 8px 24px 0; max-width: 932px; }
+.chip { font-size: 12px; padding: 0 8px; border-radius: 2px; border: 1px solid var(--line); color: var(--muted); background: transparent; }
+.chip i { font-style: normal; opacity: .7; margin-right: 3px; }
+.chip:hover { border-color: var(--text); color: var(--text); background: transparent; }
+.chip.on { border-color: var(--accent); color: var(--accent); }
+.links { margin: 10px 24px 0; max-width: 932px; border-top: 1px solid var(--line); font-size: 13px; }
+.links .lk { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.links .lk > b { flex: 0 0 120px; font-weight: 600; color: var(--muted); font-size: 12px; }
+.links .lk span { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.links small { color: var(--muted); }
+.hit { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.hit mark { background: var(--accent-bg); color: var(--text); }
+@media (max-width: 600px) { .chips { padding-left: 12px; padding-right: 12px; } .links { margin-left: 12px; margin-right: 12px; } }
 @media (max-width: 1250px) { .dash { grid-template-columns: repeat(4, 1fr); } .card.shops { grid-column: span 2; } }
 @media (max-width: 900px) {
   .dash { grid-template-columns: repeat(2, 1fr); } .card.shops { grid-column: span 2; }
@@ -202,7 +217,8 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
 <main>
   <section class="pane left">
     <div class="filters">
-      <input type="search" id="q" placeholder="이슈·제목·메모 검색">
+      <input type="search" id="q" placeholder="이슈·제목·메모·본문 검색">
+      <button class="chip on" id="tagOn" hidden title="이 태그로 거르는 중 — 누르면 풀기"></button>
       <select id="fPart"><option value="">파트 전체</option></select>
       <select id="fOwner"><option value="">담당 전체</option></select>
       <select id="fHarness" title="하네스 기록 · AI 리뷰"><option value="">하네스 전체</option><option value="grilling">grilling</option><option value="doc">doc</option><option value="none">기록 없음</option><option value="bot" id="optBot">AI 리뷰 지적 있음</option></select>
@@ -226,7 +242,12 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
 <script>
 const STATES = ["발표고정", "발표제외", "비공개"];
 const S = { tickets: [], byKey: {}, sort: { col: "default", dir: 1 }, cur: null, F: {}, keyRe: null, mine: "", other: "", meNames: [],
-  rec: new Set(), recOnly: true };   // 처음엔 추천 사례만 — 전부(수백 건) 보여 주면 고르기 어렵다
+  rec: new Set(), recOnly: true,   // 처음엔 추천 사례만 — 전부(수백 건) 보여 주면 고르기 어렵다
+  tag: null, hits: new Map(), back: {} };   // 거르는 태그 [종류, 값] · 본문 검색 결과(part/key → 앞뒤 글) · 백링크(키 → 언급한 이슈 키들)
+// 태그 = labels(#) · 꼬리표(설정 ai_share.tag 이름) · 유형 · 상태
+const tagName = k => ({ label: "#", tag: S.F.tag || "꼬리표", type: "유형", status: "상태" }[k]);
+const tagsOf = t => [...(t.labels || []).map(v => ["label", v]), ["tag", t.tag], ["type", t.type], ["status", t.status]].filter(x => x[1]);
+const tagChip = ([k, v], on) => `<button class="chip${on ? " on" : ""}" data-tk="${k}" data-tv="${esc(v)}"><i>${esc(tagName(k))}</i>${esc(v)}</button>`;
 const REC_N = 10, REC_MIN = 4;
 const $ = id => document.getElementById(id);
 
@@ -307,12 +328,37 @@ function computeRec() {
 function filtered() {
   if (S.recOnly) return S.tickets.filter(t => t.mine && S.rec.has(t.key));
   const q = $("q").value.trim().toLowerCase(), p = $("fPart").value, h = $("fHarness").value, s = $("fSel").value;
-  const o = $("fOwner").value;
+  const o = $("fOwner").value, tg = S.tag;
   return S.tickets.filter(t =>
     (!p || (p === "mine" ? t.mine : p === "team" ? t.part === S.mine && !t.mine : t.part === p)) && (!h || (h === "bot" ? t.bot_issues > 0 : t.harness === h)) &&
     (!o || (t.owner || "").split(", ").includes(o)) &&
     (!s || (s === "-" ? !t.select : t.select === s)) &&
-    (!q || [t.key, t.tag, t.title, t.memo, t.status, t.owner].join(" ").toLowerCase().includes(q)));
+    (!tg || tagsOf(t).some(x => x[0] === tg[0] && x[1] === tg[1])) &&
+    (!q || metaHit(t, q) || S.hits.has(t.part + "/" + t.key)));
+}
+const metaHit = (t, q) => [t.key, t.disp, t.tag, t.title, t.memo, t.status, t.owner, ...(t.labels || [])].join(" ").toLowerCase().includes(q);
+// 본문에만 걸린 줄은 제목 아래에 걸린 곳 앞뒤 글을 보인다
+function hitLine(t) {
+  const q = $("q").value.trim().toLowerCase();
+  const snip = q && !S.recOnly && !metaHit(t, q) && S.hits.get(t.part + "/" + t.key);
+  if (!snip) return "";
+  const w = q.split(/\s+/)[0], i = snip.toLowerCase().indexOf(w);
+  return `<span class="hit">본문 · ${i < 0 ? esc(snip) : esc(snip.slice(0, i)) + "<mark>" + esc(snip.slice(i, i + w.length)) + "</mark>" + esc(snip.slice(i + w.length))}</span>`;
+}
+// 본문 검색은 서버에 묻는다(이슈 문서 전체를 화면에 싣지 않으려고) — 치는 동안은 제목 등으로만 거르고, 답이 오면 더한다
+let searchTimer = 0;
+function searchBodies() {
+  clearTimeout(searchTimer);
+  const q = $("q").value.trim().toLowerCase();
+  if (!q) { S.hits = new Map(); return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const j = await api("/api/search?q=" + encodeURIComponent(q));
+      if ($("q").value.trim().toLowerCase() !== q) return;          // 그 사이 더 쳤다
+      S.hits = new Map(j.hits.map(h => [h.part + "/" + h.key, h.snip]));
+      renderRows();
+    } catch (e) {}
+  }, 250);
 }
 function sorted(list) {
   const { col, dir } = S.sort;
@@ -330,7 +376,7 @@ function renderRows() {
     <td>${stSelect(t)}</td>
     <td class="key"><span class="part">${esc(t.part)}</span>${esc(t.disp || t.key)}</td>
     <td class="owner">${(t.owner || "").split(", ").filter(Boolean).map(w => `<span class="who${S.meNames.includes(w) ? " mine" : ""}">${esc(w)}</span>`).join(" ")}</td>
-    ${S.F.tag ? `<td class="shop" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec"></span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${t.memo ? `<br><small style="color:var(--muted)">메모 · ${esc(t.memo)}</small>` : ""}</td>
+    ${S.F.tag ? `<td class="shop" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec"></span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${hitLine(t)}${t.memo ? `<br><small style="color:var(--muted)">메모 · ${esc(t.memo)}</small>` : ""}</td>
     <td>${esc(t.status)}</td><td class="num">${t.commits || ""}</td>
     ${S.F.harness ? `<td class="h-${t.harness}">${t.harness === "none" ? "" : t.harness}</td>` : ""}<td class="key">${t.updated}</td></tr>`).join("");
   document.querySelectorAll("table.tk th").forEach(th => {
@@ -339,6 +385,8 @@ function renderRows() {
   });
   $("shown").textContent = S.recOnly ? `추천 ${list.length}건 · 전체 ${S.tickets.filter(t => t.mine).length}건` : `${list.length}건 표시`;
   $("btnRec").classList.toggle("on", S.recOnly);
+  $("tagOn").hidden = !S.tag;
+  if (S.tag) $("tagOn").innerHTML = `<i>${esc(tagName(S.tag[0]))}</i>${esc(S.tag[1])} ✕`;
   renderDash();
 }
 // 요약 대시보드 — 숫자는 내 파트 기준. 카드를 누르면 목록 필터가 그 조건으로 바뀐다
@@ -404,6 +452,13 @@ function promptsBox(sessions) {
       <ol>${s.prompts.map(p => `<li>${esc(p.text)}</li>`).join("")}</ol></div>`).join("")}
   </details>`;
 }
+// 이어진 이슈 — 이 문서가 언급한 이슈 · 이 이슈를 언급한 이슈(백링크). 목록에 없는 키는 글자만
+function linksBox(t) {
+  const link = k => S.byKey[k] ? `<span><a href="#" data-open="${esc(k)}">${esc(S.byKey[k].disp || k)}</a> <small>${esc(S.byKey[k].title)}</small></span>` : `<span>${esc(k)}</span>`;
+  const row = (name, keys) => keys.length ? `<div class="lk"><b>${name} ${keys.length}</b><span>${keys.map(link).join("")}</span></div>` : "";
+  const html = row("언급한 이슈", t.refs || []) + row("이 이슈를 언급", S.back[t.key] || []);
+  return html ? `<div class="links">${html}</div>` : "";
+}
 async function openTicket(part, key) {
   S.cur = { part, key };
   renderRows();
@@ -414,6 +469,8 @@ async function openTicket(part, key) {
   $("viewer").innerHTML = `<div class="bar">${stSelect(t)}
     <input class="memo" id="memo" placeholder="메모 (선택 사유 등) — Enter 또는 칸을 벗어나면 저장" value="${esc(t.memo || "")}">
     ${/^https?:\/\//.test(t.url || "") ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(S.F.tracker_label || "이슈")} ↗</a>` : ""}</div>
+    <div class="chips">${tagsOf(t).map(x => tagChip(x, S.tag && S.tag[0] === x[0] && S.tag[1] === x[1])).join("")}</div>
+    ${linksBox(t)}
     ${promptsBox(pr.sessions)}
     <div class="doc">${render(j.text)}</div>`;
   $("viewer").scrollTop = 0;
@@ -451,14 +508,23 @@ document.addEventListener("change", e => {
   if (e.target.matches("select.st")) setSelect(e.target.dataset.key, e.target.value);
 });
 document.addEventListener("click", e => {
+  const chip = e.target.closest("button[data-tk]");
+  if (chip) {                                         // 태그 칩 — 그 태그로 거른다(같은 칩을 다시 누르면 풀림)
+    const same = S.tag && S.tag[0] === chip.dataset.tk && S.tag[1] === chip.dataset.tv;
+    S.tag = same ? null : [chip.dataset.tk, chip.dataset.tv]; S.recOnly = false;
+    renderRows();
+    if (S.cur) openTicket(S.cur.part, S.cur.key);
+    return;
+  }
+  if (e.target.closest("#tagOn")) { S.tag = null; return renderRows(); }
   const shop = e.target.closest("button[data-shop]");
-  if (shop) { $("q").value = shop.dataset.shop; S.recOnly = false; return renderRows(); }
+  if (shop) { $("q").value = shop.dataset.shop; S.recOnly = false; searchBodies(); return renderRows(); }
   if (e.target.closest("#wkSend")) return sendWeekly();
   const card = e.target.closest("button.card[data-act]");
   if (card) {
     const act = card.dataset.act;
     S.recOnly = act === "rec";
-    $("q").value = ""; $("fHarness").value = ""; $("fSel").value = ""; $("fOwner").value = "";
+    $("q").value = ""; $("fHarness").value = ""; $("fSel").value = ""; $("fOwner").value = ""; S.tag = null; searchBodies();
     $("fPart").value = act === "other" && $("fPart").value !== S.other ? S.other : act === "team" ? "team" : "mine";
     if (act === "harness") $("fHarness").value = "grilling";
     if (act === "pinned") $("fSel").value = "발표고정";
@@ -479,6 +545,7 @@ document.addEventListener("click", e => {
 });
 // 검색·필터를 직접 바꾸면 추천만 보기를 끈다 — 찾는 티켓이 추천 밖에 있을 수 있다
 ["q", "fPart", "fOwner", "fHarness", "fSel"].forEach(id => $(id).addEventListener("input", () => { S.recOnly = false; renderRows(); }));
+$("q").addEventListener("input", searchBodies);
 $("btnRec").onclick = () => { S.recOnly = !S.recOnly; renderRows(); };
 // 테마 — 자동/밝게/어둡게 순환. 고른 값은 이 브라우저에만 기억한다(저장 실패해도 화면은 정상)
 const THEMES = [["auto", "◐ 자동"], ["light", "☀ 밝게"], ["dark", "☾ 어둡게"]];
@@ -598,6 +665,8 @@ async function load() {
   S.recDays = j.rec_days || 14;
   S.recCut = new Date(Date.parse(j.period.until) - S.recDays * 864e5).toISOString().slice(0, 10);
   j.tickets.forEach(t => { if (!S.byKey[t.key] || t.mine) S.byKey[t.key] = t; });
+  S.back = {};                                    // 백링크 — 다른 이슈 문서가 이 키를 언급했나
+  j.tickets.forEach(t => (t.refs || []).forEach(r => { const b = S.back[r] = S.back[r] || []; if (!b.includes(t.key)) b.push(t.key); }));
   if ($("fPart").options.length === 1) {
     $("fPart").insertAdjacentHTML("beforeend", `<option value="mine">내 것</option>` +
       `<option value="team">팀원 것 (${esc(j.mine)})</option><option value="${esc(j.mine)}">${esc(j.mine)} 전체</option>` +

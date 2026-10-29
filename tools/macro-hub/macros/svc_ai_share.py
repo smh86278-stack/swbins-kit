@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""AI 공유 위키(tools\\ai-share-agent\\agent.py serve) — 내 이슈·커밋을 모아 보는 화면 서버, 127.0.0.1:<ai_share.port>(기본 8640).
+"""AI 작업 회고(tools\\ai-share-agent\\agent.py serve) — 내 이슈·커밋을 모아 보는 화면 서버, 127.0.0.1:<ai_share.port>(기본 8640).
 
-허브 화면의 '📚 AI 위키' 가 이 주소를 연다. config.local.json 의 ai_share.enabled 가 꺼져 있으면 띄우지 않고 기다리기만 한다.
+허브 화면의 '📚 AI 작업 회고' 가 이 주소를 연다. config.local.json 의 ai_share.enabled 가 꺼져 있으면 띄우지 않고 기다리기만 한다.
 주간 업무 보고 초안의 예약 실행은 이 서버가 아니라 job_weekly_report 가 맡는다. 공통 동작은 extsvc.py 맨 위 설명."""
 import os
 
@@ -14,8 +14,8 @@ ROOT = extsvc.ROOT
 # 그래서 띄울 때 '--kit-service' 표식을 붙이고 그 표식으로 이 키트가 띄운 프로세스만 알아본다
 # (같은 PC 의 다른 저장소에서 도는 같은 이름의 프로그램을 건드리지 않게).
 META = {
-    "name": "AI 공유 위키 (8640)",
-    "desc": "AI 공유 위키(tools\\ai-share-agent) — 이슈 출처(Jira·GitHub·GitLab·없음)와 git 커밋을 모아 보는 화면. 주간 보고 초안·발표 준비도 여기서. ai_share.enabled 가 켜져 있어야 돈다.",
+    "name": "AI 작업 회고 (8640)",
+    "desc": "AI 작업 회고(tools\\ai-share-agent) — 이슈 출처(Jira·GitHub·GitLab·없음)와 git 커밋을 모아 보는 화면. 주간 보고 초안·발표 준비도 여기서. ai_share.enabled 가 켜져 있어야 돈다.",
     "kind": "ctx",
     "target": "desktop",
     "motion": "write",
@@ -38,7 +38,7 @@ def wait_enabled(ctx, every=60):
     said = False
     while not settings()[0]:
         if not said:
-            ctx.log('AI 공유 위키(ai_share.enabled)가 꺼져 있어 기다립니다 — config.local.json 에서 켜면 띄웁니다')
+            ctx.log('AI 작업 회고(ai_share.enabled)가 꺼져 있어 기다립니다 — config.local.json 에서 켜면 띄웁니다')
             said = True
         ctx.sleep(every)
 

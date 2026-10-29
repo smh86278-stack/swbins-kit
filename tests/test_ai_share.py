@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""AI 공유 위키(tools/ai-share-agent) — 설정·이슈 출처 어댑터·선택 기능·주간 보고 초안의 회귀 테스트.
+"""AI 작업 회고(tools/ai-share-agent) — 설정·이슈 출처 어댑터·선택 기능·주간 보고 초안의 회귀 테스트.
 
     python -X utf8 -m unittest tests.test_ai_share -v
 
@@ -522,6 +522,37 @@ class TokenAndHub(Base):
     def test_weekly_feature_listed(self):
         import ops
         self.assertIn('weekly_report', dict(ops.FEATURES))
+
+
+# ---------------------------------------------------------------- 화면 — 태그·이어진 이슈·본문 검색
+
+class WikiView(Base):
+    DOC = "---\nticket: {key}\ntitle: {title}\nstatus: 완료\ntype: 개선\ntag: 쿠팡\nlabels: 긴급, API\n---\n# {key}\n\n{body}\n"
+
+    def setUp(self):
+        super().setUp()
+        self.conf()
+        d = ag.WIKI / 'tickets' / ag.MY_PART
+        d.mkdir(parents=True)
+        for key, title, body in (('ABC-1', '주문', '주문 API 재시도 — ABC-2 와 같은 원인'),
+                                 ('ABC-2', '송장', 'Timeout 재현 ABC-2'),
+                                 ('owner/app#7', '깃허브 이슈', 'ABC-1 참고')):
+            (d / (ag.slug(key) + '.md')).write_text(self.DOC.format(key=key, title=title, body=body), encoding='utf-8')
+
+    def test_tags_and_refs(self):
+        t = {x['key']: x for x in ag.list_tickets()}
+        self.assertEqual(t['ABC-1']['labels'], ['긴급', 'API'])
+        self.assertEqual(t['ABC-1']['refs'], ['ABC-2'])
+        self.assertEqual(t['ABC-2']['refs'], [])                             # 자기 자신은 빼고, 앞머리는 안 센다
+        self.assertEqual(t['owner/app#7']['refs'], ['ABC-1'])                # 파일 이름은 slug 여도 키는 앞머리에서
+
+    def test_body_search(self):
+        hits = ag.search_bodies('timeout')
+        self.assertEqual([(h['key'], 'Timeout 재현' in h['snip']) for h in hits], [('ABC-2', True)])
+        self.assertEqual([h['key'] for h in ag.search_bodies('주문 재시도')], ['ABC-1'])
+        self.assertEqual([h['key'] for h in ag.search_bodies('참고')], ['owner/app#7'])
+        self.assertEqual(ag.search_bodies('쿠팡'), [])                        # 앞머리(꼬리표)는 화면이 따로 본다
+        self.assertEqual(ag.search_bodies(' '), [])
 
 
 if __name__ == '__main__':
