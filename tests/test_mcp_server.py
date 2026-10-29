@@ -92,6 +92,32 @@ class McpServer(unittest.TestCase):
         _s, body = M.brief()
         self.assertIn('허브 응답 없음', body)
         self.assertIn('성공 1 · 실패 1', body)
+        self.assertIn(M.HUB + '/ops', body)                                # 키트 허브 포트(8610 아님)
+
+    def test_chains_and_agents(self):
+        hub = self.fake_hub
+
+        def fake(path, timeout=5):
+            if path == '/api/macros':
+                return hub(path) + [
+                    {'id': 'local/아침', 'name': '아침 정리', 'kind': 'chain', 'enabled': True, 'mode': 'ai',
+                     'triggers': [{'type': 'schedule', 'at': '09:00', 'days': 'mon-fri'}],
+                     'chain_names': ['정기 메일', '요약 담당'], 'chain_raw': ['job_a', {'ai': '', 'agent': 'a1'}],
+                     'last': {'started': NOW_MS, 'status': 'ok'}},
+                    {'id': 'local/숨김', 'name': '숨긴 것', 'kind': 'chain', 'hidden': True}]
+            if path == '/api/agents':
+                return [{'id': 'a1', 'name': '요약 담당', 'engine': '', 'role': '세 줄로\n요약한다'}]
+            return hub(path)
+        M.hub_get = fake
+        out = M.tool_chains({})
+        for want in ('아침 정리', 'AI 답만 확인', '⏰ 09:00 mon-fri', '1. 정기 메일', '2. 요약 담당', '성공'):
+            self.assertIn(want, out)
+        self.assertNotIn('숨긴 것', out)
+        self.assertIn('조건에 맞는 일 순서가 없습니다', M.tool_chains({'name': '없는'}))
+        self.assertIn('쓰는 곳: 아침 정리', M.tool_agents({}))
+        self.assertIn('역할: 세 줄로 요약한다', M.tool_agents({}))
+        names = [t['name'] for t in M.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']]
+        self.assertTrue({'hub_chains', 'hub_agents'} <= set(names))
 
 
 class MorningBriefJob(unittest.TestCase):

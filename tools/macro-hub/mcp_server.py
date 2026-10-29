@@ -204,6 +204,61 @@ def tool_instructions(args):
         ' '.join(str(r.get('prompt') or '').split())[:120]) for r in rows)
 
 
+CHAIN_MODES = {'step': '단계마다 확인', 'ai': 'AI 답만 확인', 'auto': '자동'}   # runner.CHAIN_MODES 와 같게
+
+
+def chains():
+    """🔗 일 순서(kind chain) — /api/macros 에서 숨긴 것 빼고."""
+    return [m for m in automations() if m.get('kind') == 'chain' and not m.get('hidden')]
+
+
+def agents():
+    """🧑‍💼 저장한 도우미(에이전트) — /api/agents."""
+    return hub_get('/api/agents')
+
+
+def fmt_when(m):
+    at = [('%s %s' % (t['at'], t.get('days') or '')).strip() if t.get('at') else '매 %s' % t.get('every')
+          for t in m.get('triggers') or [] if t.get('type') == 'schedule' and (t.get('at') or t.get('every'))]
+    return ('⏰ ' + ', '.join(at)) if at else '손으로'
+
+
+def tool_chains(args):
+    name = str(args.get('name') or '').strip()
+    rows = [m for m in chains() if not name or name in m.get('name', '') or name in m.get('id', '')]
+    if not rows:
+        return '조건에 맞는 일 순서가 없습니다.' if name else '일 순서가 없습니다.'
+    lines = []
+    for m in rows:
+        last = m.get('last') or {}
+        lines.append('- %s (id %s) · %s · %s · %s%s · 마지막 %s %s' % (
+            m.get('name'), m.get('id'), '켜짐' if m.get('enabled') else '꺼짐', CHAIN_MODES.get(m.get('mode'), m.get('mode') or '자동'),
+            fmt_when(m), ' · 실패해도 계속' if m.get('keep_going') else '', hm(last.get('started')),
+            STATUS.get(last.get('status'), last.get('status') or '') if last else ''))
+        lines += ['    %d. %s' % (i, s) for i, s in enumerate(m.get('chain_names') or m.get('steps') or [], 1)]
+        if name:                                      # 하나를 찍어 물으면 최근 결과도
+            recent = [r for r in history(0, name=m['id'], limit=5) if r.get('macro') == m['id']]
+            lines += ['    최근: ' + fmt_run(r) for r in recent]
+    return '\n'.join(lines)
+
+
+def tool_agents(_args):
+    items = agents()
+    if not items:
+        return '저장한 도우미가 없습니다.'
+    used = {}
+    try:                                              # 어느 일 순서가 이 도우미를 쓰나
+        for m in chains():
+            for s in m.get('chain_raw') or []:
+                if isinstance(s, dict) and s.get('agent'):
+                    used.setdefault(s['agent'], []).append(m.get('name'))
+    except (HubDown, LookupError):
+        pass
+    return '\n'.join('- %s (id %s) · AI %s%s\n    역할: %s' % (
+        a.get('name'), a.get('id'), a.get('engine') or '기본', (' · 쓰는 곳: ' + ', '.join(sorted(set(used[a['id']])))) if used.get(a.get('id')) else '',
+        ' '.join(str(a.get('role') or '').split())[:200]) for a in items)
+
+
 def brief(now=None):
     """아침 한 통 브리핑 (제목, 본문) — 어제 자동화·맡긴 일·답 기다리는 질문·서비스·기능 상태(✖).
     LLM 없이 기록에서 바로 만든다(매일 같은 모양, 사용량 0). 허브가 꺼져 있으면 그 칸만 '허브 응답 없음'.
@@ -251,7 +306,7 @@ def brief(now=None):
     warn = len(fails) + len(bad) + len(asks) + len(xs)
     subject = '아침 브리핑 %d/%d(%s)%s' % (t.tm_mon, t.tm_mday, WEEKDAY[t.tm_wday],
                                        ' — 볼 것 %d건' % warn if warn else ' — 이상 없음')
-    return subject, '\n'.join(lines).rstrip() + '\n\n전체: http://127.0.0.1:8610/ops (이 PC 에서)'
+    return subject, '\n'.join(lines).rstrip() + '\n\n전체: %s/ops (이 PC 에서)' % HUB
 
 
 def tool_brief(_args):
@@ -274,6 +329,9 @@ TOOLS = [
      {'hours': {'type': 'number', 'description': '최근 몇 시간(기본 24, 0 이면 전부)'},
       'text': {'type': 'string', 'description': '이 글자가 든 것만'}, 'limit': {'type': 'integer'}}, tool_instructions),
     ('hub_brief', '아침 브리핑 미리 보기 — 어제 자동화·맡긴 일·답 기다리는 질문·서비스·기능 상태(✖)를 한 번에.', {}, tool_brief),
+    ('hub_chains', '🔗 일 순서 — 켜졌는지·확인 모드·예약·단계 이름·마지막 결과. name 을 주면 그 일 순서의 최근 실행도.',
+     {'name': {'type': 'string', 'description': '일 순서 이름이나 id 일부'}}, tool_chains),
+    ('hub_agents', '🧑‍💼 저장한 도우미(에이전트) — 이름·쓰는 AI·역할 앞부분·쓰는 일 순서.', {}, tool_agents),
 ]
 
 
