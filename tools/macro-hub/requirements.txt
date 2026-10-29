@@ -1,4 +1,4 @@
 playwright
 pywinauto; sys_platform == "win32"
-pystray; sys_platform == "win32"
+pystray; sys_platform == "win32" or sys_platform == "darwin"
 pillow

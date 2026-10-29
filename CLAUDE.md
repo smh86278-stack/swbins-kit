@@ -23,7 +23,8 @@
 - 비밀값은 맥에서 키체인(`keychain:<id>`) — `kit.protect`·`hubutil.seal` 이 알아서 고른다.
 - 윈도우 전용 자동화는 META `"windows_only": True`(맥 목록에서 빠짐), 화면 요소는 `data-winonly`(`<html data-os="mac">` 이면 숨김).
 - 맥 앱 `installer\build_mac.py` → `Taskhand-mac.zip`(실행기는 `tools\macro-hub\mac_launch.py`). 이 PC 에 맥이 없다 —
-  시험은 CI `verify-mac`·`mac-app` 잡으로 본다.
+  시험은 CI `verify-mac`·`mac-app` 잡으로 본다. 메뉴 막대는 `mac_menubar.py`(pystray 맥 백엔드, 주 스레드에서만 — CI 엔 화면이
+  없어 `--check` 로 메뉴까지만 만든다), 로그인 자동 시작은 `mac_launch.set_autostart`(LaunchAgent `com.taskhand.hub`, `--login`).
 
 ## 하지 말 것
 

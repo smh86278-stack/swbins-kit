@@ -9,11 +9,15 @@
 설정·기록(KEEP)은 그대로 둔다(윈도우 설치 파일 installer/install_main.py 와 같은 목록).
 
 한 번 더 누르면: 허브가 돌고 있으면 「열기 / 끄기」를 묻는다.
-    --smoke     CI 시험 — 옮기기·.venv·허브 띄우기·화면 확인·끄기를 대화 상자 없이
+허브를 띄우면 메뉴 막대 아이콘(mac_menubar.py)도 같이 띄운다. 처음 설치 때 「로그인 때 자동 시작」을 켠다
+(~/Library/LaunchAgents/com.taskhand.hub.plist — 윈도우 설치 파일의 로그온 자동 시작과 같게, 메뉴 막대에서 끈다).
+    --smoke     CI 시험 — 옮기기·.venv·허브 띄우기·화면 확인·메뉴 막대·자동 시작 plist 확인·끄기를 대화 상자 없이
+    --login     로그인 때(LaunchAgent) — 대화 상자·브라우저 없이 허브와 메뉴 막대만 띄운다
 """
 import argparse
 import json
 import os
+import plistlib
 import shutil
 import signal
 import socket
@@ -28,6 +32,9 @@ SUPPORT = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support'
 KIT = os.path.join(SUPPORT, 'kit')
 LOGS = os.path.join(os.path.expanduser('~'), 'Library', 'Logs', APP)
 PIDFILE = os.path.join(SUPPORT, 'hub.pid')
+MENU_PIDFILE = os.path.join(SUPPORT, 'menubar.pid')
+LABEL = 'com.taskhand.hub'
+AGENTS = os.path.join(os.path.expanduser('~'), 'Library', 'LaunchAgents')
 # 사용자 설정·기록 — 새 버전으로 바꿀 때 지우지도 덮지도 않는다 (installer/install_main.py KEEP 과 같게 + .venv)
 KEEP = ['config.local.json', 'tools/macro-hub/state.local.json', 'tools/macro-hub/secrets.local.json',
         'tools/macro-hub/runs.jsonl', 'tools/macro-hub/data.local', 'tools/macro-hub/macros.local',
@@ -170,6 +177,80 @@ def stop_hub():
     return True
 
 
+def pid_alive(path):
+    """pid 파일의 프로세스가 살아 있으면 그 pid, 아니면 None."""
+    try:
+        with open(path) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def start_menubar(log):
+    """메뉴 막대 아이콘 — 이미 떠 있으면 그대로. pystray 는 .venv 에만 있어 .venv 파이썬으로 띄운다."""
+    if pid_alive(MENU_PIDFILE):
+        return True
+    if not os.path.isfile(venv_python()):
+        return False
+    p = subprocess.Popen([venv_python(), os.path.join(hub_dir(), 'mac_menubar.py')], cwd=hub_dir(),
+                         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    with open(MENU_PIDFILE, 'w') as f:
+        f.write(str(p.pid))
+    return True
+
+
+def stop_menubar():
+    pid = pid_alive(MENU_PIDFILE)
+    if pid and pid != os.getpid():
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    try:
+        os.remove(MENU_PIDFILE)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------- 로그인 때 자동 시작 (LaunchAgent)
+
+def plist_path(agents=None):
+    return os.path.join(agents or AGENTS, LABEL + '.plist')
+
+
+def plist_bytes(python, kit=None):
+    """로그인 때 `python mac_launch.py --src <kit> --login` 을 한 번 돌리는 LaunchAgent. 허브는 거기서 따로 떠 있다."""
+    kit = kit or KIT
+    return plistlib.dumps({
+        'Label': LABEL,
+        'ProgramArguments': [python, os.path.join(kit, 'tools', 'macro-hub', 'mac_launch.py'), '--src', kit, '--login'],
+        'RunAtLoad': True,
+        'StandardOutPath': os.path.join(LOGS, 'login.log'),
+        'StandardErrorPath': os.path.join(LOGS, 'login.log'),
+    })
+
+
+def autostart_enabled(agents=None):
+    return os.path.isfile(plist_path(agents))
+
+
+def set_autostart(on, python=None, agents=None):
+    """켜면 plist 를 쓰고(다음 로그인부터), 끄면 지운다. 지금 도는 허브는 건드리지 않는다."""
+    path = plist_path(agents)
+    if on:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(plist_bytes(python or sys.executable))
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return autostart_enabled(agents)
+
+
 def dialog(text, buttons=('확인',), default=None):
     """osascript 대화 상자 → 누른 단추 이름(닫으면 '')."""
     btns = '{%s}' % ', '.join(json.dumps(b, ensure_ascii=False) for b in buttons)
@@ -193,13 +274,20 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True, help='.app 안의 키트 폴더')
     ap.add_argument('--smoke', action='store_true', help='CI 시험 — 대화 상자 없이 띄우고 화면을 확인한 뒤 끈다')
+    ap.add_argument('--login', action='store_true', help='로그인 때(LaunchAgent) — 대화 상자·브라우저 없이')
     a = ap.parse_args(argv)
     os.makedirs(LOGS, exist_ok=True)
     os.makedirs(SUPPORT, exist_ok=True)
+    quiet = a.smoke or a.login
 
     if port_open() and not a.smoke:
+        with open(os.path.join(LOGS, 'hub.log'), 'ab') as log:
+            start_menubar(log)                               # 메뉴 막대만 꺼져 있었으면 다시
+        if a.login:
+            return 0
         pick = dialog('Taskhand 허브가 돌고 있습니다.', ('끄기', '열기'), '열기')
         if pick == '끄기':
+            stop_menubar()
             if not stop_hub():
                 dialog('허브를 끄지 못했습니다 — 이 앱이 띄운 허브가 아니면 그 창(터미널)에서 끄세요.')
         elif pick == '열기':
@@ -209,14 +297,15 @@ def main(argv=None):
     with open(os.path.join(LOGS, 'hub.log'), 'ab') as log:
         first = not os.path.isdir(KIT)
         changed = sync(a.src, KIT)
-        if changed and not a.smoke:
+        if changed and not quiet:
             notify('처음 준비 중입니다 — 1~2분 걸릴 수 있어요' if first else '새 버전으로 바꾸는 중입니다')
         venv_ok = ensure_venv(log)
         log.flush()
         pid = start_hub(log, 90 if a.smoke else 30, abort=a.smoke)
+        menu_ok = bool(pid) and not a.smoke and start_menubar(log)
     if not pid:
         msg = '허브를 띄우지 못했습니다 — 기록: ' + os.path.join(LOGS, 'hub.log')
-        if a.smoke:
+        if quiet:
             print(msg)
             return 1
         dialog(msg)
@@ -225,11 +314,28 @@ def main(argv=None):
         with urllib.request.urlopen(url(), timeout=10) as r:
             page = r.read().decode('utf-8', 'replace')
         ok = 'data-os="mac"' in page
-        print('venv', venv_ok, '· 화면', r.status, '· data-os=mac', ok)
+        # 메뉴 막대는 CI 에 화면이 없어 띄우지 않고 .venv 로 불러 메뉴까지 만들어 본다 · 자동 시작 plist 는 plutil 로 검사
+        menu = subprocess.run([venv_python(), os.path.join(hub_dir(), 'mac_menubar.py'), '--check'],
+                              capture_output=True, text=True, timeout=120)
+        tmp = os.path.join(SUPPORT, 'smoke-agents')
+        set_autostart(True, agents=tmp)
+        lint = subprocess.run(['plutil', '-lint', plist_path(tmp)], capture_output=True, text=True)
+        set_autostart(False, agents=tmp)
+        print('venv', venv_ok, '· 화면', r.status, '· data-os=mac', ok,
+              '· 메뉴 막대', menu.returncode == 0, (menu.stdout + menu.stderr).strip()[-300:],
+              '· plist', lint.returncode == 0)
         stop_hub()
-        return 0 if ok and venv_ok else 1
+        return 0 if ok and venv_ok and menu.returncode == 0 and lint.returncode == 0 else 1
+    if first and not autostart_enabled():                    # 처음 설치 — 윈도우처럼 로그인 때 자동 시작을 켠다
+        set_autostart(True)
+        if not a.login:
+            notify('로그인 때 자동으로 켜집니다 — 메뉴 막대 아이콘에서 끌 수 있어요')
+    if a.login:
+        return 0
     if not venv_ok:
         notify('웹 자동화 준비(Playwright 설치)에 실패했습니다 — 허브는 열립니다. 기록: ~/Library/Logs/Taskhand')
+    elif not menu_ok:
+        notify('메뉴 막대 아이콘을 띄우지 못했습니다 — 허브는 열립니다. 기록: ~/Library/Logs/Taskhand')
     subprocess.run(['open', url()])
     return 0
 

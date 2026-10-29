@@ -55,12 +55,14 @@ macOS 11 이상 · [python.org](https://www.python.org/downloads/macos/) 의 Pyt
 - **앱** — [Releases](../../releases/latest) 의 `Taskhand-<버전>-mac.zip` 을 풀어 `Taskhand.app` 을 응용 프로그램 폴더로 옮기고 연다. 서명·공증이 없어 처음 한 번은
   **우클릭 → 열기**. 처음 열면 키트를 `~/Library/Application Support/Taskhand/kit` 로 옮기고 `.venv`(Playwright)를 만든 뒤
   허브(<http://127.0.0.1:8630/>)를 브라우저로 연다. 다시 열면 「열기 / 끄기」를 묻는다. 기록은 `~/Library/Logs/Taskhand/hub.log`.
+  **메뉴 막대 아이콘**(허브 상태 · 열기 · 운영 화면 · 로그인 때 자동 시작 · 다시 띄우기 · 끄기)이 같이 뜨고, 처음 설치 때
+  **로그인 때 자동 시작**을 켠다(`~/Library/LaunchAgents/com.taskhand.hub.plist` — 메뉴 막대에서 끄면 파일이 지워진다).
   앱은 `installer/build_mac.py` 가 만든다 — 릴리스엔 CI 의 mac-app 잡(맥에서 빌드·임시 서명·첫 열기 시험)이 만든 것을 붙인다.
 - **소스로** — `git clone` → `tools/macro-hub/setup.sh` (처음 한 번) → `tools/macro-hub/start.command`.
 
 | 맥에서 되는 것 | 윈도우 전용(맥에선 안 보임) |
 |---|---|
-| 허브 화면·운영 화면 · 웹 자동화(Chrome) · 시각 예약 · 프로세스 트리거 · 일 순서 · AI 도우미(Claude Code·Codex·Gemini·Ollama) · 메일·알림 출구 · 정기 작업(정기 메일·정리·브리핑·감시·백업=rsync) · 나만의 앱(zip·HTML 내보내기) | 데스크톱 자동화(pywinauto 녹화·요소 찍기) · 창 트리거 · 트레이 · 로그온 자동 시작 · 바로가기 · 작업 인박스 워커(PowerShell) · PC 옮기기 · 앱 exe 내보내기 · 화면 펫·허브 전용 창 |
+| 허브 화면·운영 화면 · 웹 자동화(Chrome) · 시각 예약 · 프로세스 트리거 · 일 순서 · AI 도우미(Claude Code·Codex·Gemini·Ollama) · 메일·알림 출구 · 정기 작업(정기 메일·정리·브리핑·감시·백업=rsync) · 나만의 앱(zip·HTML 내보내기) · 메뉴 막대 아이콘 · 로그인 때 자동 시작 | 데스크톱 자동화(pywinauto 녹화·요소 찍기) · 창 트리거 · 바로가기 · 작업 인박스 워커(PowerShell) · PC 옮기기 · 앱 exe 내보내기 · 화면 펫·허브 전용 창 |
 
 비밀번호·비밀값은 DPAPI 대신 **맥 로그인 키체인**(서비스 이름 `Taskhand`)에 들어가고, 설정 파일엔 `keychain:<id>` 표식만 남는다.
 윈도우에서 만든 `config.local.json`·`secrets.local.json` 의 암호화 값은 맥에서 풀리지 않는다 — 맥에서 다시 넣는다.

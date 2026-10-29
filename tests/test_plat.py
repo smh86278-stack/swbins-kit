@@ -100,6 +100,32 @@ class MacSync(unittest.TestCase):
         self.assertEqual(self.read(self.dst, 'tools/macro-hub/macros.local/my.py'), 'mine')
         self.assertTrue(os.path.exists(os.path.join(self.dst, 'tools', 'macro-hub', '.venv', 'bin', 'python3')))
 
+    def test_login_autostart_plist(self):
+        import plistlib
+        agents = os.path.join(self.tmp, 'LaunchAgents')
+        self.assertFalse(mac_launch.autostart_enabled(agents))
+        self.assertTrue(mac_launch.set_autostart(True, python='/usr/bin/python3', agents=agents))
+        with open(mac_launch.plist_path(agents), 'rb') as f:
+            d = plistlib.load(f)
+        self.assertEqual(d['Label'], 'com.taskhand.hub')
+        self.assertTrue(d['RunAtLoad'])
+        args = d['ProgramArguments']
+        self.assertEqual(args[0], '/usr/bin/python3')
+        self.assertTrue(args[1].endswith(os.path.join('tools', 'macro-hub', 'mac_launch.py')))
+        self.assertEqual(args[2:], ['--src', mac_launch.KIT, '--login'])   # 로그인 땐 옮겨 둔 키트에서 — 대화 상자 없이
+        self.assertFalse(mac_launch.set_autostart(False, agents=agents))
+        self.assertFalse(os.path.exists(mac_launch.plist_path(agents)))
+        mac_launch.set_autostart(False, agents=agents)                      # 이미 꺼져 있어도 괜찮다
+
+    def test_menubar_menu(self):
+        import mac_menubar
+        spec = [s for s in mac_menubar.menu_spec() if s]
+        labels = [s[0] for s in spec if isinstance(s[0], str)]
+        self.assertEqual(labels, ['Taskhand 열기', '운영 화면', '로그인 때 자동 시작', '허브 다시 띄우기', '끄기 (허브와 메뉴 막대)'])
+        self.assertEqual([s[0] for s in spec if s[3]], ['Taskhand 열기'])  # 아이콘을 누르면 여는 기본 항목은 하나
+        self.assertTrue(os.path.isfile(mac_menubar.ICON))
+        self.assertIn(mac_menubar.status_text(), ('허브: 도는 중', '허브: 꺼짐'))
+
 
 if __name__ == '__main__':
     unittest.main()
