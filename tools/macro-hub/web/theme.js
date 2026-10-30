@@ -88,7 +88,9 @@ const HubLook = (() => {
     }
     return box;
   }
+  let petNode = null;                                // 페이지의 펫 칸 — 다시 그릴 때 창에서 떼어져도 잃지 않게 붙잡아 둔다
   function draw() {
+    petNode = (opts.pets && document.getElementById(opts.pets)) || petNode;
     panel.replaceChildren();
     panel.append(el('h3', '', '화면 모드'), seg('화면 모드', HubMode.MODES, document.documentElement.dataset.mode, m => HubMode.set(m)));
     panel.append(el('h3', '', '강조색'));
@@ -104,14 +106,13 @@ const HubLook = (() => {
     }
     if (opts.pets) {
       panel.append(el('h3', '', '화면 펫 · 인형'), seg('펫 무대', [['show', '보통'], ['small', '작게'], ['hide', '숨김']], cur.hero, v => save({ hero: v })));
-      const node = document.getElementById(opts.pets);
-      if (node) { node.hidden = false; panel.append(node); }
+      if (petNode) { petNode.hidden = false; panel.append(petNode); }
     }
     if (opts.more) opts.more(panel, el);             // 페이지가 덧붙이는 칸(허브 첫 화면: 펫 소품)
   }
   function close() {
     if (!panel) return;
-    const node = opts.pets && document.getElementById(opts.pets);
+    const node = opts.pets && (document.getElementById(opts.pets) || petNode);
     if (node) { node.hidden = true; document.body.append(node); }   // 펫 칸은 페이지 것 — 창을 닫아도 남겨 둔다(id 로 찾는 코드가 있다)
     panel.remove(); panel = null;
     if (anchor) anchor.setAttribute('aria-expanded', 'false');
