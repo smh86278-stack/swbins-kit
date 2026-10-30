@@ -135,7 +135,7 @@ def face_icon(skin_dir, kind, size=64, breed=None):
 
 
 def app_icon(image_path, ico_path, sizes=(16, 24, 32, 48, 64, 128, 256)):
-    """캐릭터 그림 한 장 → 앱 아이콘(.ico, 여러 크기). 트레이와 같은 '밝은 원 위 얼굴' — 허브는 인형 시바(web\skins\plush\dog-shiba.webp)."""
+    r"""캐릭터 그림 한 장 → 앱 아이콘(.ico, 여러 크기). 트레이와 같은 '밝은 원 위 얼굴' — 허브는 인형 시바(web\skins\plush\dog-shiba.webp)."""
     img = Image.open(image_path).convert('RGBA')
     face = _face(img)
     if not face:
