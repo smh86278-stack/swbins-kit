@@ -32,19 +32,19 @@ class PetExtras(unittest.TestCase):
             macrohub.state['petx'] = self.saved
 
     def test_default_is_season_on_no_accessory(self):
-        self.assertEqual(macrohub.petx(), {'season': True, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
+        self.assertEqual(macrohub.petx(), {'season': True, 'grow': True, 'snack_ai': True, 'snack_prompt': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
 
     def test_clean_keeps_missing_keys(self):
         macrohub.state['petx'] = {'season': False, 'acc': {'dog': 'crown'}}
         px, err = macrohub.clean_petx({'acc': {'cat': 'ribbon'}})
         self.assertIsNone(err)
-        self.assertEqual(px, {'season': False, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'crown', 'cat': 'ribbon'}})
+        self.assertEqual(px, {'season': False, 'grow': True, 'snack_ai': True, 'snack_prompt': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'crown', 'cat': 'ribbon'}})
 
     def test_rejects_unknown_accessory_and_ignores_unknown_kind(self):
         self.assertIsNone(macrohub.clean_petx({'acc': {'dog': '<svg>'}})[0])
         px, err = macrohub.clean_petx({'acc': {'bird': 'crown'}, 'season': 0})
         self.assertIsNone(err)
-        self.assertEqual(px, {'season': False, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
+        self.assertEqual(px, {'season': False, 'grow': True, 'snack_ai': True, 'snack_prompt': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
 
     def test_old_bad_values_fall_back(self):
         macrohub.state['petx'] = {'acc': {'dog': 'gone', 'cat': 'glasses'}}

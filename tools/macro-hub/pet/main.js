@@ -117,6 +117,8 @@ async function showMenu() {
   const lv = px && px.lv, level = lv ? lv.level : 1, grow = !!(px && px.grow !== false);
   const locked = id => grow && ((px.unlock || {})[id] || 0) > level;
   const lvLine = grow && lv ? [{ label: 'Lv.' + level + ' · 간식 ' + lv.snacks + '개' + (lv.next ? '  (다음 레벨까지 ' + (lv.next - lv.snacks) + '개)' : ''), enabled: false }] : [];
+  const src = lv && lv.src;                                // 간식을 어디서 받았나 — 자동화 말고 받은 게 있을 때만 한 줄
+  if (grow && src && (src.ai || src.prompt)) lvLine.push({ label: [['자동화', src.auto], ['AI 커밋', src.ai], ['좋은 프롬프트', src.prompt]].filter(x => x[1]).map(x => x[0] + ' ' + x[1]).join(' · '), enabled: false });
   const accMenu = px ? [{
     label: '소품 · 말풍선', submenu: [
       ...lvLine,

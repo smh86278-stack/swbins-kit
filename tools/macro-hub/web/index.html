@@ -702,9 +702,9 @@ async function loadSkins(){
 // 꾸미기 — 펫 소품·계절(허브 state 'petx'). 화면 펫·메신저도 같이 바뀐다(web/pets.js PetAcc)
 function petLook(panel,el){
   const c=PetAcc.conf;panel.append(el('h3','','펫 소품'));
-  const lv=PetAcc.lvText();if(lv)panel.append(el('p','lnote',lv));
+  const lv=PetAcc.lvText(),src=PetAcc.srcText();if(lv)panel.append(el('p','lnote',lv+(src?' — '+src:'')));
   const r1=el('div','lrow');
-  for(const [key,txt] of [['season','계절 소품 자동 (달마다 · 설·추석·할로윈·크리스마스)'],['grow','키우기 (성공하면 간식 · 레벨로 소품이 풀림)'],['bubble','말풍선 (화면 펫 — 예약 곧·실패·메신저·주간 소식)']]){
+  for(const [key,txt] of [['season','계절 소품 자동 (달마다 · 설·추석·할로윈·크리스마스)'],['grow','키우기 (성공하면 간식 · 레벨로 소품이 풀림)'],['snack_ai','간식: AI 와 함께 끝낸 커밋 (하루 5개까지)'],['snack_prompt','간식: 잘 쓴 첫 프롬프트 (💡 없이 통과, 하루 3개까지)'],['bubble','말풍선 (화면 펫 — 예약 곧·실패·메신저·주간 소식)']]){
     const l=el('label'),cb=el('input');cb.type='checkbox';cb.checked=!!c[key];
     cb.onchange=()=>api('/api/petx',{[key]:cb.checked}).catch(x=>toast(x.message));l.append(cb,txt);r1.append(l)}
   const r2=el('div','lrow');

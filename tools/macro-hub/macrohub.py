@@ -68,6 +68,7 @@ _spec.loader.exec_module(pl)
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
 import petgrow  # noqa: E402  (화면 펫 키우기 — 간식·레벨)
+import petsnack  # noqa: E402  (펫 간식 더 — AI 커밋·좋은 프롬프트 찾기)
 import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
 import apphistory  # noqa: E402  (✨ 앱 버전·되돌리기)
 import apppack  # noqa: E402  (✨ 앱 내보내기·가져오기 — zip · HTML 한 장 · exe)
@@ -184,6 +185,7 @@ def petx():
     px = state.get('petx') or {}
     acc = dict({'dog': 'none', 'cat': 'none'}, **{k: v for k, v in (px.get('acc') or {}).items() if k in ('dog', 'cat')})
     return {'season': px.get('season', True) is not False, 'grow': px.get('grow', True) is not False,
+            'snack_ai': px.get('snack_ai', True) is not False, 'snack_prompt': px.get('snack_prompt', True) is not False,
             'bubble': px.get('bubble', True) is not False, 'quiet': px.get('quiet') if px.get('quiet') in PET_QUIET else 'none',
             'acc': {k: (v if v in PET_ACCS else 'none') for k, v in acc.items()}}
 
@@ -206,7 +208,7 @@ def clean_petx(body):
     """POST /api/petx 의 값 검사 — (새 petx, 오류). 빠진 키는 그대로 둔다."""
     cur = petx()
     body = body or {}
-    for key in ('season', 'grow', 'bubble'):
+    for key in ('season', 'grow', 'snack_ai', 'snack_prompt', 'bubble'):
         if key in body:
             cur[key] = bool(body[key])
     if 'quiet' in body:
@@ -363,6 +365,70 @@ def grow_watch():
                 _grow_event(gained, up, why='새 자동화')
         except Exception as e:  # 감시는 죽지 않는다
             print('grow_watch 오류:', e, file=sys.stderr)
+
+
+F_PROMPT_RULES = os.path.join(HERE, '..', 'ai-share-agent', 'prompt_rules.py')
+SNACK_EVERY = 600                             # AI 커밋·좋은 프롬프트는 10분마다 본다
+
+
+def snack_sources():
+    """AI 커밋을 볼 레포 · 내 git 이름 · 대화 기록 폴더 — AI 작업 회고 설정(config.local.json ai_share)을 따른다.
+    레포 = 회고가 켜져 있으면 ai_share.repos(비면 workspace_root 의 서브모듈, 없으면 그 레포) + 허브 레포, 꺼져 있으면 허브 레포만.
+    폴더 = ai_share.transcripts_dir 를 정해 두었으면 그것만, 아니면 ~/.claude/projects/* 전부."""
+    cfg = kit.section('ai_share', {}) or {}
+    if not cfg.get('enabled'):
+        cfg = {}
+    repos = []
+    for p in cfg.get('repos') or []:
+        p = kit.expand(str(p)) if str(p).strip() else ''
+        if p and os.path.exists(os.path.join(p, '.git')):
+            repos.append(os.path.normpath(p))
+    root = kit.expand(str(cfg.get('workspace_root') or '')) if str(cfg.get('workspace_root') or '').strip() else ''
+    if not repos and root and os.path.isdir(root):
+        repos = petsnack.submodule_repos(root) or ([os.path.normpath(root)] if os.path.exists(os.path.join(root, '.git')) else [])
+    top = petsnack.git_top(HERE)
+    if top and os.path.normcase(top) not in {os.path.normcase(r) for r in repos}:
+        repos.append(top)
+    authors = petsnack.my_authors(top or HERE, cfg.get('my_authors') or [])
+    td = str(cfg.get('transcripts_dir') or '').strip()
+    dirs = [kit.expand(td)] if td else petsnack.default_dirs()
+    return repos, authors, dirs
+
+
+def snack_check(now=None):
+    """한 번 둘러보기 — 키우기·갈래를 꺼 두면 그 갈래는 안 센다(기준 시각만 옮김)."""
+    if GROW is None:
+        return
+    now = now or datetime.datetime.now()
+    px = petx()
+    repos, authors, dirs = snack_sources()
+    rules = petsnack.load_rules(F_PROMPT_RULES)
+    total, up = 0, False
+    for src, on in (('ai', px['grow'] and px['snack_ai']), ('prompt', px['grow'] and px['snack_prompt'] and rules)):
+        if not on:
+            with lock:
+                petsnack.pause(GROW, src, now)
+            continue
+        # git·파일을 읽는 동안은 잠그지 않고, GROW 를 바꿀 때만 잡는다(guard)
+        if src == 'ai':
+            n, u = petsnack.check_ai(GROW, repos, authors, now, petgrow.on_extra, guard=lock)
+        else:
+            n, u = petsnack.check_prompts(GROW, dirs, rules, now, petgrow.on_extra, petgrow.mark, guard=lock)
+        total, up = total + n, up or u
+    with lock:
+        petgrow.prune_extra(GROW, now)
+    _grow_event(total, up, why='AI 커밋·좋은 프롬프트')
+
+
+def snack_watch():
+    """AI 커밋·좋은 프롬프트 — 허브가 뜨고 1분 뒤 한 번(처음이면 지난 7일로 채움), 그 뒤 10분마다."""
+    time.sleep(60)
+    while True:
+        try:
+            snack_check()
+        except Exception as e:  # 감시는 죽지 않는다
+            print('snack_watch 오류:', e, file=sys.stderr)
+        time.sleep(SNACK_EVERY)
 
 
 def render_page(path):
@@ -2661,6 +2727,7 @@ def start_services(host='127.0.0.1', port=8630):
     except Exception as e:
         print('펫 키우기 기록을 못 읽었습니다:', e, file=sys.stderr)
     threading.Thread(target=grow_watch, daemon=True).start()
+    threading.Thread(target=snack_watch, daemon=True).start()
 
     start_apphost(port)
 

@@ -218,13 +218,15 @@ window.PetAcc = {
     chuseok: {2026: '09-25', 2027: '09-15', 2028: '10-03', 2029: '09-22', 2030: '09-12', 2031: '10-01', 2032: '09-19'},
   },
   // bubble: 말풍선(쪽지) 켬 · quiet: 조용히 시간(none·lunch·night·both) — 데스크톱 펫(pet.html)이 쓴다
-  // grow: 키우기(간식·레벨) 켬 · lv: 허브 petgrow.view {snacks, level, floor, next, week, prev_week} · unlock: 소품이 풀리는 레벨
-  conf: {season: true, grow: true, bubble: true, quiet: 'none', acc: {dog: 'none', cat: 'none'}, lv: null, unlock: {}},
+  // grow: 키우기(간식·레벨) 켬 · lv: 허브 petgrow.view {snacks, level, floor, next, week, prev_week, src} · unlock: 소품이 풀리는 레벨
+  // snack_ai · snack_prompt: 간식 갈래(AI 커밋 · 좋은 프롬프트) 켬 — 허브 petsnack.py
+  conf: {season: true, grow: true, snack_ai: true, snack_prompt: true, bubble: true, quiet: 'none', acc: {dog: 'none', cat: 'none'}, lv: null, unlock: {}},
   force: {},                                                 // 미리 보기(주소의 ?season= · ?acc= · ?level=)
   set(c){                                                    // 허브 설정을 받는다(빠진 키는 그대로) — 바뀌었으면 true(그리는 쪽은 key 로 알아챈다)
     if (!c) return false;
     const has = k => Object.prototype.hasOwnProperty.call(c, k), cur = this.conf;
     const next = {season: has('season') ? c.season !== false : cur.season, grow: has('grow') ? c.grow !== false : cur.grow,
+      snack_ai: has('snack_ai') ? c.snack_ai !== false : cur.snack_ai, snack_prompt: has('snack_prompt') ? c.snack_prompt !== false : cur.snack_prompt,
       bubble: has('bubble') ? c.bubble !== false : cur.bubble, quiet: has('quiet') ? c.quiet || 'none' : cur.quiet,
       acc: has('acc') ? Object.assign({dog: 'none', cat: 'none'}, c.acc || {}) : cur.acc, lv: c.lv || cur.lv, unlock: c.unlock || cur.unlock};
     const changed = JSON.stringify(next) !== JSON.stringify(cur);
@@ -237,6 +239,11 @@ window.PetAcc = {
     const v = this.conf.lv;
     if (!this.conf.grow || !v) return '';
     return 'Lv.' + this.level() + ' · 간식 ' + v.snacks + '개' + (v.next ? ' (다음까지 ' + (v.next - v.snacks) + ')' : '');
+  },
+  srcText(){                                                 // 간식을 어디서 받았나 — 「자동화 6 · AI 커밋 2 · 좋은 프롬프트 1」(자동화 말고 받은 게 없으면 빈 글)
+    const s = this.conf.lv && this.conf.lv.src;
+    if (!this.conf.grow || !s || !(s.ai || s.prompt)) return '';
+    return [['자동화', s.auto], ['AI 커밋', s.ai], ['좋은 프롬프트', s.prompt]].filter(x => x[1]).map(x => x[0] + ' ' + x[1]).join(' · ');
   },
   unlockedAt(lv){ const e = Object.entries(this.conf.unlock).find(([, n]) => n === lv); return e ? (this.LIST.find(x => x[0] === e[0]) || [])[1] : null; },
   seasonOf(d){                                               // 이 날의 계절 id — 음력 창 > 날짜 창 > 달 기본(위 SEASONS 설명)
