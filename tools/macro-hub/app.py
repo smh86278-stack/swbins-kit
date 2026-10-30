@@ -641,7 +641,8 @@ def refresh(icon):
            tuple(os.path.exists(paused_flag(m)) for m in services()),
            tuple(extsvc.port_open(s['port'], timeout=0.2) for s in cfg['services'] if s.get('port') != PORT),
            tuple(watcher_status(w)[0] for w in cfg['watchers']),       # 메뉴에 보이는 서버·도구 상태가 바뀌면 다시 그린다
-           os.path.getmtime(SERVICES_JSON) if os.path.exists(SERVICES_JSON) else 0)   # services.json 을 고치면 바로 반영
+           os.path.getmtime(SERVICES_JSON) if os.path.exists(SERVICES_JSON) else 0,   # services.json 을 고치면 바로 반영
+           bool(hub.state.get('pet')), bool(hub.pet_pids()))   # 화면 펫 켜기·끄기(트레이·허브 화면·펫 메뉴 어디서든) — 빠져 있어 체크가 안 바뀌었다
     if sig != _last['sig']:
         _last['sig'] = sig
         log('상태: %s — %s' % (kind, text))
