@@ -80,7 +80,9 @@ window.PetSkin = {
     try {
       const r = await fetch(this.BASE + 'skin/' + encodeURIComponent(id) + '/skin.json');
       if (!r.ok) return null;
-      const m = await r.json(); m._id = id; m._cache = {}; this.applyBreed(m, breed); return m;
+      const m = await r.json(); m._id = id; m._cache = {}; this.applyBreed(m, breed);
+      if (window.PetAcc) await PetAcc.loadImgs(m);             // 인형 질감 소품 그림(acc_img) — 그리기 전에 다 받아 둔다
+      return m;
     } catch (e) { return null; }
   },
   /* 품종: skin.json 의 "breeds": {"dog": {"shiba": {"name": "시바", "alert": "dog-shiba.webp", "sleep": ...}}, "cat": {...}}
@@ -276,17 +278,58 @@ window.PetAcc = {
     // t: 모자가 머리에 파고드는 깊이의 잣대 — 머리 폭, 단 정수리~눈이 짧으면(쫑긋한 귀 사이 이마가 낮은 고양이) 그만큼 얕게 해 눈을 안 가린다
     return {ex, ey, ed, ang, c, hw, t: Math.min(hw, (ey - c) * 2.1), cy: P(ch[0]), cw: P(ch[1])};
   },
+  /* 인형 질감 소품 그림(2026-10-30, SDXL 로 만든 webp — web/skins/_source/plush/acc_gen.py·acc_pick.py). 스킨 폴더의 acc-<id>.webp 와
+     skin.json "acc_img": {id: {w: 소품 단위 폭, ax·ay: 그림 안 원점(0~1, 기본 .5·1 = 아래 가운데 — 모자의 챙 선·핀의 꽂는 자리), rot·s: 더 돌리기·키우기}}.
+     자리(at)는 SVG 와 같다 — 그림이 있는 소품은 SVG 대신 그 자리에 그림을 넣는다. 둘로 된 소품은 {parts: [id, id]}(at 부르는 순서대로).
+     SVG 를 그림(Image)으로 그릴 때는 바깥 파일을 못 읽으니 data: 주소로 받아 둔다(load 가 기다린다) */
+  img: {},
+  async loadImgs(manifest){
+    const meta = (manifest && manifest.acc_img) || {}, base = PetSkin.BASE + 'skin/' + encodeURIComponent(manifest._id) + '/', img = {};
+    await Promise.all(Object.entries(meta).filter(([, o]) => !o.parts).map(async ([id, o]) => {
+      try {
+        const r = await fetch(base + 'acc-' + id + '.webp');
+        if (!r.ok) return;
+        const blob = await r.blob();
+        const src = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+        const im = await new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+        if (!im || !im.naturalWidth) return;
+        const w = +o.w || 24;
+        img[id] = {src, w, h: w * im.naturalHeight / im.naturalWidth, ax: o.ax != null ? +o.ax : 0.5, ay: o.ay != null ? +o.ay : 1, rot: +o.rot || 0, s: +o.s || 1};
+      } catch (e) { /* 그림이 없으면 SVG */ }
+    }));
+    for (const [id, o] of Object.entries(meta)) if (o.parts && o.parts.every(p => img[p])) img[id] = {parts: o.parts.map(p => img[p])};
+    this.img = img;
+  },
   svg(id, rig){                                              // 소품 SVG(그물 변형 텍스처와 같은 칸: 가로 0~100, 세로 -20~100 — 위쪽 20 은 머리 위 여유)
     const f = id && rig && (rig.neck || rig.eyes) && this.ART[id];
     if (!f) return null;
-    const g = this.geom(rig), r = v => Math.round(v * 100) / 100;
-    const o = (rig.acc && rig.acc[id]) || {}, dx = +o.dx || 0, dy = +o.dy || 0, sm = +o.s > 0 ? +o.s : 1;   // 품종·소품마다 손으로 맞춘 자리(skin.json rig.acc)
+    if (this.img[id] && !this.useSvg) return this.svgImg(id, rig, f);
+    return this.svgArt(id, rig, f);
+  },
+  svgImg(id, rig, f){                                        // 그림 소품: ART 가 부르는 at(...) 자리만 받아 적고, 그 자리에 그림을 넣는다
+    const parts = this.img[id].parts || [this.img[id]], r = v => Math.round(v * 100) / 100;
+    let k = 0, body = '';
+    const at = this.place(id, rig);
+    f(this.geom(rig), (x, y, rot, s) => {
+      const p = parts[Math.min(k++, parts.length - 1)];
+      body += at(x, y, (rot || 0) + p.rot, s * p.s, p.h * p.ay) +
+        `<image href="${p.src}" x="${r(-p.ax * p.w)}" y="${r(-p.ay * p.h)}" width="${r(p.w)}" height="${r(p.h)}"/></g>`;
+      return '';
+    });
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="480" viewBox="0 -20 100 120">' + body + '</svg>';
+  },
+  place(id, rig){                                            // at(x, y, 회전, 배율, 윗끝) — 품종·소품마다 손으로 맞춘 자리(skin.json rig.acc)를 더한다
+    const r = v => Math.round(v * 100) / 100;
+    const o = (rig.acc && rig.acc[id]) || {}, dx = +o.dx || 0, dy = +o.dy || 0, sm = +o.s > 0 ? +o.s : 1;
     // top: 소품 원점에서 윗끝까지(소품 단위) — 키운 모자가 캔버스 위(-20)를 넘지 않게 줄인다
-    const at = (x, y, rot, s, top) => {
+    return (x, y, rot, s, top) => {
       s *= sm; y += dy;
       if (top && y - top * s < -19) s = Math.max(0.2, (y + 19) / top);
-      return `<g transform="translate(${r(x + dx)} ${r(y)}) rotate(${rot || 0}) scale(${r(s)})">`;
+      return `<g transform="translate(${r(x + dx)} ${r(y)}) rotate(${r(rot || 0)}) scale(${r(s)})">`;
     };
+  },
+  svgArt(id, rig, f){
+    const g = this.geom(rig), at = this.place(id, rig);
     return '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="480" viewBox="0 -20 100 120">' +
       '<g stroke="#3b302a" stroke-width=".55" stroke-linejoin="round" stroke-linecap="round">' + f(g, at) + '</g></svg>';
   },

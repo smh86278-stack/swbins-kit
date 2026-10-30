@@ -2,7 +2,7 @@
      ?state=sleep    잠자는 그림으로(같은 틀)          ?marks=1  잰 자리(눈·정수리·머리 폭·목 선)를 표시
      ?acc=glasses,beret  보일 소품만                   ?kind=cat  강아지·고양이 한쪽만
      ?size=150  칸 크기(px)                            ?shot=1  화면 찍기용(위 칸 없이)
-     ?breeds=shiba,maltese,cream  보일 품종만(계절 소품을 대표 품종으로만 볼 때)
+     ?breeds=shiba,maltese,cream  보일 품종만(계절 소품을 대표 품종으로만 볼 때)      ?svg=1  인형 그림 대신 옛 SVG 소품으로
    맞추기: 칸을 누르면 고른다 → 끌면 옮기고, 휠로 크기 → 위 칸에 skin.json 의 rig.acc 로 붙일 JSON 이 나온다(「복사」).
    「자동 측정」: 그림의 투명도·어두운 눈동자로 rig 의 eyes·crown·head·chin 을 다시 잰다(눈을 못 찾으면 EYES_MANUAL). */
 window.PetLab = {
@@ -81,6 +81,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const q = new URLSearchParams(location.search), S = +(q.get('size') || 110), PAD = window.PetWarp ? PetWarp.PAD : 0.2;
   const skinId = q.get('skin') || PetSkin.DEFAULT;
   const m = await (await fetch('/skin/' + encodeURIComponent(skinId) + '/skin.json')).json();
+  m._id = skinId; await PetAcc.loadImgs(m);                  // 인형 질감 소품 그림 — ?svg=1 이면 옛 SVG 로 견준다
+  if (q.get('svg')) PetAcc.useSvg = true;
   const accs = (q.get('acc') || Object.keys(PetAcc.ART).join(',')).split(',').filter(a => PetAcc.ART[a]);
   const kinds = q.get('kind') ? [q.get('kind')] : ['dog', 'cat'];
   const tune = {};                                           // 'dog:shiba' → {glasses: {dx, dy, s}} (손으로 맞춘 것)

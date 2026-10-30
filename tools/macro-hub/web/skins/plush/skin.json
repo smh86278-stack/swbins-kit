@@ -1,5 +1,30 @@
 {
  "name": "인형 (AI 생성)",
+ "acc_img_note": "인형 질감 소품 그림 acc-<id>.webp 의 크기·원점(소품 단위 폭 w, 그림 안 원점 ax·ay 0~1) — web/pets.js PetAcc.loadImgs. 없는 소품(목도리·안경·베레모·선글라스)은 SVG",
+ "acc_img": {
+  "ribbon": {"w": 28, "ay": 0.5},
+  "bowtie": {"w": 22, "ay": 0.5},
+  "crown": {"w": 26, "ay": 0.9},
+  "pumpkin": {"w": 30, "ay": 0.88},
+  "witch": {"w": 36, "ay": 0.88},
+  "santa": {"w": 30, "ay": 0.8},
+  "blossom": {"w": 26, "ay": 0.5},
+  "pouch": {"w": 26, "ay": 0.05},
+  "saekdong": {"w": 28, "ay": 0.5},
+  "seollal": {"parts": ["pouch", "saekdong"]},
+  "heart": {"w": 20, "ay": 0.5},
+  "sprout": {"w": 18, "ay": 0.95},
+  "umbrella": {"w": 36, "ay": 0.5},
+  "balloon": {"w": 24, "ay": 0.55},
+  "carnation": {"w": 16, "ay": 0.4},
+  "raincap": {"w": 32, "ay": 0.85},
+  "straw": {"w": 36, "ay": 0.75},
+  "songpyeon": {"w": 26, "ay": 0.5},
+  "dragonfly": {"w": 24, "ay": 0.5},
+  "maple": {"w": 22, "ay": 0.55},
+  "beanie": {"w": 30, "ay": 0.88},
+  "pepero": {"w": 22, "ay": 0.5, "rot": -20}
+ },
  "breeds": {
   "dog": {
    "shiba": {
