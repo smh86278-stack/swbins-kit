@@ -498,6 +498,119 @@ def agent_state_label(it):
         return 'none', '완료'
     return 'none', '' if st is None else str(st)
 
+# ---------------------------------------------------------------- 자동화 실적 (발표·면담용 숫자)
+#
+# 추정치는 넣지 않는다 — 기록에 있는 것만 센다.
+#   inbox/jobs/*.json            인박스 워커가 Claude 로 처리한 일(메일·대화 화면 지시, 이슈 감시 자동)
+#   tools/macro-hub/runs.jsonl   허브가 돌린 예약 작업·서비스 실행(사람이 누른 실행·도구 실행은 뺌)
+
+JOB_SOURCE_LABEL = {'mail': '메일·대화 화면 지시', 'jira': '이슈 감시 자동', 'jira-watch': '이슈 감시 자동',
+                    'hub': '허브', 'web': '웹 화면'}
+
+
+def _job_time(s):
+    try:
+        return datetime.datetime.strptime(str(s)[:19].replace('T', ' '), '%Y-%m-%d %H:%M:%S')
+    except (TypeError, ValueError):
+        return None
+
+
+def automation_stats(jobs_dir=None, runs_path=None, wiki=None):
+    jobs_dir = jobs_dir or os.path.join(ROOT, 'inbox', 'jobs')
+    runs_path = runs_path or os.path.join(HERE, 'runs.jsonl')
+    jobs = []
+    try:
+        names = [n for n in os.listdir(jobs_dir) if n.endswith('.json')]
+    except OSError:
+        names = []
+    for n in names:
+        j = _read_json(os.path.join(jobs_dir, n))
+        if isinstance(j, dict) and j.get('id'):
+            jobs.append(j)
+    status = {}
+    by_src, by_month, by_mode = {}, {}, {'read': 0, 'write': 0}
+    durs, cost, threads, issues, retries, browser = [], 0.0, set(), set(), 0, 0
+    first = last = None
+    for j in jobs:
+        st = j.get('status') or '?'
+        status[st] = status.get(st, 0) + 1
+        lab = JOB_SOURCE_LABEL.get(j.get('source'), j.get('source') or '기타')
+        by_src[lab] = by_src.get(lab, 0) + 1
+        t = _job_time(j.get('created_at'))
+        if t:
+            by_month[t.strftime('%Y-%m')] = by_month.get(t.strftime('%Y-%m'), 0) + 1
+            first = min(first, t) if first else t
+            last = max(last, t) if last else t
+        by_mode['write' if j.get('mode') == 'write' else 'read'] += 1
+        if st == 'done' and isinstance(j.get('duration_ms'), (int, float)) and j['duration_ms'] > 0:
+            durs.append(j['duration_ms'] / 1000.0)
+        if isinstance(j.get('cost_usd'), (int, float)):
+            cost += j['cost_usd']
+        if j.get('thread'):
+            threads.add(j['thread'])
+        if j.get('jira_key'):
+            issues.add(j['jira_key'])
+        if j.get('retry_of'):
+            retries += 1
+        if any(str(x).startswith('mcp__browser') for x in j.get('allowed_tools') or []):
+            browser += 1
+    finished = status.get('done', 0) + status.get('error', 0)
+    durs.sort()
+    runs, run_ok, by_macro, run_first = 0, 0, {}, None
+    try:
+        with open(runs_path, encoding='utf-8') as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(r, dict) or r.get('tool') or r.get('trigger') in ('manual', 'test'):
+                    continue                                   # 사람이 누른 것·도구 실행은 '자동' 이 아니다
+                runs += 1
+                run_ok += r.get('status') == 'ok'
+                m = r.get('name') or r.get('macro') or '?'
+                by_macro[m] = by_macro.get(m, 0) + 1
+                if isinstance(r.get('started'), (int, float)) and not run_first:
+                    run_first = r['started']
+    except OSError:
+        pass
+    return {
+        'jobs': {'total': len(jobs), 'status': status, 'success_pct': round(100.0 * status.get('done', 0) / finished, 1) if finished else None,
+                 'by_source': by_src, 'by_month': dict(sorted(by_month.items())), 'by_mode': by_mode,
+                 'threads': len(threads), 'issues': len(issues), 'retries': retries, 'browser_jobs': browser,
+                 'claude_hours': round(sum(durs) / 3600.0, 1), 'median_sec': int(durs[len(durs) // 2]) if durs else None,
+                 'cost_usd': round(cost, 2), 'first': first.strftime('%Y-%m-%d') if first else None,
+                 'last': last.strftime('%Y-%m-%d') if last else None},
+        'hub_runs': {'total': runs, 'ok_pct': round(100.0 * run_ok / runs, 1) if runs else None,
+                     'top': sorted(by_macro.items(), key=lambda x: -x[1])[:8],
+                     'since': datetime.datetime.fromtimestamp(run_first / 1000).strftime('%Y-%m-%d') if run_first else None},
+        'ai_share': ai_share_stats(wiki),
+    }
+
+
+def ai_share_stats(wiki=None):
+    """AI 작업 회고(tools\\ai-share-agent)가 마지막 수집 때 남긴 '내' AI 활용 지표 — 없으면 None.
+    stats.json 은 사람별 {commits, ai(AI 공동작성), mrs, bot_mrs(AI 리뷰 지적 있는 MR)}. 팀원 숫자는 여기 보이지 않는다.
+    wiki 는 ai_share.wiki_dir(비면 data.local\\ai_share\\wiki) — 회고 화면과 같은 곳."""
+    if wiki is None:
+        import kit
+        w = str((kit.section('ai_share', {}) or {}).get('wiki_dir') or '').strip()
+        wiki = kit.expand(w) if w else os.path.join(kit.DATA, 'ai_share', 'wiki')
+    path = os.path.join(wiki, '_raw', 'stats.json')
+    stats, me = _read_json(path), _read_json(os.path.join(wiki, '_raw', 'me.json'))
+    if not isinstance(stats, dict) or not isinstance(me, dict):
+        return None
+    names = [me.get('display'), me.get('name')] + list(me.get('authors') or [])
+    mine = {'commits': 0, 'ai': 0, 'mrs': 0, 'bot_mrs': 0}
+    for n in {x for x in names if x}:
+        for k in mine:
+            v = (stats.get(n) or {}).get(k)
+            mine[k] += v if isinstance(v, int) else 0
+    mine.update(who=me.get('display') or me.get('name') or '',
+                ai_pct=round(100.0 * mine['ai'] / mine['commits'], 1) if mine['commits'] else None,
+                collected=datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M'))
+    return mine
+
 
 # ---------------------------------------------------------------- 지시 실행 기록 (감사 — 메일 게이트웨이 audit_jobs 가 쓴다)
 

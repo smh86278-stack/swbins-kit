@@ -177,6 +177,97 @@ class HideUnused(unittest.TestCase):
         self.assertEqual(macrohub.hidden_ids(), set())
 
 
+class HideDefault(unittest.TestCase):
+    """운영 화면 📈 자동화 실적 — 처음 한 번만 숨기고, 다시 보이게 한 것은 되돌리지 않는다."""
+
+    def test_seed_once(self):
+        import shutil
+        import tempfile
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        f = os.path.join(tmp, 'state.local.json')
+        with open(f, 'w', encoding='utf-8') as fp:
+            json.dump({'enabled': {}, 'hidden': ['tool:record']}, fp)
+        st = {'enabled': {}}
+        with mock.patch.object(macrohub, 'F_STATE', f), mock.patch.object(macrohub, 'state', st):
+            macrohub.load_state()
+            self.assertEqual(st['hidden'], ['nav:stats', 'tool:record'])
+            st['hidden'] = ['tool:record']                       # 사용자가 다시 보이게 했다 → 저장
+            macrohub.save_state()
+            st.clear()
+            st['enabled'] = {}
+            macrohub.load_state()
+            self.assertEqual(st['hidden'], ['tool:record'])      # 다시 숨기지 않는다
+        self.assertIn('nav:stats', macrohub.HIDE_TOOLS)          # 허브 「고급 도구」에서 숨기기/다시 보이기
+
+
+class AutomationStats(unittest.TestCase):
+    """📈 자동화 실적 — inbox/jobs · runs.jsonl · AI 작업 회고 stats.json 에 있는 숫자만 센다."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.jobs = os.path.join(self.tmp, 'jobs')
+        os.makedirs(self.jobs)
+        for i, j in enumerate([
+                {'id': 'a', 'source': 'mail', 'status': 'done', 'created_at': '2026-10-01 09:00:00', 'duration_ms': 60000,
+                 'cost_usd': 0.5, 'thread': 1, 'mode': 'write'},
+                {'id': 'b', 'source': 'jira', 'status': 'done', 'created_at': '2026-10-02 09:00:00', 'duration_ms': 120000,
+                 'jira_key': 'ABC-1', 'allowed_tools': ['mcp__browser__open']},
+                {'id': 'c', 'source': 'mail', 'status': 'error', 'created_at': '2026-11-01 09:00:00', 'retry_of': 'a', 'thread': 1},
+                {'no_id': True}]):
+            with open(os.path.join(self.jobs, '%d.json' % i), 'w', encoding='utf-8') as f:
+                json.dump(j, f)
+        self.runs = os.path.join(self.tmp, 'runs.jsonl')
+        with open(self.runs, 'w', encoding='utf-8') as f:
+            for r in [{'name': '백업', 'trigger': 'schedule', 'status': 'ok', 'started': 1790000000000},
+                      {'name': '백업', 'trigger': 'schedule', 'status': 'fail', 'started': 1790000100000},
+                      {'name': '감시', 'trigger': 'service', 'status': 'ok', 'started': 1790000200000},
+                      {'name': '백업', 'trigger': 'manual', 'status': 'ok'},          # 사람이 누른 것 — 빼고
+                      {'name': '도구', 'trigger': 'schedule', 'tool': True}]:          # 도구 실행 — 빼고
+                f.write(json.dumps(r, ensure_ascii=False) + '\n')
+            f.write('깨진 줄\n')
+
+    def test_counts(self):
+        import ops
+        v = ops.automation_stats(self.jobs, self.runs, wiki=os.path.join(self.tmp, 'wiki'))
+        j, h = v['jobs'], v['hub_runs']
+        self.assertEqual(j['total'], 3)
+        self.assertEqual(j['status'], {'done': 2, 'error': 1})
+        self.assertEqual(j['success_pct'], 66.7)
+        self.assertEqual(j['by_source'], {'메일·대화 화면 지시': 2, '이슈 감시 자동': 1})
+        self.assertEqual(j['by_month'], {'2026-10': 2, '2026-11': 1})
+        self.assertEqual(j['by_mode'], {'read': 2, 'write': 1})
+        self.assertEqual((j['threads'], j['issues'], j['retries'], j['browser_jobs']), (1, 1, 1, 1))
+        self.assertEqual((j['median_sec'], j['cost_usd'], j['first'], j['last']), (120, 0.5, '2026-10-01', '2026-11-01'))
+        self.assertEqual(h['total'], 3)
+        self.assertEqual(h['ok_pct'], 66.7)
+        self.assertEqual(h['top'][0], ('백업', 2))
+        self.assertIsNone(v['ai_share'])                         # 회고를 수집한 적 없으면 없음
+
+    def test_empty(self):
+        import ops
+        v = ops.automation_stats(os.path.join(self.tmp, 'none'), os.path.join(self.tmp, 'none.jsonl'), wiki=self.tmp)
+        self.assertEqual(v['jobs']['total'], 0)
+        self.assertIsNone(v['jobs']['success_pct'])
+        self.assertEqual(v['hub_runs'], {'total': 0, 'ok_pct': None, 'top': [], 'since': None})
+
+    def test_ai_share_mine_only(self):
+        import ops
+        raw = os.path.join(self.tmp, 'wiki', '_raw')
+        os.makedirs(raw)
+        with open(os.path.join(raw, 'stats.json'), 'w', encoding='utf-8') as f:
+            json.dump({'홍길동': {'commits': 10, 'ai': 4, 'mrs': 2, 'bot_mrs': 1}, 'hong': {'commits': 2, 'ai': 1},
+                       '팀원': {'commits': 99, 'ai': 99}}, f, ensure_ascii=False)
+        with open(os.path.join(raw, 'me.json'), 'w', encoding='utf-8') as f:
+            json.dump({'display': '홍길동', 'authors': ['hong']}, f, ensure_ascii=False)
+        a = ops.ai_share_stats(os.path.join(self.tmp, 'wiki'))
+        self.assertEqual((a['who'], a['commits'], a['ai'], a['mrs'], a['bot_mrs'], a['ai_pct']), ('홍길동', 12, 5, 2, 1, 41.7))
+
+
 class DeleteMacro(unittest.TestCase):
     """내 자동화 지우기 — macros.local 의 꺼진 것만, 파일은 data.local\\deleted 로 옮기고 되살릴 수 있다."""
 

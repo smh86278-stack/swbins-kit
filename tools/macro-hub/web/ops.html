@@ -42,6 +42,12 @@ tr:last-child td{border-bottom:0}
 th{color:var(--muted);font-weight:600;font-size:12.5px}
 tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
 .log>.row{padding:6px 0;border-bottom:1px solid var(--line2)}
+/* 자동화 실적 — 큰 숫자 칸은 줄바꿈, 표 칸은 창 폭이 좁으면 한 줄에 하나 */
+.statbig{display:flex;gap:10px;flex-wrap:wrap;border-top:2px solid var(--rule)}
+.statbig>.card{flex:1 1 150px;min-width:0}
+.statbig .v{font:700 26px/1.25 var(--serif,inherit);font-variant-numeric:tabular-nums}
+.stattwo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));column-gap:28px;margin-top:10px}
+.stattwo .row>.grow{overflow-wrap:anywhere}
 /* 변경 이력 · 지시 실행 기록 — 좁은 창에선 한 줄 표 대신 카드로 쌓는다: 시각+배지 / 대상(통째로) / 어디서(작게) */
 #auditBox,#jobAuditBox{min-width:0;max-width:100%}
 @media (max-width:600px){
@@ -67,6 +73,7 @@ tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
   <button data-tab="set" role="tab">설정</button>
   <button data-tab="agents" role="tab">Claude 작업</button>
   <button data-tab="audit" role="tab">변경 이력</button>
+  <button data-tab="stats" role="tab" data-hide-nav="nav:stats" hidden>자동화 실적</button>
 </nav>
 <main>
   <section id="sched" role="tabpanel">
@@ -93,6 +100,9 @@ tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
     <p class="note">메일·대화 화면·이슈 감시로 Claude 에게 맡긴 일 한 건마다 — 누가(보낸 주소 · 회사/폰)·어느 폴더·권한·허용 도구·거부된 도구·결과·비용·시간. 메일 게이트웨이가 끝난 일을 덧붙이기만 합니다(잡 파일이 지워져도 남음). 보안 심사·팀 보급 때 CSV 로 내보내세요.</p>
     <div class="row" style="gap:8px;margin-bottom:8px"><input id="jaQ" type="search" aria-label="지시 실행 기록 찾기" placeholder="찾기 — 주소·폴더·이슈 키·도구·지시 글자" style="flex:1;min-width:0"><a id="jaCsv" class="btn" href="/api/ops/jobaudit.csv" download="지시실행기록.csv">CSV 내려받기</a></div>
     <div id="jobAuditBox"><div class="empty">준비 중</div></div></section>
+  <section id="stats" role="tabpanel"><h2 class="sr">자동화 실적</h2>
+    <p class="note">기록에 있는 숫자만 셉니다(추정 없음) — inbox\jobs(Claude 가 처리한 일)와 runs.jsonl(허브가 자동으로 돌린 예약 작업·서비스, 사람이 누른 실행은 뺌). 처음엔 숨겨 둔 탭입니다 — 허브 「만들기 → 고급 도구」에서 숨기거나 다시 보입니다.</p>
+    <div id="statsBox"><div class="empty">준비 중</div></div></section>
 </main>
 </div>
 </div>
@@ -390,8 +400,32 @@ async function loadJobAudit(){
 }
 $('#jaQ').oninput = () => { clearTimeout(loadJobAudit.t); loadJobAudit.t = setTimeout(loadJobAudit, 300); };
 
+/* ---------- 자동화 실적 ---------- */
+async function loadStats(){
+  const box = $('#statsBox');
+  let v; try { v = await api('/api/ops/stats'); } catch (e) { box.replaceChildren(el('div', 'empty', '불러오지 못했습니다: ' + e.message)); return; }
+  const j = v.jobs, h = v.hub_runs, n = x => (x == null ? '—' : x.toLocaleString());
+  const big = (label, val, sub) => { const c = el('div', 'card'); c.append(el('div', 'sub', label), el('div', 'v', val)); if (sub) c.append(el('div', 'sub', sub)); return c; };
+  const row = el('div', 'statbig');
+  row.append(big('Claude 가 처리한 일', n(j.total) + '건', (j.first || '') + ' ~ ' + (j.last || '') + ' · 대화 ' + n(j.threads) + '개'),
+    big('성공률', j.success_pct == null ? '—' : j.success_pct + '%', '완료 ' + n(j.status.done || 0) + ' · 오류 ' + n(j.status.error || 0) + ' · 취소 ' + n(j.status.canceled || 0)),
+    big('한 건 처리 시간(중앙값)', j.median_sec == null ? '—' : j.median_sec + '초', 'Claude 작업 시간 합계 ' + j.claude_hours + '시간 · $' + j.cost_usd),
+    big('허브 자동 실행', n(h.total) + '회', (h.since ? h.since + ' 부터 · ' : '') + '정상 ' + (h.ok_pct == null ? '—' : h.ok_pct + '%')));
+  const t = (title, pairs) => { const c = el('div', 'card'); c.append(el('div', 'name', title));
+    if (!pairs.length) c.append(el('div', 'sub', '아직 기록이 없습니다'));
+    for (const [k, val] of pairs) { const r = el('div', 'row'); r.append(el('span', 'grow', k), el('span', 'sub', typeof val === 'number' ? n(val) : val)); c.append(r); } return c; };
+  const two = el('div', 'stattwo');
+  two.append(t('어디서 온 일', Object.entries(j.by_source)), t('월별', Object.entries(j.by_month)),
+    t('권한 · 기타', [['읽기(조회·분석)', j.by_mode.read], ['수정 허용(파일 수정·명령)', j.by_mode.write], ['이슈', j.issues], ['브라우저 지시', j.browser_jobs], ['다시 실행', j.retries]]),
+    t('허브가 자동으로 돌린 것', h.top));
+  const a = v.ai_share;   // AI 작업 회고가 마지막 수집 때 남긴 내 숫자(git·MR 기록) — 수집 안 했으면 없음
+  if (a) two.append(t('AI 활용 (' + (a.who || '나') + ' · ' + a.collected + ' 수집)', [['AI 공동작성 커밋', a.ai + ' / ' + n(a.commits) + (a.ai_pct == null ? '' : ' (' + a.ai_pct + '%)')],
+    ['내 MR', a.mrs], ['AI 리뷰 지적 있는 MR', a.bot_mrs]]));
+  box.replaceChildren(row, two);
+}
+
 /* ---------- 탭 ---------- */
-const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false), audit: () => { loadAudit(); loadJobAudit(); }};
+const LOAD = {sched: loadSched, svc: loadSvc, feat: loadFeat, set: loadSet, agents: () => loadAgents(false), audit: () => { loadAudit(); loadJobAudit(); }, stats: loadStats};
 function show(tab){
   for (const b of document.querySelectorAll('#tabs button')) { b.setAttribute('aria-selected', String(b.dataset.tab === tab)); b.tabIndex = b.dataset.tab === tab ? 0 : -1; }
   HubNav.setActive(NAV[tab]);
@@ -402,11 +436,17 @@ function show(tab){
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => { history.replaceState(null, '', '#' + b.dataset.tab); show(b.dataset.tab); };
 let start = location.hash.slice(1); if (!LOAD[start] && !document.getElementById(start)) { try { start = localStorage.getItem('ops.tab') || 'sched'; } catch (e) { start = 'sched'; } }
 show(document.getElementById(start) ? start : 'sched');
+// 숨긴 탭(📈 자동화 실적 — 처음엔 숨김) — 다시 보이기는 허브 첫 화면 「만들기 → 고급 도구」. 숨긴 탭을 보고 있었으면 예약 작업으로
+function applyHiddenTabs(){
+  api('/api/hidden').then(j => { const h = new Set(j.hidden || []); for (const a of document.querySelectorAll('[data-hide-nav]')) a.hidden = h.has(a.dataset.hideNav);
+    if (document.querySelector('#tabs button[aria-selected=true]')?.hidden) show('sched'); }).catch(() => {});
+}
+applyHiddenTabs();
 addEventListener('hashchange', () => { const t = location.hash.slice(1); if (LOAD[t]) { show(t); scrollTo(0, 0); } });
 addEventListener('load', () => { if (LOAD[location.hash.slice(1)]) scrollTo(0, 0); });   // #sched 같은 탭 주소 — 브라우저가 그 칸으로 내려 머리말이 가리지 않게   // 사이드바 「예약」·「기록」·「설정」 — 같은 화면 안에서
 document.getElementById('tabs').addEventListener('keydown', e => {   // 탭 — 왼쪽·오른쪽 화살표로 옮겨 다닌다
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-  const bs = [...document.querySelectorAll('#tabs button')], i = bs.indexOf(document.activeElement); if (i < 0) return;
+  const bs = [...document.querySelectorAll('#tabs button:not([hidden])')], i = bs.indexOf(document.activeElement); if (i < 0) return;
   const n = bs[(i + (e.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length]; n.focus(); n.click();
 });
 const es = new EventSource('/events');
@@ -417,6 +457,7 @@ const dot = () => document.getElementById('dot');
 es.onopen = () => { const d = dot(); if (d) d.classList.add('on'); if (reopen) fetch('/api/ping', {headers: {'X-Hub-Token': TOKEN}}).then(r => { if (r.status === 403) location.reload(); }).catch(() => {}); reopen = true; };
 es.onerror = () => { const d = dot(); if (d) d.classList.remove('on'); };
 es.onmessage = ev => { const m = JSON.parse(ev.data); if (m.t === 'theme') HubMode.apply(m.mode); if (m.t === 'look') HubLook.apply(m.look); const on = document.querySelector('main section.on');
+  if (m.t === 'macros') { clearTimeout(es.h); es.h = setTimeout(applyHiddenTabs, 300); }
   if (on && (m.t === 'macros' || m.t === 'run') && LOAD[on.id] && (on.id === 'sched' || on.id === 'svc')) { clearTimeout(es.t); es.t = setTimeout(LOAD[on.id], 300); }
   if (on && m.t === 'audit' && on.id === 'audit') { clearTimeout(es.t); es.t = setTimeout(loadAudit, 300); } };
 setInterval(() => { const on = document.querySelector('main section.on'); if (on && LOAD[on.id]) LOAD[on.id](); }, 30000);

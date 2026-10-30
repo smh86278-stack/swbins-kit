@@ -199,10 +199,11 @@ def run(ctx):
 | ⚙ 설정 | 보기 전용 — 메일 계정 준비 여부 · 설정 파일 위치. 바꾸는 건 `python setup.py` |
 | 🧵 에이전트 | Claude Code 디스패치 보드 보기 전용 · 끝난 백그라운드 작업 「치우기」·「치운 것 되돌리기」(목록 파일 `data.local\agents-dismissed.json` 에만 — 상태 파일은 그대로, `POST /api/ops/agents/dismiss {id}` · `{undo: true}`) |
 | 📜 변경 이력 | 켜고 끄기·다시 띄우기·지금 실행·예약 시각·자동화 만듦·설정 변경(바뀐 갈래·키 이름만, 값 없음)을 누가(Windows 사용자)·어디서(화면 주소·트레이·설정 프로그램)·언제 — `kit.audit()` → `data.local\audit.jsonl`(2MB 넘으면 `.1` 로 한 번), `GET /api/audit`. 보안 심사용 |
+| 📈 자동화 실적 | **처음엔 숨긴 탭**(`HIDE_DEFAULT` — 처음 뜰 때 한 번 `state.hidden` 에 넣음, 다시 보이기는 허브 만들기 → 고급 도구). 기록에 있는 숫자만(추정 없음): `inbox\jobs`(Claude 가 처리한 일 — 건수·성공률·처리 시간·출처·월별) · `runs.jsonl`(허브 자동 실행, 사람이 누른 것 제외) · AI 작업 회고가 남긴 내 AI 활용 숫자. `ops.automation_stats()` · `GET /api/ops/stats` |
 
 **안 쓰는 것 숨기기** — 허브 첫 화면 자동화 카드·'🛠 만들기 → 🧰 고급 도구' 줄, `/ops` 예약 작업·상시 서비스 카드에 「숨기기」.
 지우지도 끄지도 않고 목록에서만 접는다 — 목록 아래 「▸ 숨긴 것 N개 보기」를 펼쳐 「다시 보이기」. **켜져 있는 것은 숨길 수 없다**(먼저 끈다).
-숨긴 id 는 `state.local.json` 의 `hidden`(도구는 `tool:new`·`tool:record`·`tool:desktop`), 숨김·다시 보임은 📜 변경 이력에 남는다. `GET /api/hidden` · `POST /api/hide {id, hidden}`.
+숨긴 id 는 `state.local.json` 의 `hidden`(도구는 `tool:new`·`tool:record`·`tool:desktop`, 운영 화면 탭은 `nav:stats`), 숨김·다시 보임은 📜 변경 이력에 남는다. `GET /api/hidden` · `POST /api/hide {id, hidden}`.
 
 **내 자동화 지우기** — 허브 첫 화면의 내 자동화(`macros.local`) 카드에 「지우기」. 키트 예제는 지울 수 없고(숨기기를 쓴다), **꺼져 있고 돌고 있지 않을 때만** 된다.
 바로 지우지 않고 파일을 `data.local\deleted\<이름>-<시각>.py` 로 옮기며 켜짐·숨김·예약 시각 기록도 지운다.

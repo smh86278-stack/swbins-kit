@@ -101,6 +101,9 @@ def load_state():
             state.update(json.load(f))
     except (OSError, ValueError):
         pass
+    if not state.get('hide_seeded'):            # 처음 한 번만 기본 숨김 — 사용자가 다시 보이게 하면 그대로 둔다
+        state['hidden'] = sorted(set(state.get('hidden') or []) | set(HIDE_DEFAULT))
+        state['hide_seeded'] = 1
 
 
 UI_MODES = ('auto', 'light', 'dark')          # 화면 모드 — 자동(Windows 설정을 따름) · 라이트 · 다크
@@ -647,7 +650,9 @@ def set_enabled(mid, on):
     return True
 
 
-HIDE_TOOLS = ('tool:new', 'tool:record', 'tool:desktop')   # 허브 화면 '만들기 · 녹화 · 도구' 칸 — 자동화처럼 숨길 수 있다
+HIDE_TOOLS = ('tool:new', 'tool:record', 'tool:desktop',   # 허브 화면 '만들기 · 녹화 · 도구' 칸 — 자동화처럼 숨길 수 있다
+              'nav:stats')                                  # 운영 화면 탭 📈 자동화 실적
+HIDE_DEFAULT = ('nav:stats',)   # 개인 기록용 숫자라 처음엔 숨김 — 다시 보이기는 허브 만들기 → 고급 도구. 기록은 그대로 쌓인다
 
 
 def hidden_ids():
@@ -2011,6 +2016,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, ops.features_status())
                 if what == 'settings':
                     return self._send(200, ops.settings_status())
+                if what == 'stats':                   # 📈 자동화 실적 — 기록에 있는 숫자만
+                    return self._send(200, ops.automation_stats())
                 if what == 'agents':                  # verify=1 은 claude 를 실행한다 — 다른 웹 페이지가 <img src> 로 쌓지 못하게 토큰
                     verify = q.get('verify', ['0'])[0] == '1'
                     if verify and not self._token_ok():
