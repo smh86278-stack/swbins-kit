@@ -188,15 +188,26 @@ window.PetAcc = {
     xmas: {name: '크리스마스', from: '12-01', to: '12-26', dog: 'santa', cat: 'santa', deco: {dog: 'snow', cat: 'snow'}},
     spring: {name: '봄', from: '03-28', to: '04-12', dog: 'blossom', cat: 'blossom', deco: {cat: 'petal'}},
   },
-  conf: {season: true, acc: {dog: 'none', cat: 'none'}},
-  force: {},                                                 // 미리 보기(주소의 ?season= · ?acc=)
-  set(c){                                                    // 허브 설정을 받는다 — 바뀌었으면 true(그리는 쪽은 key 로 알아챈다)
+  // grow: 키우기(간식·레벨) 켬 · lv: 허브 petgrow.view {snacks, level, floor, next, week, prev_week} · unlock: 소품이 풀리는 레벨
+  conf: {season: true, grow: true, acc: {dog: 'none', cat: 'none'}, lv: null, unlock: {}},
+  force: {},                                                 // 미리 보기(주소의 ?season= · ?acc= · ?level=)
+  set(c){                                                    // 허브 설정을 받는다(빠진 키는 그대로) — 바뀌었으면 true(그리는 쪽은 key 로 알아챈다)
     if (!c) return false;
-    const next = {season: c.season !== false, acc: Object.assign({dog: 'none', cat: 'none'}, c.acc || {})};
-    const changed = JSON.stringify(next) !== JSON.stringify({season: this.conf.season, acc: this.conf.acc});
-    Object.assign(this.conf, next);
+    const has = k => Object.prototype.hasOwnProperty.call(c, k), cur = this.conf;
+    const next = {season: has('season') ? c.season !== false : cur.season, grow: has('grow') ? c.grow !== false : cur.grow,
+      acc: has('acc') ? Object.assign({dog: 'none', cat: 'none'}, c.acc || {}) : cur.acc, lv: c.lv || cur.lv, unlock: c.unlock || cur.unlock};
+    const changed = JSON.stringify(next) !== JSON.stringify(cur);
+    Object.assign(cur, next);
     return changed;
   },
+  level(){ return +this.force.level || (this.conf.lv && this.conf.lv.level) || 1; },
+  locked(id){ return !!this.conf.grow && (this.conf.unlock[id] || 0) > this.level(); },   // 키우기를 끄면 다 풀린다
+  lvText(){                                                  // 마우스를 올렸을 때 한 줄 — 키우기를 끄면 빈 글
+    const v = this.conf.lv;
+    if (!this.conf.grow || !v) return '';
+    return 'Lv.' + this.level() + ' · 간식 ' + v.snacks + '개' + (v.next ? ' (다음까지 ' + (v.next - v.snacks) + ')' : '');
+  },
+  unlockedAt(lv){ const e = Object.entries(this.conf.unlock).find(([, n]) => n === lv); return e ? (this.LIST.find(x => x[0] === e[0]) || [])[1] : null; },
   seasonOf(d){
     const md = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     return Object.keys(this.SEASONS).find(id => this.SEASONS[id].from <= md && md <= this.SEASONS[id].to) || null;
@@ -210,7 +221,7 @@ window.PetAcc = {
     const s = this.season();
     if (s) return this.SEASONS[s][kind] || null;
     const a = this.conf.acc[kind];
-    return a && this.ART[a] ? a : null;
+    return a && this.ART[a] && !this.locked(a) ? a : null;
   },
   deco(kind){ const s = this.season(); return s ? (this.SEASONS[s].deco || {})[kind] || null : null; },
   key(kind){ return (this.pick(kind) || '') + '|' + (this.deco(kind) || ''); },
@@ -291,5 +302,6 @@ window.PetAcc = {
     const q = new URLSearchParams(location.search);
     if (q.get('season')) PetAcc.force.season = q.get('season');
     if (q.get('acc')) PetAcc.force.acc = q.get('acc');
+    if (q.get('level')) PetAcc.force.level = +q.get('level');
   } catch (e) { /* 주소를 못 읽어도 그대로 */ }
 })();

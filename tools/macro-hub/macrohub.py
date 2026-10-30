@@ -67,6 +67,7 @@ _spec.loader.exec_module(pl)
 
 import alertmail  # noqa: E402
 import hubutil  # noqa: E402  (redact — 로그 줄의 비밀값 가리기)
+import petgrow  # noqa: E402  (화면 펫 키우기 — 간식·레벨)
 import apphost  # noqa: E402  (✨ 나만의 앱 — 8631, 앱마다 다른 출처)
 import apphistory  # noqa: E402  (✨ 앱 버전·되돌리기)
 import apppack  # noqa: E402  (✨ 앱 내보내기·가져오기 — zip · HTML 한 장 · exe)
@@ -171,29 +172,100 @@ def look_attrs(lk=None):
 
 # 화면 펫 소품·계절 — 이름은 web/pets.js PetAcc.LIST 와 같게. state['petx'] 에 기억하고 /events {t:'petx'} 로 알린다.
 # season: 계절 소품 자동(할로윈·크리스마스·봄 — 그동안은 고른 소품 대신 계절 소품) · acc: 강아지·고양이에 얹을 소품('none' = 없음)
+# grow: 키우기(간식·레벨 표시, 레벨로 소품 잠금 — petgrow.py). 끄면 표시를 안 하고 소품도 다 풀린다(세기는 계속).
 PET_ACCS = ('none', 'ribbon', 'scarf', 'glasses', 'beret', 'bowtie', 'crown')
+F_GROW = os.path.join(HERE, 'data.local', 'pet-grow.json')
+GROW = None                                   # petgrow 기록(grow_init 이 읽는다)
 
 
 def petx():
     px = state.get('petx') or {}
     acc = dict({'dog': 'none', 'cat': 'none'}, **{k: v for k, v in (px.get('acc') or {}).items() if k in ('dog', 'cat')})
-    return {'season': px.get('season', True) is not False,
+    return {'season': px.get('season', True) is not False, 'grow': px.get('grow', True) is not False,
             'acc': {k: (v if v in PET_ACCS else 'none') for k, v in acc.items()}}
+
+
+def grow_level():
+    return petgrow.level(GROW['snacks']) if GROW else 1
+
+
+def acc_locked(acc, px=None):
+    px = px or petx()
+    return px['grow'] and grow_level() < petgrow.UNLOCK.get(acc, 0)
+
+
+def petx_view():
+    """화면에 줄 펫 설정 — petx + 레벨(lv)·소품이 풀리는 레벨(unlock)."""
+    return dict(petx(), lv=petgrow.view(GROW) if GROW else petgrow.view(petgrow.blank()), unlock=petgrow.UNLOCK)
 
 
 def clean_petx(body):
     """POST /api/petx 의 값 검사 — (새 petx, 오류). 빠진 키는 그대로 둔다."""
     cur = petx()
     body = body or {}
-    if 'season' in body:
-        cur['season'] = bool(body['season'])
+    for key in ('season', 'grow'):
+        if key in body:
+            cur[key] = bool(body[key])
     for kind, v in (body.get('acc') or {}).items():
         if kind not in ('dog', 'cat'):
             continue
         if v not in PET_ACCS:
             return None, '소품은 %s 중 하나입니다' % ' · '.join(PET_ACCS)
+        if acc_locked(v, cur):
+            return None, '아직 잠긴 소품입니다 — Lv.%d 에 풀려요' % petgrow.UNLOCK[v]
         cur['acc'][kind] = v
     return cur, None
+
+
+def grow_init():
+    """키우기 기록을 읽는다. 처음이면 runs.jsonl 의 지난 기록으로 한 번 채우고, 지금 있는 내 자동화를 기준으로 삼는다."""
+    global GROW
+    g = petgrow.load(F_GROW)
+    if not g.get('seeded'):
+        recs = []
+        try:
+            with open(F_RUNS, encoding='utf-8', errors='replace') as f:
+                for ln in f:
+                    try:
+                        recs.append(json.loads(ln))
+                    except ValueError:
+                        pass
+        except OSError:
+            pass
+        petgrow.seed(g, recs, {m['id'] for m in discover() if m['service']})
+    petgrow.on_macros(g, [m['id'] for m in discover() if m['local']])
+    GROW = g
+    petgrow.save(F_GROW, g)
+
+
+def _grow_event(gained, up, fixed=False, why=''):
+    petgrow.save(F_GROW, GROW)
+    if gained:
+        broadcast({'t': 'grow', 'grow': petgrow.view(GROW), 'gained': gained, 'levelup': up, 'fixed': fixed, 'why': why})
+
+
+def grow_run(run):
+    """끝난 실행 → 간식(petgrow.on_run). 일 순서의 단계 실행은 부르는 쪽에서 뺀다."""
+    if GROW is None:
+        return
+    m = find_macro(run.macro)
+    with lock:
+        gained, up, fixed = petgrow.on_run(GROW, run.summary(), bool(m and m['service']))
+    _grow_event(gained, up, fixed, run.name)
+
+
+def grow_watch():
+    """새 내 자동화(macros.local) — 2분마다 본다(녹화·견본·말로 만들기 어느 길로 생겨도)."""
+    while True:
+        time.sleep(120)
+        try:
+            ids = [m['id'] for m in discover() if m['local']]
+            with lock:
+                gained, up = petgrow.on_macros(GROW, ids)
+            if gained:
+                _grow_event(gained, up, why='새 자동화')
+        except Exception as e:  # 감시는 죽지 않는다
+            print('grow_watch 오류:', e, file=sys.stderr)
 
 
 def render_page(path):
@@ -584,6 +656,11 @@ def _record(run, alert=True):
         except OSError:
             pass
         LAST_RUN[run.macro] = {k: v for k, v in rec.items() if k != 'tail'}
+        if alert:                                # 일 순서의 단계(alert=False)는 일 순서 하나로만 센다
+            try:
+                grow_run(run)
+            except Exception as e:
+                print('grow_run 오류:', e, file=sys.stderr)
         if alert and run.status in alertmail.ALERT_STATUS:
             threading.Thread(target=_alert_mail, args=(rec,), daemon=True).start()
 
@@ -2018,9 +2095,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {'error': 'no such run'})
             return self._send(200, dict(r.summary(), lines=list(r.lines)))
         if u.path == '/api/skin':
-            return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}, 'petx': petx()})
-        if u.path == '/api/petx':                     # 화면 펫 소품·계절
-            return self._send(200, petx())
+            return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}, 'petx': petx_view()})
+        if u.path == '/api/petx':                     # 화면 펫 소품·계절·키우기
+            return self._send(200, petx_view())
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/ping':                     # 화면이 실시간 연결을 다시 붙일 때 — 토큰이 옛것(허브가 다시 뜸)이면 403 → 화면이 새로 고친다
@@ -2307,8 +2384,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {'error': err})
             state['petx'] = px
             save_state()
-            broadcast({'t': 'petx', 'petx': px})
-            return self._send(200, {'ok': True, 'petx': px})
+            broadcast({'t': 'petx', 'petx': petx_view()})
+            return self._send(200, {'ok': True, 'petx': petx_view()})
         if path == '/api/theme':                      # 화면 모드 — 허브 화면·운영 화면·전용 창이 같이 따른다
             mode = body.get('mode')
             if mode not in UI_MODES:
@@ -2463,6 +2540,11 @@ def start_services(host='127.0.0.1', port=8630):
         print('창 이벤트 훅 실패 — 창 트리거가 동작하지 않습니다:', e, file=sys.stderr)
     threading.Thread(target=trigger_loop, daemon=True).start()
     threading.Thread(target=service_loop, daemon=True).start()
+    try:
+        grow_init()
+    except Exception as e:
+        print('펫 키우기 기록을 못 읽었습니다:', e, file=sys.stderr)
+    threading.Thread(target=grow_watch, daemon=True).start()
 
     start_apphost(port)
 

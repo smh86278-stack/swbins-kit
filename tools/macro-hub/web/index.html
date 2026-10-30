@@ -702,11 +702,14 @@ async function loadSkins(){
 // 꾸미기 — 펫 소품·계절(허브 state 'petx'). 화면 펫·메신저도 같이 바뀐다(web/pets.js PetAcc)
 function petLook(panel,el){
   const c=PetAcc.conf;panel.append(el('h3','','펫 소품'));
-  const r1=el('div','lrow'),l=el('label'),cb=el('input');cb.type='checkbox';cb.checked=c.season;
-  cb.onchange=()=>api('/api/petx',{season:cb.checked}).catch(x=>toast(x.message));l.append(cb,'계절 소품 자동 (할로윈·크리스마스·봄)');r1.append(l);
+  const lv=PetAcc.lvText();if(lv)panel.append(el('p','lnote',lv));
+  const r1=el('div','lrow');
+  for(const [key,txt] of [['season','계절 소품 자동 (할로윈·크리스마스·봄)'],['grow','키우기 (성공하면 간식 · 레벨로 소품이 풀림)']]){
+    const l=el('label'),cb=el('input');cb.type='checkbox';cb.checked=!!c[key];
+    cb.onchange=()=>api('/api/petx',{[key]:cb.checked}).catch(x=>toast(x.message));l.append(cb,txt);r1.append(l)}
   const r2=el('div','lrow');
   for(const [kind,label] of [['dog','강아지'],['cat','고양이']]){const s=el('select'),w=el('label','',label);
-    s.append(new Option('없음','none'),...PetAcc.LIST.map(([id,n])=>new Option(n,id)));s.value=c.acc[kind]||'none';
+    s.append(new Option('없음','none'),...PetAcc.LIST.map(([id,n])=>{const o=new Option(PetAcc.locked(id)?n+' (잠김 · Lv.'+c.unlock[id]+')':n,id);o.disabled=PetAcc.locked(id);return o}));s.value=c.acc[kind]||'none';
     s.onchange=()=>api('/api/petx',{acc:{[kind]:s.value}}).catch(x=>toast(x.message));w.append(s);r2.append(w)}
   panel.append(r1,r2);
   const ss=PetAcc.season();if(ss)panel.append(el('p','lnote','지금은 '+PetAcc.SEASONS[ss].name+' — 계절 소품이 먼저 보입니다'));
@@ -759,6 +762,7 @@ function connect(){
     else if(m.t==='pet')setTimeout(petState,400);
     else if(m.t==='skin')setSkin(m.skin,m.breed);
     else if(m.t==='petx'){if(PetAcc.set(m.petx))updatePets();HubLook.redraw()}
+    else if(m.t==='grow'){if(PetAcc.set({lv:m.grow}))updatePets();HubLook.redraw()}
     else if(m.t==='theme')HubMode.apply(m.mode);
     else if(m.t==='look'){HubLook.apply(m.look);updatePets()}
     else if(m.t==='note')toast(m.text);

@@ -20,6 +20,7 @@ body.dragging .pet .art svg{cursor:grabbing}
   opacity:0;pointer-events:none;transition:opacity .25s,transform .35s cubic-bezier(.3,1.6,.5,1);z-index:2}
 .bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:11px;height:11px;background:#fff;transform:translateX(-50%) rotate(45deg);border-radius:2px}
 .bubble.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
+.bubble small{display:block;font-size:11px;color:#7a6f63;margin-top:1px}
 .pet.hop .bodywrap{animation:jump .5s ease-in-out 1!important}
 .pet.hop .skin-media{animation:jump .5s ease-in-out 1!important}
 .skin-media{cursor:grab}
@@ -50,9 +51,11 @@ $('#catArt').innerHTML = PetArt.badge;                   // 그림은 스킨(기
 
 /* ---------- 말풍선: 말이 바뀔 때와 마우스를 올릴 때만 잠깐 보인다 ---------- */
 const bubbles = {dog: {el: $('#dogBubble'), text: '', timer: 0}, cat: {el: $('#catBubble'), text: '', timer: 0}};
-function say(k, text, ms) {
+function say(k, text, ms, sub) {                         // sub: 아래 작은 줄(레벨·간식)
   const b = bubbles[k];
-  b.el.textContent = text; b.el.classList.add('show');
+  b.el.textContent = text;
+  if (sub) { const s = document.createElement('small'); s.textContent = sub; b.el.append(s); }
+  b.el.classList.add('show');
   clearTimeout(b.timer); b.timer = setTimeout(() => b.el.classList.remove('show'), ms || 5000);
 }
 function track(k, text) { const b = bubbles[k]; if (b.text !== text) { b.text = text; say(k, text, 5200); } }
@@ -96,6 +99,7 @@ function connect() {
     else if (m.t === 'macros' || m.t === 'motion') loadMacros();
     else if (m.t === 'skin') { if (skinChanged(m)) setSkin(m.skin || null, m.breed); }
     else if (m.t === 'petx') setPetx(m.petx);
+    else if (m.t === 'grow') onGrow(m);
     else if (m.t === 'notify') { PetMood.notify(flash, m); say('dog', (m.title || '알림') + (m.text ? ' — ' + m.text : ''), 6500); update(); }
   };
 }
@@ -148,7 +152,20 @@ document.addEventListener('pointerup', e => {
 });
 document.addEventListener('contextmenu', e => { e.preventDefault(); if (isHit(e.target) && api) api.showMenu(); });
 for (const k of ['dog', 'cat']) {
-  $('#' + k).addEventListener('mouseenter', () => { if (bubbles[k].text) say(k, bubbles[k].text, 3000); });
+  $('#' + k).addEventListener('mouseenter', () => { const lv = PetAcc.lvText(); if (bubbles[k].text || lv) say(k, bubbles[k].text || '', 3000, lv); });
+}
+
+/* ---------- 키우기: 간식을 받으면 강아지가 살짝 뛰고, 레벨이 오르면 한 번 반짝 + 짧은 말 ---------- */
+function flashClass(el, cls, ms) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+function onGrow(m) {
+  PetAcc.set({lv: m.grow});
+  if (!PetAcc.conf.grow || !m.gained) return;
+  flashClass($('#dog'), 'treat', 700);
+  if (!m.levelup) return;
+  flashClass($('#dog'), 'lvup', 2700); flashClass($('#cat'), 'lvup', 2700);
+  const a = PetAcc.unlockedAt(m.grow.level);
+  say('cat', 'Lv.' + m.grow.level + ' 이 됐어요' + (a ? ' — 「' + a + '」 소품이 풀렸어요' : ''), 6500);
+  update();
 }
 
 /* ---------- 설정(메뉴에서 바꾼 것) ---------- */

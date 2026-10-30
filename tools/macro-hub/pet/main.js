@@ -112,12 +112,19 @@ async function showMenu() {
   const sizes = [['아주 작게', 0.5], ['작게', 0.7], ['보통', 0.9], ['크게', 1.15], ['아주 크게', 1.5]];
   const [skins, cur, px] = await Promise.all([fetchSkins(), currentSkin(true), currentPetx()]);
   const setPetx = v => { if (win) win.webContents.send('pet:set-skin', { petx: v }); };   // 렌더러가 토큰을 붙여 /api/petx 로
+  // 키우기(간식·레벨) — 켜 두면 레벨로 소품이 풀린다(허브 petgrow.py). 끄면 다 풀리고 레벨은 안 보인다
+  const lv = px && px.lv, level = lv ? lv.level : 1, grow = !!(px && px.grow !== false);
+  const locked = id => grow && ((px.unlock || {})[id] || 0) > level;
+  const lvLine = grow && lv ? [{ label: 'Lv.' + level + ' · 간식 ' + lv.snacks + '개' + (lv.next ? '  (다음 레벨까지 ' + (lv.next - lv.snacks) + '개)' : ''), enabled: false }] : [];
   const accMenu = px ? [{
     label: '소품', submenu: [
+      ...lvLine,
       { label: '계절 소품 자동 (할로윈·크리스마스·봄)', type: 'checkbox', checked: px.season, click: () => setPetx({ season: !px.season }) },
+      { label: '키우기 (자동화가 성공하면 간식 · 레벨로 소품이 풀림)', type: 'checkbox', checked: grow, click: () => setPetx({ grow: !grow }) },
       { type: 'separator' },
       ...['dog', 'cat'].map(kind => ({ label: kind === 'dog' ? '강아지' : '고양이', submenu: ACCS.map(([id, name]) => ({
-        label: name, type: 'radio', checked: (px.acc[kind] || 'none') === id, click: () => setPetx({ acc: { [kind]: id } }) })) })),
+        label: locked(id) ? name + '  (잠김 · Lv.' + px.unlock[id] + ')' : name, type: 'radio', enabled: !locked(id),
+        checked: (px.acc[kind] || 'none') === id, click: () => setPetx({ acc: { [kind]: id } }) })) })),
     ],
   }] : [];
   const curSkin = cur.skin, breeds = await skinBreeds(curSkin);
