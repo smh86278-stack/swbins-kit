@@ -4,7 +4,7 @@
    skin.json 상태 값(또는 품종)에 "rig" 를 주면 web/pets.js 가 그림 대신 이 캔버스를 쓴다(WebGL 이 없으면 그냥 그림).
      "rig": {"neck": [0.55, 0.50], "pawL": [0.39, 0.93], "pawR": [0.70, 0.92]}
    좌표는 그림 한 변을 1 로 본 값 — neck 고개가 도는 목 축 · pawL/pawR 앞발 가운데.
-   선택: band(목 둘레 부드러운 폭, 0.12) · pawRad(앞발 둘레, 0.11) · crown(정수리 높이 — 소품 자리, web/pets.js PetAcc)
+   선택: band(목 둘레 부드러운 폭, 0.12) · pawRad(앞발 둘레, 0.11) · eyes·crown·head·chin·acc(소품 자리 — web/pets.js PetAcc.geom, 펫 실험실 /pet?lab=1 에서 잰다)
    소품(리본·모자 등, PetAcc)은 SVG 를 그림과 한 텍스처로 합쳐 같은 그물에 얹는다 — 고개를 갸웃·끄덕이면 같이 움직인다.
    텍스처는 그림 위에 PAD 만큼 여유를 둬서(모자가 머리 위로 나가도 된다) 그물도 y = -PAD ~ 1 을 덮는다. */
 (() => {

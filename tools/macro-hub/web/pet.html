@@ -47,7 +47,9 @@ body.noting .bubble{opacity:0!important;pointer-events:none!important}
 </div>
 <script src="/static/petwarp.js"></script>
 <script src="/static/pets.js"></script>
+<script>if (new URLSearchParams(location.search).has('lab')) document.write('<script src="/static/petlab.js"><\/script>');   // 펫 실험실(개발용) — 소품 자리 맞추기</script>
 <script>
+if (window.PetLab) throw new Error('펫 실험실 — 펫 동작은 쉼');   // ?lab 이면 아래 펫 동작(허브 연결·말풍선)을 돌리지 않는다
 const $ = s => document.querySelector(s);
 const TOKEN = '__TOKEN__';
 const api = window.petApi || null;                       // Electron 안에서만 있다(브라우저로 열면 미리보기 전용)

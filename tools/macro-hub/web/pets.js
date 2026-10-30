@@ -227,16 +227,34 @@ window.PetAcc = {
   },
   deco(kind){ const s = this.season(); return s ? (this.SEASONS[s].deco || {})[kind] || null : null; },
   key(kind){ return (this.pick(kind) || '') + '|' + (this.deco(kind) || ''); },
-  geom(rig){                                                 // 그림 한 변 = 100. x·n 목(입 아래) · c 정수리 · u 머리 크기 · ey/eh 눈 높이·눈 사이 절반
-    const x = rig.neck[0] * 100, n = rig.neck[1] * 100, c = (rig.crown != null ? rig.crown : rig.neck[1] - 0.42) * 100, u = n - c;
-    const ey = rig.eye ? rig.eye[0] * 100 : c + u * 0.5, eh = rig.eye ? rig.eye[1] * 100 : u * 0.24;
-    return {x, n, c, u, ey, eh, k: u / 38};
+  /* 자리(그림 한 변 = 100): ex·ey 두 눈 가운데 · ed 눈 사이 · ang 눈 기울기(도) · c 정수리(가운데 머리 윗선) · hw 머리 폭(모자 자리) · cy·cw 턱 아래 목 선·목 폭.
+     rig 값(0~1): eyes [왼x, 왼y, 오x, 오y] · crown · head · chin [y, 폭] — 품종 그림마다 잰 값(펫 실험실 /pet?lab=1 「자동 측정」).
+     없으면 옛 값(neck·eye [높이, 눈 사이 절반])에서 어림한다 */
+  geom(rig){
+    const P = v => v * 100, e = rig.eyes, n = rig.neck || [0.5, 0.5];
+    let ex, ey, ed, ang = 0;
+    if (e) { ex = P(e[0] + e[2]) / 2; ey = P(e[1] + e[3]) / 2; ed = P(e[2] - e[0]); ang = Math.atan2(e[3] - e[1], e[2] - e[0]) * 180 / Math.PI; }
+    else {
+      const c0 = rig.crown != null ? rig.crown : n[1] - 0.42;
+      ex = P(n[0]); ey = rig.eye ? P(rig.eye[0]) : P(c0 + (n[1] - c0) * 0.5); ed = rig.eye ? P(rig.eye[1]) * 2 : P(n[1] - c0) * 0.48;
+    }
+    const c = rig.crown != null ? P(rig.crown) : ey - ed * 1.3;
+    const ch = rig.chin || [(ey + ed * 0.95) / 100, ed * 0.019];
+    const hw = rig.head ? P(rig.head) : ed * 2.3;
+    // t: 모자가 머리에 파고드는 깊이의 잣대 — 머리 폭, 단 정수리~눈이 짧으면(쫑긋한 귀 사이 이마가 낮은 고양이) 그만큼 얕게 해 눈을 안 가린다
+    return {ex, ey, ed, ang, c, hw, t: Math.min(hw, (ey - c) * 2.1), cy: P(ch[0]), cw: P(ch[1])};
   },
   svg(id, rig){                                              // 소품 SVG(그물 변형 텍스처와 같은 칸: 가로 0~100, 세로 -20~100 — 위쪽 20 은 머리 위 여유)
-    const f = id && rig && rig.neck && this.ART[id];
+    const f = id && rig && (rig.neck || rig.eyes) && this.ART[id];
     if (!f) return null;
     const g = this.geom(rig), r = v => Math.round(v * 100) / 100;
-    const at = (x, y, rot, s) => `<g transform="translate(${r(x)} ${r(y)}) rotate(${rot || 0}) scale(${r(s == null ? g.k : s)})">`;
+    const o = (rig.acc && rig.acc[id]) || {}, dx = +o.dx || 0, dy = +o.dy || 0, sm = +o.s > 0 ? +o.s : 1;   // 품종·소품마다 손으로 맞춘 자리(skin.json rig.acc)
+    // top: 소품 원점에서 윗끝까지(소품 단위) — 키운 모자가 캔버스 위(-20)를 넘지 않게 줄인다
+    const at = (x, y, rot, s, top) => {
+      s *= sm; y += dy;
+      if (top && y - top * s < -19) s = Math.max(0.2, (y + 19) / top);
+      return `<g transform="translate(${r(x + dx)} ${r(y)}) rotate(${rot || 0}) scale(${r(s)})">`;
+    };
     return '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="480" viewBox="0 -20 100 120">' +
       '<g stroke="#3b302a" stroke-width=".55" stroke-linejoin="round" stroke-linecap="round">' + f(g, at) + '</g></svg>';
   },
@@ -245,51 +263,51 @@ window.PetAcc = {
     for (let i = 0; i < 5; i++) p += `<path d="M0 0C-2.6-1.6-3.2-4.6-1.2-6.2L0-5.2L1.2-6.2C3.2-4.6 2.6-1.6 0 0Z" transform="rotate(${i * 72})"/>`;
     return `<g transform="translate(${cx} ${cy}) rotate(${rot || 0}) scale(${s})" fill="#f6c4cf" stroke-width=".45">${p}<circle r="1.2" fill="#e7a245" stroke="none"/></g>`;
   },
-  ART: {                                                     // 그림체: 가는 먹선 + 흐린 색(종이 노트). g.k 는 머리 크기 배율
-    ribbon: (g, at) => at(g.x + g.u * 0.3, g.c + g.u * 0.07, 18) +
+  ART: {                                                     // 그림체: 가는 먹선 + 흐린 색(종이 노트). at(x, y, 회전, 배율, 윗끝) — 모자는 머리 폭(hw), 안경은 눈 사이(ed), 목도리는 목 폭(cw)에 맞춘다
+    ribbon: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.07, 18, g.hw / 62) +
       '<path d="M-1 1L-5 9.5L-2.4 8.8L-1.3 11Z M1 1L5 9.5L2.4 8.8L1.3 11Z" fill="#b5503b"/>' +
       '<path d="M0 0C-3-5-11-7.5-12-1.2C-12.4 4.6-4 5 0 0Z M0 0C3-5 11-7.5 12-1.2C12.4 4.6 4 5 0 0Z" fill="#cf6a52"/>' +
       '<path d="M-3-1.6C-6-3.6-9-3.6-10.2-1.4 M3-1.6C6-3.6 9-3.6 10.2-1.4" fill="none" stroke="#efa48f" stroke-width=".5"/>' +
       '<ellipse rx="2.3" ry="2.7" fill="#b5503b"/></g>',
-    scarf: (g, at) => at(g.x, g.n + g.u * 0.1, 0) +
+    scarf: (g, at) => at(g.ex, g.cy, 0, g.cw / 40) +
       '<path d="M7 3.5L13.5 3.6L12.6 17L6.4 16.6Z" fill="#a8432a"/>' +
       '<path d="M7.2 17v2.4M9.3 17.1v2.4M11.4 17.2v2.4" fill="none" stroke-width=".7"/>' +
       '<path d="M-21-3C-10 2.4 10 2.4 21-3L20.4 3.4C10 8.6-10 8.6-20.4 3.4Z" fill="#a8432a"/>' +
       '<path d="M-20.6 0.2C-10 5.6 10 5.6 20.6 0.2" fill="none" stroke="#efe3cf" stroke-width="1.1"/>' +
       '<path d="M7.4 9.5L13 9.8" fill="none" stroke="#efe3cf" stroke-width="1.1"/></g>',
-    glasses: (g, at) => at(g.x, g.ey, 0, g.eh / 10) +
-      '<circle cx="-10" r="6.4" fill="#ffffff" fill-opacity=".16" stroke-width="1.05"/><circle cx="10" r="6.4" fill="#ffffff" fill-opacity=".16" stroke-width="1.05"/>' +
-      '<path d="M-3.6-.9C-1.6-2.6 1.6-2.6 3.6-.9 M-16.3-1.2L-19.6-2.6 M16.3-1.2L19.6-2.6" fill="none" stroke-width="1"/>' +
-      '<path d="M-13.6-3.1a4.2 4.2 0 0 1 3-1.7 M6.4-3.1a4.2 4.2 0 0 1 3-1.7" fill="none" stroke="#ffffff" stroke-width=".8"/></g>',
-    beret: (g, at) => at(g.x - g.u * 0.05, g.c + g.u * 0.07, -12) +
+    glasses: (g, at) => at(g.ex, g.ey + g.ed * 0.04, g.ang, g.ed / 20) +
+      '<circle cx="-10" r="7.2" fill="#ffffff" fill-opacity=".16" stroke-width="1.05"/><circle cx="10" r="7.2" fill="#ffffff" fill-opacity=".16" stroke-width="1.05"/>' +
+      '<path d="M-2.8-.9C-1.2-2.4 1.2-2.4 2.8-.9 M-17.1-1.2L-21.6-2.8 M17.1-1.2L21.6-2.8" fill="none" stroke-width="1"/>' +
+      '<path d="M-14.2-3.5a4.8 4.8 0 0 1 3.4-1.9 M5.8-3.5a4.8 4.8 0 0 1 3.4-1.9" fill="none" stroke="#ffffff" stroke-width=".8"/></g>',
+    beret: (g, at) => at(g.ex - g.hw * 0.03, g.c + g.t * 0.22, -10, g.hw * 0.9 / 30, 13) +
       '<path d="M-15 0C-17.4-7-6.5-11.4 2-10.8C12-10.2 18.4-6 15 0C8 2.6-8 2.6-15 0Z" fill="#3f5c86"/>' +
       '<path d="M-14.2-1.6C-8 1 8 1 14.2-1.6" fill="none" stroke="#2c4366" stroke-width=".8"/>' +
       '<path d="M1.5-10.6L2.4-13.4" fill="none" stroke-width="1.4"/></g>',
-    bowtie: (g, at) => at(g.x, g.n + g.u * 0.09, 0) +
+    bowtie: (g, at) => at(g.ex, g.cy + g.cw * 0.06, 0, g.cw * 0.5 / 21) +
       '<path d="M0 0L-9-5.6C-10.6-2-10.6 2-9 5.6Z M0 0L9-5.6C10.6-2 10.6 2 9 5.6Z" fill="#7b3a6b"/>' +
       '<g fill="#f2dfe9" stroke="none"><circle cx="-6" cy="-1.6" r=".8"/><circle cx="-6.4" cy="2.2" r=".8"/><circle cx="6" cy="-1.6" r=".8"/><circle cx="6.4" cy="2.2" r=".8"/></g>' +
       '<rect x="-2.2" y="-2.7" width="4.4" height="5.4" rx="1.3" fill="#5e2a52"/></g>',
-    crown: (g, at) => at(g.x, g.c + g.u * 0.05, 0) +
+    crown: (g, at) => at(g.ex, g.c + g.t * 0.14, 0, g.hw * 0.5 / 23, 13.6) +
       '<path d="M-10 0L-11.6-10L-5.4-5L0-12.4L5.4-5L11.6-10L10 0Z" fill="#e3b847"/>' +
       '<path d="M-10 0h20v2.8h-20Z" fill="#c99a2e"/>' +
       '<circle cy="-12.4" r="1.3" fill="#cf6a52"/><circle cx="-11.6" cy="-10" r="1.1" fill="#5b86bd"/><circle cx="11.6" cy="-10" r="1.1" fill="#5b86bd"/>' +
       '<circle cy="-2.4" r="1.3" fill="#cf6a52" stroke-width=".4"/></g>',
-    pumpkin: (g, at) => at(g.x, g.c + g.u * 0.07, -6) +
+    pumpkin: (g, at) => at(g.ex, g.c + g.t * 0.2, -6, g.hw * 0.62 / 28.8, 20) +
       '<path d="M-1-14.4C-1.2-17-.4-19 1.8-19.8L2.7-18.6C1.1-17.8 1-16 1.2-14.2Z" fill="#6c8442"/>' +
       '<path d="M1.6-17C4.2-19.6 7.4-18 6.6-15.4" fill="none" stroke="#6c8442" stroke-width=".9"/>' +
       '<path d="M0-14.6C-9-15.2-14.4-11-14.4-6S-9 2.6 0 2.6 14.4-1 14.4-6 9-15.2 0-14.6Z" fill="#e48a33"/>' +
       '<path d="M-5.4-14C-8.4-10-8.4-1-5.4 2.2 M5.4-14C8.4-10 8.4-1 5.4 2.2" fill="none" stroke="#b9661f" stroke-width=".6"/>' +
       '<path d="M-6.6-7.6L-4.6-10.8L-2.6-7.6Z M2.6-7.6L4.6-10.8L6.6-7.6Z M-5-4.4C-2-2 2-2 5-4.4L3.4-2.9L1.8-3.9L0-2.8L-1.8-3.9L-3.4-2.9Z" fill="#5a3410" stroke="none"/></g>',
-    witch: (g, at) => at(g.x + g.u * 0.03, g.c + g.u * 0.08, -8) +
+    witch: (g, at) => at(g.ex + g.hw * 0.02, g.c + g.t * 0.18, -8, g.hw * 0.95 / 34.8, 26.4) +
       '<path d="M-9-1C-6-9-3-17 1-23C3-25.6 6.2-26 8.2-24.4C5.2-24 3.6-21 3.2-17C4-10 7-4 9-1Z" fill="#3d3350"/>' +
       '<ellipse rx="17.4" ry="4.2" fill="#3d3350"/>' +
       '<path d="M-8.6-2.4C-3-1 3-1 8.6-2.4L7.9-5.6C3-4.2-3-4.2-7.7-5.6Z" fill="#e48a33"/>' +
       '<rect x="-1.9" y="-5.2" width="3.8" height="3.2" fill="none" stroke="#f2c14e" stroke-width=".7"/></g>',
-    santa: (g, at) => at(g.x, g.c + g.u * 0.08, -6) +
+    santa: (g, at) => at(g.ex, g.c + g.t * 0.22, -6, g.hw * 0.9 / 29.2, 17.6) +
       '<path d="M-12.6-1C-12-9-6-16 2-17.2C8.4-17.8 13.6-14 16.4-7.8C13.4-9.8 10.4-10.4 8.2-9C9.2-6 10.4-3 12.4-1Z" fill="#c23f33"/>' +
       '<rect x="-14.6" y="-3.4" width="28.6" height="5.8" rx="2.9" fill="#fbf7ef"/>' +
       '<circle cx="16.6" cy="-6.6" r="3.2" fill="#fbf7ef"/></g>',
-    blossom: (g, at) => at(g.x + g.u * 0.28, g.c + g.u * 0.09, 0) +
+    blossom: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.08, 0, g.hw / 52) +
       PetAcc.flower(0, 0, 1.25, 10) + PetAcc.flower(-5.6, 3.4, 0.85, 40) + '</g>',
   },
   DECO: {                                                    // 계절 장식 — 그림 둘레에서 천천히(pets.css .fx-bat·.fx-snow·.fx-petal)
