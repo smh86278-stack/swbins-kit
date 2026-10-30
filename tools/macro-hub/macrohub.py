@@ -169,6 +169,33 @@ def look_attrs(lk=None):
     return attrs + (' style="%s"' % ';'.join(css) if css else '')
 
 
+# 화면 펫 소품·계절 — 이름은 web/pets.js PetAcc.LIST 와 같게. state['petx'] 에 기억하고 /events {t:'petx'} 로 알린다.
+# season: 계절 소품 자동(할로윈·크리스마스·봄 — 그동안은 고른 소품 대신 계절 소품) · acc: 강아지·고양이에 얹을 소품('none' = 없음)
+PET_ACCS = ('none', 'ribbon', 'scarf', 'glasses', 'beret', 'bowtie', 'crown')
+
+
+def petx():
+    px = state.get('petx') or {}
+    acc = dict({'dog': 'none', 'cat': 'none'}, **{k: v for k, v in (px.get('acc') or {}).items() if k in ('dog', 'cat')})
+    return {'season': px.get('season', True) is not False,
+            'acc': {k: (v if v in PET_ACCS else 'none') for k, v in acc.items()}}
+
+
+def clean_petx(body):
+    """POST /api/petx 의 값 검사 — (새 petx, 오류). 빠진 키는 그대로 둔다."""
+    cur = petx()
+    body = body or {}
+    if 'season' in body:
+        cur['season'] = bool(body['season'])
+    for kind, v in (body.get('acc') or {}).items():
+        if kind not in ('dog', 'cat'):
+            continue
+        if v not in PET_ACCS:
+            return None, '소품은 %s 중 하나입니다' % ' · '.join(PET_ACCS)
+        cur['acc'][kind] = v
+    return cur, None
+
+
 def render_page(path):
     """화면 HTML — 실행 토큰·화면 모드·꾸미기를 심는다(<html data-mode="__MODE__">). 요청마다 읽으니 고치면 새로고침만으로 보인다."""
     with open(path, encoding='utf-8') as f:
@@ -1991,7 +2018,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {'error': 'no such run'})
             return self._send(200, dict(r.summary(), lines=list(r.lines)))
         if u.path == '/api/skin':
-            return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}})
+            return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}, 'petx': petx()})
+        if u.path == '/api/petx':                     # 화면 펫 소품·계절
+            return self._send(200, petx())
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/ping':                     # 화면이 실시간 연결을 다시 붙일 때 — 토큰이 옛것(허브가 다시 뜸)이면 403 → 화면이 새로 고친다
@@ -2272,6 +2301,14 @@ class Handler(BaseHTTPRequestHandler):
             save_state()
             broadcast({'t': 'skin', 'skin': sid, 'breed': breed})
             return self._send(200, {'ok': True, 'skin': sid, 'breed': breed})
+        if path == '/api/petx':                       # 화면 펫 소품·계절 {"season": bool, "acc": {"dog": "ribbon"}} — 빠진 키는 그대로
+            px, err = clean_petx(body)
+            if err:
+                return self._send(400, {'error': err})
+            state['petx'] = px
+            save_state()
+            broadcast({'t': 'petx', 'petx': px})
+            return self._send(200, {'ok': True, 'petx': px})
         if path == '/api/theme':                      # 화면 모드 — 허브 화면·운영 화면·전용 창이 같이 따른다
             mode = body.get('mode')
             if mode not in UI_MODES:

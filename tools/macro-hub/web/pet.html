@@ -71,27 +71,20 @@ function update() {
 }
 
 /* ---------- 스킨: 움직이는 이미지/영상으로 통째로 바꾸기 (web/skins/README.md) ---------- */
-let skin = null, skinId = null; const curFile = {dog: null, cat: null};
+let skin = null, skinId = null;
 let skinKey = null;                                      // 스킨 + 품종 — 바뀐 경우에만 다시 읽는다
-async function setSkin(id, breed) { skinId = id; skinKey = JSON.stringify([id || null, breed || {}]); skin = await PetSkin.load(id, breed); curFile.dog = curFile.cat = null; update(); }
+async function setSkin(id, breed) { skinId = id; skinKey = JSON.stringify([id || null, breed || {}]); skin = await PetSkin.load(id, breed); PetSkin.reset($('#dogArt')); PetSkin.reset($('#catArt')); update(); }
 const skinChanged = j => JSON.stringify([j.skin || null, j.breed || {}]) !== skinKey;
-function renderSkin(kind, mood, bark, motion) {
-  const pet = $('#' + kind), art = $('#' + kind + 'Art');
-  const file = skin ? PetSkin.file(skin, kind, mood, bark, motion) : null;
-  pet.classList.toggle('skinned', !!file);
-  if (!file) { PetSkin.dispose(art.querySelector('.skin-media')); curFile[kind] = null; return; }
-  if (curFile[kind] !== file) {
-    PetSkin.dispose(art.querySelector('.skin-media'));
-    art.append(PetSkin.element(skin, file)); curFile[kind] = file;
-  }
-}
+// 그리기는 허브 화면과 같은 PetSkin.render — 상태·소품(PetAcc)이 바뀔 때만 다시 만든다
+const renderSkin = (kind, mood, bark, motion) => PetSkin.render(skin, $('#' + kind), $('#' + kind + 'Art'), kind, mood, bark, motion);
+function setPetx(j) { if (j && PetAcc.set(j)) update(); }   // 소품·계절(허브 state 'petx')
 
 /* ---------- 허브와 연결 (같은 출처라 CORS 문제가 없다) ---------- */
 async function loadMacros() {
   try { macros = await (await fetch('/api/macros')).json(); connected = true; update(); } catch (e) { connected = false; }
 }
 async function loadSkin() {                              // 스킨은 허브가 정본 — 연결될 때마다 맞춘다
-  try { const j = await (await fetch('/api/skin')).json(); if (skinChanged(j)) setSkin(j.skin || null, j.breed); } catch (e) {}
+  try { const j = await (await fetch('/api/skin')).json(); setPetx(j.petx); if (skinChanged(j)) setSkin(j.skin || null, j.breed); } catch (e) {}
 }
 function connect() {
   const es = new EventSource('/events');
@@ -102,6 +95,7 @@ function connect() {
     if (m.t === 'run') { PetMood.react(flash, m.run); if (!m.run.tool) loadMacros(); update(); }
     else if (m.t === 'macros' || m.t === 'motion') loadMacros();
     else if (m.t === 'skin') { if (skinChanged(m)) setSkin(m.skin || null, m.breed); }
+    else if (m.t === 'petx') setPetx(m.petx);
     else if (m.t === 'notify') { PetMood.notify(flash, m); say('dog', (m.title || '알림') + (m.text ? ' — ' + m.text : ''), 6500); update(); }
   };
 }
@@ -165,9 +159,12 @@ function applySettings(s) {
 }
 if (api) { api.getSettings().then(applySettings); api.onSettings(applySettings); }
 if (api) {
-  // 우클릭 메뉴의 모습·품종 선택 — 허브가 기억하고 허브 화면과 같이 바뀐다. 값은 스킨 id 또는 {breed: {dog: 'corgi'}}
-  api.onSetSkin(v => fetch('/api/skin', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
-    body: JSON.stringify(v && typeof v === 'object' ? v : {skin: v})}).catch(() => {}));
+  // 우클릭 메뉴의 모습·품종·소품 선택 — 허브가 기억하고 허브 화면과 같이 바뀐다. 값은 스킨 id · {breed: {dog: 'corgi'}} · {petx: {season, acc}}
+  api.onSetSkin(v => {
+    const px = v && typeof v === 'object' && v.petx;
+    fetch(px ? '/api/petx' : '/api/skin', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
+      body: JSON.stringify(px ? px : v && typeof v === 'object' ? v : {skin: v})}).catch(() => {});
+  });
   // 메뉴의 '펫 끄기' — 허브에 알려 '꺼 둔 상태'로 기억시킨다(그래야 허브를 다시 켤 때 펫이 되살아나지 않는다)
   api.onAskOff(() => fetch('/api/pet', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Hub-Token': TOKEN},
     body: JSON.stringify({on: false})}).catch(() => {}));

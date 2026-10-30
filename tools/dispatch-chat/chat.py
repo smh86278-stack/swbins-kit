@@ -1268,12 +1268,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with open(p, "rb") as f:
                     return self._send(200, f.read(), PET_TYPES[m.group(2)])
             return self._send(404, {"error": "no pet"})
-        if u.path == "/api/pet":                                                    # 고른 품종 — 허브가 없으면 기본(첫 번째)
+        if u.path == "/api/pet":                                                    # 고른 품종·소품 — 허브가 없으면 기본(첫 번째 품종·계절 소품)
             try:
                 import urllib.request
                 with urllib.request.urlopen(HUB_SKIN, timeout=0.6) as r:
                     j = json.loads(r.read().decode("utf-8"))
-                return self._send(200, {"breed": (j.get("breed") or {}) if j.get("skin") == "plush" else {}})
+                return self._send(200, {"breed": (j.get("breed") or {}) if j.get("skin") == "plush" else {}, "petx": j.get("petx")})
             except Exception:
                 return self._send(200, {"breed": {}})
         if u.path == "/api/state":

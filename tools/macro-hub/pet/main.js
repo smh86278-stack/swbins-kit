@@ -98,11 +98,28 @@ async function skinBreeds(id) {                          // 스킨의 품종 목
   } catch (_) { return {}; }
 }
 
+async function currentPetx() {                          // 소품·계절 — 허브가 기억한다(web/pets.js PetAcc · /api/petx)
+  try {
+    const r = await fetch(HUB + '/api/petx', { signal: AbortSignal.timeout(1500) });
+    return r.ok ? await r.json() : null;
+  } catch (_) { return null; }
+}
+const ACCS = [['none', '없음'], ['ribbon', '리본'], ['scarf', '목도리'], ['glasses', '안경'], ['beret', '베레모'], ['bowtie', '나비넥타이'], ['crown', '왕관']];
+
 async function showMenu() {
   rec('menu');
   if (TEST) return;
   const sizes = [['아주 작게', 0.5], ['작게', 0.7], ['보통', 0.9], ['크게', 1.15], ['아주 크게', 1.5]];
-  const [skins, cur] = await Promise.all([fetchSkins(), currentSkin(true)]);
+  const [skins, cur, px] = await Promise.all([fetchSkins(), currentSkin(true), currentPetx()]);
+  const setPetx = v => { if (win) win.webContents.send('pet:set-skin', { petx: v }); };   // 렌더러가 토큰을 붙여 /api/petx 로
+  const accMenu = px ? [{
+    label: '소품', submenu: [
+      { label: '계절 소품 자동 (할로윈·크리스마스·봄)', type: 'checkbox', checked: px.season, click: () => setPetx({ season: !px.season }) },
+      { type: 'separator' },
+      ...['dog', 'cat'].map(kind => ({ label: kind === 'dog' ? '강아지' : '고양이', submenu: ACCS.map(([id, name]) => ({
+        label: name, type: 'radio', checked: (px.acc[kind] || 'none') === id, click: () => setPetx({ acc: { [kind]: id } }) })) })),
+    ],
+  }] : [];
   const curSkin = cur.skin, breeds = await skinBreeds(curSkin);
   const pickSkin = id => { if (win) win.webContents.send('pet:set-skin', id); };   // 렌더러가 토큰을 붙여 허브에 요청한다
   const breedMenu = (kind, label) => {                   // 품종 — 고른 게 없거나 모르는 것이면 첫 번째가 쓰인다(web/pets.js applyBreed 와 같게)
@@ -126,6 +143,7 @@ async function showMenu() {
     },
     ...breedMenu('dog', '강아지 품종'),
     ...breedMenu('cat', '고양이 품종'),
+    ...accMenu,
     { label: '항상 위에 표시', type: 'checkbox', checked: settings.alwaysOnTop, click: () => applySettings({ alwaysOnTop: !settings.alwaysOnTop }) },
     { type: 'separator' },
     { label: '자동화 허브 열기', click: openHub },

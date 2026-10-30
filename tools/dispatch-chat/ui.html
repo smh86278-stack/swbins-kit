@@ -1014,8 +1014,9 @@ function petFillSelects(hub) {
 async function petLoad() {                                 // 가끔 다시 맞춘다(허브에서 품종을 바꿨을 수 있다)
   if (!window.PetSkin) return;
   petBreedAt = Date.now();
-  let hub = {};
-  try { hub = (await api('/api/pet')).breed || {}; } catch (e) {}
+  let hub = {}, petx = null;
+  try { const j = await api('/api/pet'); hub = j.breed || {}; petx = j.petx; } catch (e) {}
+  if (window.PetAcc && PetAcc.set(petx)) petDraw();         // 소품·계절은 허브를 따른다(허브가 없으면 계절 자동)
   const breed = Object.assign({}, hub, petPick());
   const key = JSON.stringify(breed);
   if (petSkin) petFillSelects(hub);

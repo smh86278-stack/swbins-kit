@@ -107,6 +107,7 @@ const HubLook = (() => {
       const node = document.getElementById(opts.pets);
       if (node) { node.hidden = false; panel.append(node); }
     }
+    if (opts.more) opts.more(panel, el);             // 페이지가 덧붙이는 칸(허브 첫 화면: 펫 소품)
   }
   function close() {
     if (!panel) return;
@@ -134,7 +135,7 @@ const HubLook = (() => {
     document.body.append(panel); draw(); place();
   }
   function redraw() { if (panel) { draw(); place(); } }
-  // mount(sel, token, {layout, pets}) — sel 은 예전 단추 자리(없어도 된다). 꾸미기 단추는 사이드바(HubNav)에 있다
+  // mount(sel, token, {layout, pets, more}) — sel 은 예전 단추 자리(없어도 된다). 꾸미기 단추는 사이드바(HubNav)에 있다
   function mount(sel, tok, o) {
     token = tok; opts = o || {};
     const d = document.documentElement.dataset;
