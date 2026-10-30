@@ -74,7 +74,18 @@ function applySettings(patch) {
 }
 const publicSettings = () => ({ showDog: settings.showDog, showCat: settings.showCat, scale: settings.scale });
 
-function openHub() { rec('open'); if (!TEST) shell.openExternal(HUB + '/'); }
+// 허브·메신저·회고는 브라우저 말고 허브 창(shell\, 같은 Electron)으로 연다 — 떠 있으면 그 창이 앞으로 나와 그 탭으로 간다
+// (second-instance --page). 허브 창 폴더가 없으면 기본 브라우저로
+const SHELL_DIR = path.join(__dirname, '..', 'shell');
+function openInApp(url) {
+  if (TEST) return;
+  if (!fs.existsSync(path.join(SHELL_DIR, 'main.js'))) return shell.openExternal(url);
+  const page = url.startsWith(HUB + '/') ? url.slice(HUB.length) : url;
+  try {
+    require('child_process').spawn(process.execPath, [SHELL_DIR, '--page=' + page], { cwd: SHELL_DIR, detached: true, stdio: 'ignore' }).unref();
+  } catch (_) { shell.openExternal(url); }
+}
+function openHub() { rec('open'); openInApp(HUB + '/'); }
 
 async function fetchSkins() {
   try {
@@ -222,7 +233,7 @@ ipcMain.on('pet:open-url', (e, p) => {                 // 쪽지(말풍선) — 
   if (!trusted(e) || typeof p !== 'string') return;
   rec('open-url', p);
   const url = /^\/(?!\/)/.test(p) ? HUB + p : /^http:\/\/127\.0\.0\.1:\d{2,5}\/$/.test(p) ? p : null;   // 바깥은 이 PC 화면의 첫 페이지만(주소는 허브 /api/petnote 가 설정에서)
-  if (url && !TEST) shell.openExternal(url);
+  if (url) openInApp(url);
 });
 ipcMain.on('pet:scale', (e, dir) => {                  // 펫 위에서 휠: 한 칸에 약 10%
   if (!trusted(e) || !win) return;

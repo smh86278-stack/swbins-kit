@@ -25,7 +25,8 @@ let RETRO = null;                                                         // �
 async function fetchRetro() {
   try { const j = await (await fetch(HUB + '/api/retro', { signal: AbortSignal.timeout(1500) })).json(); RETRO = j.url || null; } catch (_) {}
 }
-const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
+// --page= 는 허브 안 경로('/ops') 또는 이 창이 맡는 주소(메신저·회고 — 화면 펫 쪽지가 보낸다). 그 밖은 허브 첫 화면
+const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') || internal(p) ? p : '/'; };
 
 // GPU 합성을 끈다 — 켜 두면 잠자기·모니터 바뀜 뒤 창이 '보임·맨 앞'인데 화면엔 아무것도 안 그려지는 유령이 되는 일이 있다.
 // 화면이 단순해 CPU 로 그려도 충분하다
