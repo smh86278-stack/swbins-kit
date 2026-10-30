@@ -180,13 +180,40 @@ window.PetSkin = {
    그물 변형(web/petwarp.js)이 그림과 한 텍스처로 합쳐서 고개 갸웃·끄덕에 같이 움직인다(WebGL 이 없으면 소품 없이 그림만).
    설정은 허브가 기억한다(state 'petx' — GET/POST /api/petx, 이벤트 {t:'petx'}): season(계절 소품 자동) · acc {dog, cat}('none' = 없음).
    계절이면 고른 소품 대신 계절 소품과 장식(박쥐·눈·꽃잎)을 쓴다. 허브가 없는 곳(폰 페이지)은 기본값(계절 자동·소품 없음).
-   미리 보기: 페이지 주소에 ?season=halloween|xmas|spring|none · ?acc=crown 등 */
+   미리 보기: 페이지 주소에 ?season=<SEASONS 의 id>|none(예: seollal·chuseok·rain·summer) · ?acc=crown 등 */
 window.PetAcc = {
   LIST: [['ribbon', '리본'], ['scarf', '목도리'], ['glasses', '안경'], ['beret', '베레모'], ['bowtie', '나비넥타이'], ['crown', '왕관']],
-  SEASONS: {                                                 // 날짜는 월-일(양 끝 포함)
+  /* 계절(2026-10-30 달마다로 넓힘) — 어느 날이든 하나가 걸린다. 고르는 순서(앞이 이긴다, seasonOf):
+       1) 음력 창 lunar: 설날 ±2일 · 추석 ±3일(LUNAR 표에 있는 해만 — 없는 해는 건너뛰고 달 기본)
+       2) 날짜 창 from~to(월-일, 양 끝 포함) — 아래 적힌 순서대로
+       3) 달 기본 month */
+  SEASONS: {
+    seollal: {name: '설날', lunar: 'seollal', days: 2, dog: 'seollal', cat: 'seollal'},
+    chuseok: {name: '추석', lunar: 'chuseok', days: 3, dog: 'songpyeon', cat: 'songpyeon', deco: {dog: 'moon', cat: 'moon'}},
+    valentine: {name: '밸런타인', from: '02-07', to: '02-15', dog: 'heart', cat: 'heart', deco: {dog: 'hearts', cat: 'hearts'}},
+    children: {name: '어린이날', from: '05-03', to: '05-06', dog: 'balloon', cat: 'balloon'},
+    pepero: {name: '빼빼로데이', from: '11-10', to: '11-12', dog: 'pepero', cat: 'pepero'},
     halloween: {name: '할로윈', from: '10-24', to: '10-31', dog: 'pumpkin', cat: 'witch', deco: {cat: 'bat'}},
-    xmas: {name: '크리스마스', from: '12-01', to: '12-26', dog: 'santa', cat: 'santa', deco: {dog: 'snow', cat: 'snow'}},
+    xmas: {name: '크리스마스', from: '12-01', to: '12-26', month: 12, dog: 'santa', cat: 'santa', deco: {dog: 'snow', cat: 'snow'}},
+    newyear: {name: '새해', from: '12-27', to: '12-31', month: 1, dog: 'pouch', cat: 'pouch', deco: {dog: 'snowlite', cat: 'snowlite'}},
     spring: {name: '봄', from: '03-28', to: '04-12', dog: 'blossom', cat: 'blossom', deco: {cat: 'petal'}},
+    winter: {name: '겨울', month: 2, dog: 'scarf', cat: 'scarf', deco: {dog: 'snowlite', cat: 'snowlite'}},
+    sprout: {name: '새싹', month: 3, dog: 'sprout', cat: 'sprout'},
+    shower: {name: '봄비', month: 4, dog: 'umbrella', cat: 'umbrella', deco: {dog: 'rain', cat: 'rain'}},
+    may: {name: '가정의 달', month: 5, dog: 'carnation', cat: 'carnation'},
+    jangma: {name: '장마', month: 6, dog: 'raincap', cat: 'raincap', deco: {dog: 'rain', cat: 'rain'}},
+    summer: {name: '여름', month: 7, dog: 'sunglasses', cat: 'sunglasses'},
+    august: {name: '한여름', month: 8, dog: 'straw', cat: 'straw'},
+    dragonfly: {name: '초가을', month: 9, dog: 'dragonfly', cat: 'dragonfly'},
+    autumn: {name: '단풍', month: 10, dog: 'maple', cat: 'maple', deco: {dog: 'leaves', cat: 'leaves'}},
+    november: {name: '늦가을', month: 11, dog: 'beanie', cat: 'beanie', deco: {dog: 'leaves', cat: 'leaves'}},
+  },
+  /* 설날(음 1/1)·추석(음 8/15) 양력 날짜. 2026·2027 은 우주항공청 월력요항(공휴일 발표)과 같다.
+     2028~2032 는 천문 음력 대조(한국 시간 UTC+9 기준 — 2028 설은 중국 1/26 과 달리 한국 1/27). 창이 ±2~3일이라 하루 차이는 흡수된다.
+     표가 끝나면(2033~) 설·추석 창 없이 달 기본만 — 해마다 한 줄씩 보태면 된다 */
+  LUNAR: {
+    seollal: {2026: '02-17', 2027: '02-07', 2028: '01-27', 2029: '02-13', 2030: '02-03', 2031: '01-23', 2032: '02-11'},
+    chuseok: {2026: '09-25', 2027: '09-15', 2028: '10-03', 2029: '09-22', 2030: '09-12', 2031: '10-01', 2032: '09-19'},
   },
   // bubble: 말풍선(쪽지) 켬 · quiet: 조용히 시간(none·lunch·night·both) — 데스크톱 펫(pet.html)이 쓴다
   // grow: 키우기(간식·레벨) 켬 · lv: 허브 petgrow.view {snacks, level, floor, next, week, prev_week} · unlock: 소품이 풀리는 레벨
@@ -210,9 +237,14 @@ window.PetAcc = {
     return 'Lv.' + this.level() + ' · 간식 ' + v.snacks + '개' + (v.next ? ' (다음까지 ' + (v.next - v.snacks) + ')' : '');
   },
   unlockedAt(lv){ const e = Object.entries(this.conf.unlock).find(([, n]) => n === lv); return e ? (this.LIST.find(x => x[0] === e[0]) || [])[1] : null; },
-  seasonOf(d){
+  seasonOf(d){                                               // 이 날의 계절 id — 음력 창 > 날짜 창 > 달 기본(위 SEASONS 설명)
+    const y = d.getFullYear(), day = Date.UTC(y, d.getMonth(), d.getDate()) / 864e5, S = Object.entries(this.SEASONS);
     const md = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    return Object.keys(this.SEASONS).find(id => this.SEASONS[id].from <= md && md <= this.SEASONS[id].to) || null;
+    for (const [id, s] of S) {
+      const at = s.lunar && (this.LUNAR[s.lunar] || {})[y];
+      if (at && Math.abs(day - Date.UTC(y, +at.slice(0, 2) - 1, +at.slice(3)) / 864e5) <= s.days) return id;
+    }
+    return (S.find(([, s]) => s.from && s.from <= md && md <= s.to) || S.find(([, s]) => s.month === d.getMonth() + 1) || [null])[0];
   },
   season(now){
     if ('season' in this.force) return this.SEASONS[this.force.season] ? this.force.season : null;
@@ -309,11 +341,90 @@ window.PetAcc = {
       '<circle cx="16.6" cy="-6.6" r="3.2" fill="#fbf7ef"/></g>',
     blossom: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.08, 0, g.hw / 52) +
       PetAcc.flower(0, 0, 1.25, 10) + PetAcc.flower(-5.6, 3.4, 0.85, 40) + '</g>',
+    // ---- 달마다 계절 소품(2026-10-30) — 자리는 위와 같은 잣대: 머리 옆 핀은 리본 자리, 모자는 정수리(c·t·hw), 가슴은 목 선(cy·cw), 눈은 안경 자리
+    pouch: (g, at) => at(g.ex, g.cy - g.cw * 0.02, 0, g.cw * 0.42 / 18) +                       // 복주머니(목에 걸림)
+      '<path d="M-3 2C-9 4-9.5 14-6 16.4C-2 18.2 2 18.2 6 16.4C9.5 14 9 4 3 2Z" fill="#c23f33"/>' +
+      '<path d="M-3 2L-4.8-1.8L-1.2.6L0-2.6L1.2.6L4.8-1.8L3 2Z" fill="#c23f33"/>' +
+      '<path d="M-3.6 2.4C-1 3.6 1 3.6 3.6 2.4" fill="none" stroke="#e3b847" stroke-width="1.1"/>' +
+      '<circle cy="9.8" r="2.8" fill="#e3b847" stroke-width=".4"/><path d="M-1.2 9.8h2.4M0 8.6v2.4" fill="none" stroke="#c23f33" stroke-width=".6"/></g>',
+    seollal: (g, at) => PetAcc.ART.pouch(g, at) +                                               // 설날: 복주머니 + 색동 리본
+      at(g.ex + g.hw * 0.27, g.c + g.hw * 0.07, 18, g.hw / 62) +
+      '<path d="M0 0C-3-5-11-7.5-12-1.2C-12.4 4.6-4 5 0 0Z M0 0C3-5 11-7.5 12-1.2C12.4 4.6 4 5 0 0Z" fill="#f2c14e"/>' +
+      '<path d="M-3-2.6C-6-5.2-9.6-5.4-11.2-3 M-4-.6C-7-1.8-10-1.6-11.8.6 M3-2.6C6-5.2 9.6-5.4 11.2-3 M4-.6C7-1.8 10-1.6 11.8.6" fill="none" stroke="#5b86bd" stroke-width="1.3"/>' +
+      '<path d="M-4.6 1.6C-7.6 2.6-10 2.4-11.2 1.4 M4.6 1.6C7.6 2.6 10 2.4 11.2 1.4" fill="none" stroke="#c23f33" stroke-width="1.3"/>' +
+      '<ellipse rx="2.3" ry="2.7" fill="#6c9a52"/></g>',
+    heart: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.08, 14, g.hw / 52) +                // 밸런타인 하트 핀
+      '<path d="M0 5C-6.6-.4-8.6-5.6-5-8C-2.8-9.4-.6-8.2 0-6.4C.6-8.2 2.8-9.4 5-8C8.6-5.6 6.6-.4 0 5Z" fill="#e06b7d"/>' +
+      '<path d="M-4.6-5.6C-3.8-6.6-2.6-6.8-1.8-6.2" fill="none" stroke="#fbd5dc" stroke-width=".8"/>' +
+      PetAcc.heartSmall(-7, 4, 0.45) + '</g>',
+    sprout: (g, at) => at(g.ex + g.hw * 0.06, g.c + g.t * 0.1, 8, g.hw / 42, 13) +              // 새싹(정수리에 쏙)
+      '<path d="M0 1C.4-3 0-6 .4-9" fill="none" stroke="#5f8a3c" stroke-width="1.1"/>' +
+      '<path d="M.2-7.6C-4-11.6-9-10.4-9.4-6.6C-5.6-5-1.6-5.6.2-7.6Z" fill="#9cc165"/>' +
+      '<path d="M.4-8.6C4-13.4 9.4-12.6 10-8.8C6.4-6.6 1.8-7 .4-8.6Z" fill="#86b356"/></g>',
+    umbrella: (g, at) => at(g.ex + g.hw * 0.08, g.c + g.t * 0.12, -14, g.hw * 1.15 / 36, 21) + // 봄비 우산(머리 위)
+      '<path d="M0-1V7C0 9.6 3 9.6 3 7.4" fill="none" stroke-width="1.1"/>' +
+      '<path d="M-18 0C-17-12-6-18 0-18S17-12 18 0C15-2.4 12-2.4 9 0C6-2.4 3-2.4 0 0C-3-2.4-6-2.4-9 0C-12-2.4-15-2.4-18 0Z" fill="#5b86bd"/>' +
+      '<path d="M0-18C-5-13-8.4-6-9 0M0-18C5-13 8.4-6 9 0M0-18V0" fill="none" stroke="#3f5c86" stroke-width=".6"/>' +
+      '<path d="M0-18v-2.6" fill="none" stroke-width="1.1"/></g>',
+    balloon: (g, at) => at(g.ex + g.hw * 0.52, g.c + g.hw * 0.02, 6, g.hw / 52, 22) +           // 어린이날 풍선 둘(머리 옆)
+      '<path d="M0 0C-2 6 2 10-1 16C-3 20 0 24-1 28 M-7-3C-6 4-3 8-1 16" fill="none" stroke-width=".5"/>' +
+      '<ellipse cy="-8.4" rx="6.2" ry="7.6" fill="#e06b5a"/><path d="M-1 0h2L0-1Z" fill="#e06b5a"/>' +
+      '<ellipse cx="-7.6" cy="-9" rx="4.6" ry="5.6" fill="#f2c14e"/>' +
+      '<path d="M-2.6-12.4C-1.8-13.6-.6-14-.2-13.8" fill="none" stroke="#fbe1d8" stroke-width=".9"/></g>',
+    carnation: (g, at) => at(g.ex - g.cw * 0.22, g.cy + g.cw * 0.1, -12, g.cw * 0.4 / 14) +     // 카네이션(가슴)
+      '<path d="M0 1.6L0 9 M0 6C-2 5-3.6 5.4-4.4 6.6C-2.6 7.4-1 7 0 6Z" fill="#6c9a52" stroke="#4d6f3a"/>' +
+      '<path d="M-2.2 0L0 3.4L2.2 0Z" fill="#6c9a52"/>' +
+      '<path d="M-6.6 0C-7.6-3-5.6-6.4-2.6-5.8C-1.8-8.2 1.8-8.2 2.6-5.8C5.6-6.4 7.6-3 6.6 0C4.4 1.8-4.4 1.8-6.6 0Z" fill="#d9534f"/>' +
+      '<path d="M-4.6-1C-3.6-3-2-3.4-.6-2.6M.6-2.6C2-3.4 3.6-3 4.6-1M-1.8-4.4C-.6-5.4.6-5.4 1.8-4.4" fill="none" stroke="#f3a3a0" stroke-width=".6"/></g>',
+    raincap: (g, at) => at(g.ex, g.c + g.t * 0.2, -4, g.hw * 0.95 / 32, 14) +                // 노란 우비 모자
+      '<path d="M-16 1.4C-12-1.6 12-1.6 16 1.4C14 4.4-14 4.4-16 1.4Z" fill="#e3b032"/>' +
+      '<path d="M-10.6 0C-11-8.6-6-13 0-13S11-8.6 10.6 0Z" fill="#f2c14e"/>' +
+      '<path d="M0-13V-.4M-5.8-11.4C-7.4-8-7.6-3.6-7-.2M5.8-11.4C7.4-8 7.6-3.6 7-.2" fill="none" stroke="#c99a2e" stroke-width=".55"/></g>',
+    sunglasses: (g, at) => at(g.ex, g.ey + g.ed * 0.04, g.ang, g.ed / 20) +                    // 선글라스(안경 자리)
+      '<path d="M-17-5H-3.2C-2.6 1-5 5-10 5S-17.6 1-17-5Z M17-5H3.2C2.6 1 5 5 10 5S17.6 1 17-5Z" fill="#2f2b36" stroke-width="1"/>' +
+      '<path d="M-3.2-4.4C-1.2-5.4 1.2-5.4 3.2-4.4 M-17-4.6L-21.6-5.6 M17-4.6L21.6-5.6" fill="none" stroke-width="1"/>' +
+      '<path d="M-14.6-3L-11.4-3.2 M5.4-3L8.6-3.2" fill="none" stroke="#9aa4b8" stroke-width="1"/></g>',
+    straw: (g, at) => at(g.ex, g.c + g.t * 0.2, -5, g.hw * 1.05 / 36, 12) +                   // 밀짚모자
+      '<ellipse rx="18" ry="4.2" fill="#e8c97a"/>' +
+      '<path d="M-9.4-.8C-9.6-8.6-5.4-11.4 0-11.4S9.6-8.6 9.4-.8C4 .6-4 .6-9.4-.8Z" fill="#e3be6a"/>' +
+      '<path d="M-9.4-4C-4-2.6 4-2.6 9.4-4L9.4-1.2C4 .2-4 .2-9.4-1.2Z" fill="#c23f33"/>' +
+      '<path d="M-14 1.4C-8 3-2 3.4 4 3M-4.6-10.6C-2-8 2-8 4.6-10.6" fill="none" stroke="#c9a14a" stroke-width=".5"/></g>',
+    songpyeon: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.08, 10, g.hw / 50) +           // 추석 송편 셋(머리 옆)
+      '<path d="M-1 6.6C-1.6 2.4 2.4-.6 6.6.2C9.4.8 10 4.8 8.6 6.6C5.4 8.2 1.6 8.2-1 6.6Z" fill="#c9dca0"/>' +
+      '<path d="M-9.4 2.6C-10 -1.6-6-4.6-1.8-3.8C1-3.2 1.6.8.2 2.6C-3 4.2-6.8 4.2-9.4 2.6Z" fill="#f4ead6"/>' +
+      '<path d="M-3.6-3.4C-4.2-7.6-.2-10.6 4-9.8C6.8-9.2 7.4-5.2 6-3.4C2.8-1.8-1-1.8-3.6-3.4Z" fill="#f2c4cf"/>' +
+      '<path d="M-10 6.6C-6 9.4 4 10.4 11 8.4" fill="none" stroke="#6c9a52" stroke-width=".9"/></g>',
+    dragonfly: (g, at) => at(g.ex + g.hw * 0.28, g.c + g.hw * 0.03, -18, g.hw / 46, 8) +       // 잠자리(머리에 앉음)
+      '<g fill="#ffffff" fill-opacity=".55" stroke-width=".45"><ellipse cx="2.4" cy="-3.6" rx="1.8" ry="5.4" transform="rotate(-24 2.4 -3.6)"/>' +
+      '<ellipse cx="-1" cy="-3.4" rx="1.6" ry="4.8" transform="rotate(20 -1 -3.4)"/>' +
+      '<ellipse cx="2.4" cy="3.6" rx="1.8" ry="5.4" transform="rotate(24 2.4 3.6)"/><ellipse cx="-1" cy="3.4" rx="1.6" ry="4.8" transform="rotate(-20 -1 3.4)"/></g>' +
+      '<path d="M-11 0H4" fill="none" stroke="#c4552f" stroke-width="1.8"/><circle cx="5.4" r="1.9" fill="#c4552f"/></g>',
+    maple: (g, at) => at(g.ex + g.hw * 0.27, g.c + g.hw * 0.08, 16, g.hw / 48) +              // 단풍잎 핀
+      '<path d="M0 3.4V9" fill="none" stroke="#8c3f1d" stroke-width=".9"/>' +
+      '<path d="M0 7L.6 3.4L5.4 4.6L4.4 2.6L8.6-1L6.4-1.6L7.4-5.4L4-4.4L3.4-6L1.4-3.6L2-8.4L0-7L-2-8.4L-1.4-3.6L-3.4-6L-4-4.4L-7.4-5.4L-6.4-1.6L-8.6-1L-4.4 2.6L-5.4 4.6L-.6 3.4Z" fill="#d9682f"/></g>',
+    beanie: (g, at) => at(g.ex, g.c + g.t * 0.24, -4, g.hw * 0.9 / 30, 19) +                  // 털모자
+      '<path d="M-13.4 0C-13.4-10-7-14.6 0-14.6S13.4-10 13.4 0Z" fill="#6d8fb3"/>' +
+      '<path d="M-6-13.2C-8-9-8.6-4-8.4 0M0-14.6V0M6-13.2C8-9 8.6-4 8.4 0" fill="none" stroke="#4f6f94" stroke-width=".55"/>' +
+      '<rect x="-15" y="-3.4" width="30" height="6.4" rx="2.6" fill="#4f6f94"/>' +
+      '<path d="M-10-2.4v4.4M-5-2.4v4.4M0-2.4v4.4M5-2.4v4.4M10-2.4v4.4" fill="none" stroke="#3a5677" stroke-width=".5"/>' +
+      '<circle cy="-15.6" r="3.6" fill="#efe3cf"/></g>',
+    pepero: (g, at) => at(g.ex + g.hw * 0.3, g.c + g.hw * 0.06, 24, g.hw / 48, 15) +           // 빼빼로 두 개(머리 옆)
+      '<path d="M-1.6 7V-13 M2.2 7.6V-12.4" fill="none" stroke="#e3be6a" stroke-width="2"/>' +
+      '<path d="M-1.6-13V-1.4 M2.2-12.4V-.8" fill="none" stroke="#5a3410" stroke-width="2.6"/>' +
+      '<path d="M-3.4 3.4C-1 2.4 1.4 2.4 4 3.4" fill="none" stroke="#e06b7d" stroke-width="1.2"/></g>',
+  },
+  heartSmall(cx, cy, s){                                     // 작은 하트(하트 핀 옆)
+    return `<path transform="translate(${cx} ${cy}) scale(${s})" d="M0 5C-6.6-.4-8.6-5.6-5-8C-2.8-9.4-.6-8.2 0-6.4C.6-8.2 2.8-9.4 5-8C8.6-5.6 6.6-.4 0 5Z" fill="#f29aa8" stroke-width="1"/>`;
   },
   DECO: {                                                    // 계절 장식 — 그림 둘레에서 천천히(pets.css .fx-bat·.fx-snow·.fx-petal)
     bat: '<i class="fx-deco fx-bat" aria-hidden="true"><svg viewBox="0 0 24 12"><path d="M12 4.2C11 2.4 11 1.2 11.6.4C12 1 12.4 1 12.4.4C13 1.2 13 2.4 12 4.2C14 2.2 18.4.8 23 1.8C21 2.8 20 4.4 20 6.4C18.4 5.4 16.6 5.6 15.4 7C14.4 5.8 13 5.6 12 6.4C11 5.6 9.6 5.8 8.6 7C7.4 5.6 5.6 5.4 4 6.4C4 4.4 3 2.8 1 1.8C5.6.8 10 2.2 12 4.2Z"/></svg></i>',
     snow: '<i class="fx-deco fx-snow" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b></i>',
     petal: '<i class="fx-deco fx-petal" aria-hidden="true"><b></b><b></b><b></b><b></b></i>',
+    snowlite: '<i class="fx-deco fx-snow fx-lite" aria-hidden="true"><b></b><b></b><b></b></i>',      // 가끔 눈(1·2월)
+    hearts: '<i class="fx-deco fx-hearts" aria-hidden="true"><b>♥</b><b>♥</b><b>♥</b></i>',
+    rain: '<i class="fx-deco fx-rain" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b></i>',
+    leaves: '<i class="fx-deco fx-leaves" aria-hidden="true"><b></b><b></b><b></b></i>',
+    moon: '<i class="fx-deco fx-moon" aria-hidden="true"></i>',                                        // 보름달(그림 뒤)
   },
   decoHtml(kind){ const d = this.deco(kind); return d ? this.DECO[d] || '' : ''; },
 };

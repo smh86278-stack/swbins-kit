@@ -6,7 +6,10 @@
 허브를 띄우지 않는다(함수만 부른다). 표준 라이브러리만으로 돈다.
 """
 import datetime
+import json
 import os
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -87,6 +90,71 @@ class PetExtras(unittest.TestCase):
             js = f.read()
         for acc in macrohub.PET_ACCS[1:]:
             self.assertIn("['%s', " % acc, js)
+
+
+NODE = shutil.which('node')
+
+
+@unittest.skipUnless(NODE, 'node 가 없으면 건너뜀(계절 고르기는 web/pets.js 안에 있다)')
+class Seasons(unittest.TestCase):
+    """계절 고르기(web/pets.js PetAcc.seasonOf)를 node 로 직접 돌린다 — 음력 창 > 날짜 창 > 달 기본."""
+
+    @classmethod
+    def ask(cls, dates):
+        js = ("globalThis.window=globalThis;globalThis.location={search:''};require(process.argv[1]);"
+              "const P=window.PetAcc,out={};for(const s of JSON.parse(require('fs').readFileSync(0,'utf8'))){const [y,m,d]=s.split('-');"
+              "const id=P.seasonOf(new Date(+y,m-1,+d,12));out[s]=id?[id,P.SEASONS[id].dog,P.SEASONS[id].cat]:null}"
+              "console.log(JSON.stringify(out))")
+        r = subprocess.run([NODE, '-e', js, os.path.join(HUB, 'web', 'pets.js')], input=json.dumps(dates),     # 날짜는 stdin 으로(명령줄 길이)
+                           capture_output=True, text=True, encoding='utf-8', timeout=30)
+        if r.returncode:
+            raise AssertionError(r.stderr)
+        return json.loads(r.stdout)
+
+    def check(self, table):
+        got = self.ask(list(table))
+        self.assertEqual({k: v[0] for k, v in got.items()}, table)
+
+    def test_every_day_has_a_season_with_accessories(self):
+        day, end, dates = datetime.date(2026, 1, 1), datetime.date(2033, 12, 31), []
+        while day <= end:
+            dates.append(day.isoformat())
+            day += datetime.timedelta(days=1)
+        with open(os.path.join(HUB, 'web', 'pets.js'), encoding='utf-8') as f:
+            js = f.read()
+        for d, v in self.ask(dates).items():
+            self.assertIsNotNone(v, d)
+            for acc in v[1:]:
+                self.assertRegex(js, r'\n    %s: \(g, at\)' % acc, (d, acc))      # 소품 그림(ART)이 있어야 한다
+
+    def test_month_defaults(self):
+        self.check({'2026-01-10': 'newyear', '2026-02-02': 'winter', '2026-02-28': 'winter', '2026-03-01': 'sprout',
+                    '2026-03-27': 'sprout', '2026-04-13': 'shower', '2026-05-20': 'may', '2026-06-15': 'jangma',
+                    '2026-07-15': 'summer', '2026-08-15': 'august', '2026-09-01': 'dragonfly', '2026-10-01': 'autumn',
+                    '2026-11-01': 'november', '2026-11-30': 'november'})
+
+    def test_date_windows_edges(self):
+        self.check({'2026-02-06': 'winter', '2027-02-14': 'valentine', '2026-02-20': 'winter',
+                    '2026-03-28': 'spring', '2026-04-12': 'spring', '2026-05-02': 'may', '2026-05-03': 'children',
+                    '2026-05-06': 'children', '2026-05-07': 'may', '2026-10-23': 'autumn', '2026-10-24': 'halloween',
+                    '2026-10-31': 'halloween', '2026-11-09': 'november', '2026-11-11': 'pepero', '2026-11-13': 'november',
+                    '2026-12-01': 'xmas', '2026-12-26': 'xmas', '2026-12-27': 'newyear'})
+
+    def test_year_boundary(self):
+        self.check({'2026-12-31': 'newyear', '2027-01-01': 'newyear', '2027-01-31': 'newyear', '2032-12-31': 'newyear'})
+
+    def test_lunar_windows_and_priority(self):
+        self.check({
+            # 설날 ±2 — 2026 은 2/17(밸런타인 2/7~15 와 겹치는 2/15 는 설이 이긴다)
+            '2026-02-14': 'valentine', '2026-02-15': 'seollal', '2026-02-19': 'seollal', '2026-02-20': 'winter',
+            '2027-02-05': 'seollal', '2027-02-09': 'seollal', '2027-02-10': 'valentine',
+            '2028-01-25': 'seollal', '2028-01-29': 'seollal', '2028-01-24': 'newyear',     # 1월 설은 새해를 이긴다
+            '2031-01-21': 'seollal', '2032-02-13': 'seollal',
+            # 추석 ±3 — 2028·2031 은 10월(단풍 달 기본을 이긴다)
+            '2026-09-22': 'chuseok', '2026-09-28': 'chuseok', '2026-09-29': 'dragonfly', '2026-09-21': 'dragonfly',
+            '2028-10-06': 'chuseok', '2028-10-07': 'autumn', '2031-09-28': 'chuseok', '2032-09-22': 'chuseok',
+            # 표가 끝난 해는 설·추석 창 없이 달 기본
+            '2033-01-31': 'newyear', '2033-09-10': 'dragonfly'})
 
 
 D = datetime.datetime

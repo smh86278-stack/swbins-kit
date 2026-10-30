@@ -2,6 +2,7 @@
      ?state=sleep    잠자는 그림으로(같은 틀)          ?marks=1  잰 자리(눈·정수리·머리 폭·목 선)를 표시
      ?acc=glasses,beret  보일 소품만                   ?kind=cat  강아지·고양이 한쪽만
      ?size=150  칸 크기(px)                            ?shot=1  화면 찍기용(위 칸 없이)
+     ?breeds=shiba,maltese,cream  보일 품종만(계절 소품을 대표 품종으로만 볼 때)
    맞추기: 칸을 누르면 고른다 → 끌면 옮기고, 휠로 크기 → 위 칸에 skin.json 의 rig.acc 로 붙일 JSON 이 나온다(「복사」).
    「자동 측정」: 그림의 투명도·어두운 눈동자로 rig 의 eyes·crown·head·chin 을 다시 잰다(눈을 못 찾으면 EYES_MANUAL). */
 window.PetLab = {
@@ -132,7 +133,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     cell.box.style.outline = sel === cell ? '2px solid #cf6a52' : (tune[kind + ':' + bid] || {})[acc] ? '1px dashed #3f5c86' : '';
   }
+  const only = q.get('breeds') ? q.get('breeds').split(',') : null;
   for (const kind of kinds) for (const bid of Object.keys(m.breeds[kind] || {})) {
+    if (only && !only.includes(bid)) continue;
     const lab = document.createElement('div'); lab.textContent = kind + ' · ' + bid; lab.style.cssText = 'align-self:center;font-weight:bold';
     grid.append(lab);
     for (const acc of accs) {

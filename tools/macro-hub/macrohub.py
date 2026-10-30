@@ -171,7 +171,7 @@ def look_attrs(lk=None):
 
 
 # 화면 펫 소품·계절 — 이름은 web/pets.js PetAcc.LIST 와 같게. state['petx'] 에 기억하고 /events {t:'petx'} 로 알린다.
-# season: 계절 소품 자동(할로윈·크리스마스·봄 — 그동안은 고른 소품 대신 계절 소품) · acc: 강아지·고양이에 얹을 소품('none' = 없음)
+# season: 계절 소품 자동(달마다·설·추석·할로윈·크리스마스 — web/pets.js PetAcc.SEASONS, 그동안은 고른 소품 대신 계절 소품) · acc: 강아지·고양이에 얹을 소품('none' = 없음)
 # grow: 키우기(간식·레벨 표시, 레벨로 소품 잠금 — petgrow.py). 끄면 표시를 안 하고 소품도 다 풀린다(세기는 계속).
 PET_ACCS = ('none', 'ribbon', 'scarf', 'glasses', 'beret', 'bowtie', 'crown')
 # bubble: 말풍선(예약 곧·실패·메신저·레벨·주간·팁) 켬 · quiet: 조용히 시간(none·lunch 12~13시·night 18~9시·both) — 그동안은 실패만
