@@ -21,12 +21,20 @@ body.dragging .pet .art svg{cursor:grabbing}
 .bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:11px;height:11px;background:#fff;transform:translateX(-50%) rotate(45deg);border-radius:2px}
 .bubble.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
 .bubble small{display:block;font-size:11px;color:#7a6f63;margin-top:1px}
+/* 쪽지(말풍선) — 한 번에 하나, 펫 위 가운데. 누르면 그 화면을 연다 */
+.note{position:fixed;left:50%;top:6px;transform:translate(-50%,-4px);max-width:min(300px,calc(100vw - 12px));width:max-content;z-index:3;
+  background:#fffaf2;color:#2b2723;border:1px solid #8c8276;border-radius:3px;padding:6px 12px 5px;box-shadow:0 2px 6px rgba(60,40,20,.18);
+  opacity:0;pointer-events:none;transition:opacity .3s,transform .3s ease-out;cursor:pointer;line-height:1.4}
+.note.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.note small{display:block;font-size:10.5px;color:#8c8276;margin-top:1px}
+body.noting .bubble{opacity:0!important;pointer-events:none!important}
 .pet.hop .bodywrap{animation:jump .5s ease-in-out 1!important}
 .pet.hop .skin-media{animation:jump .5s ease-in-out 1!important}
 .skin-media{cursor:grab}
 </style>
 </head>
 <body>
+<div class="note" id="note" role="status"><span></span><small>눌러서 열기</small></div>
 <div id="stage">
   <div class="slot" id="slotDog">
     <div class="bubble" id="dogBubble"></div>
@@ -95,7 +103,7 @@ function connect() {
   es.onerror = () => { connected = false; update(); };
   es.onmessage = ev => {
     const m = JSON.parse(ev.data);
-    if (m.t === 'run') { PetMood.react(flash, m.run); if (!m.run.tool) loadMacros(); update(); }
+    if (m.t === 'run') { PetMood.react(flash, m.run); if (!m.run.tool) loadMacros(); update(); noteRun(m.run); }
     else if (m.t === 'macros' || m.t === 'motion') loadMacros();
     else if (m.t === 'skin') { if (skinChanged(m)) setSkin(m.skin || null, m.breed); }
     else if (m.t === 'petx') setPetx(m.petx);
@@ -107,7 +115,7 @@ function connect() {
 /* ---------- 마우스: 투명한 곳은 통과, 펫 위에서만 반응 ---------- */
 function isHit(el) {
   if (!el) return false;
-  if (el.closest && el.closest('.bubble.show')) return true;
+  if (el.closest && el.closest('.bubble.show, .note.show')) return true;
   if (el.closest && el.closest('.skin-media')) return true;                 // 스킨 그림(연출 fx 면 안쪽 img)
   return el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg';     // 일의 종류 배지에서 칠해진 곳
 }
@@ -127,7 +135,7 @@ document.addEventListener('mouseleave', () => { if (!dragging) { setIgnore(true)
 function petOf(el) { return el && el.closest ? el.closest('.pet') : null; }
 document.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !isHit(e.target)) return;
-  drag = {x: e.screenX, y: e.screenY, moved: false, pet: petOf(e.target)};
+  drag = {x: e.screenX, y: e.screenY, moved: false, pet: petOf(e.target), note: !!(e.target.closest && e.target.closest('.note'))};
   try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
 });
 document.addEventListener('pointermove', e => {
@@ -145,6 +153,8 @@ document.addEventListener('pointerup', e => {
     dragging = false; document.body.classList.remove('dragging');
     if (api) api.saveBounds();
     setIgnore(!isHit(document.elementFromPoint(e.clientX, e.clientY)));
+  } else if (d.note) {
+    openNote();
   } else {
     if (d.pet) { d.pet.classList.add('hop'); setTimeout(() => d.pet.classList.remove('hop'), 600); }
     if (api) api.openHub();                                              // 1단계: 클릭하면 허브 화면을 연다(2단계에서 방사형 메뉴로)
@@ -164,9 +174,73 @@ function onGrow(m) {
   if (!m.levelup) return;
   flashClass($('#dog'), 'lvup', 2700); flashClass($('#cat'), 'lvup', 2700);
   const a = PetAcc.unlockedAt(m.grow.level);
-  say('cat', 'Lv.' + m.grow.level + ' 이 됐어요' + (a ? ' — 「' + a + '」 소품이 풀렸어요' : ''), 6500);
+  showNote('Lv.' + m.grow.level + ' 이 됐어요' + (a ? ' — 「' + a + '」 소품이 풀렸어요' : ''), '/', {urgent: true});
   update();
 }
+
+/* ---------- 쪽지(말풍선): 한 번에 하나 · 잠깐 · 20분에 한 번(실패·레벨은 예외) · 조용히 시간엔 실패만 · 누르면 그 화면 ----------
+   거리: 15분 안에 돌 시각 예약 · 자동화 실패 · 메신저 답할 대화 · 레벨 · 주간 한 줄(금 15시~ / 월 9~12시) · 프롬프트 팁(하루 한 번)
+   허브 /api/petnote 를 2분마다 묻는다(메신저·회고 주소도 허브가 설정에서 알려 준다). 끄기: 펫 우클릭·꾸미기 → 말풍선(허브 state petx.bubble · quiet) */
+const NOTE_GAP = 20 * 60 * 1000, NOTE_MS = 9000, NOTE_KEY = 'hub-pet-notes';
+const note = {el: $('#note'), timer: 0, last: 0, path: null, seen: new Set(), ask: 0};
+try { (JSON.parse(localStorage.getItem(NOTE_KEY) || '[]') || []).forEach(k => note.seen.add(k)); } catch (e) {}
+const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+function quietNow() {
+  const q = PetAcc.conf.quiet || 'none', h = new Date().getHours();
+  return ((q === 'lunch' || q === 'both') && h === 12) || ((q === 'night' || q === 'both') && (h >= 18 || h < 9));
+}
+function showNote(text, path, o) {
+  o = o || {};
+  if (PetAcc.conf.bubble === false) return false;
+  if (o.key && note.seen.has(o.key)) return false;
+  const now = Date.now();
+  if (quietNow() && !o.fail) return false;
+  if (!o.urgent && now - note.last < NOTE_GAP) return false;
+  if (o.key) {
+    note.seen.add(o.key);
+    if (o.keep) try { localStorage.setItem(NOTE_KEY, JSON.stringify([...note.seen].filter(k => /^(week|tip):/.test(k)).slice(-30))); } catch (e) {}
+  }
+  note.last = now; note.path = path || '/';
+  note.el.querySelector('span').textContent = text;
+  note.el.classList.add('show'); document.body.classList.add('noting');
+  clearTimeout(note.timer); note.timer = setTimeout(hideNote, o.ms || NOTE_MS);
+  return true;
+}
+function hideNote() { note.el.classList.remove('show'); document.body.classList.remove('noting'); }
+function openNote() {
+  const p = note.path; hideNote();
+  if (!p) return;
+  if (api && api.openUrl) api.openUrl(p); else if (api) api.openHub(); else window.open(p, '_blank');
+}
+note.el.addEventListener('mouseenter', () => clearTimeout(note.timer));
+note.el.addEventListener('mouseleave', () => { note.timer = setTimeout(hideNote, 2500); });
+function noteRun(r) {                                    // 자동화 실패 — 기다리지 않고 바로(같은 자동화는 한 시간에 한 번)
+  if (r.tool || !['fail', 'timeout'].includes(r.status) || ['test', 'service'].includes(r.trigger)) return;
+  showNote('앗, 「' + r.name + '」 ' + (r.status === 'timeout' ? '시간이 넘어 멈췄어요' : '실패했어요'), '/?run=' + r.id,
+    {urgent: true, fail: true, key: 'fail:' + r.macro + ':' + new Date().getHours()});
+}
+async function pollNotes() {
+  let j;
+  try { j = await (await fetch('/api/petnote')).json(); } catch (e) { return; }
+  if (j.lv) PetAcc.set({lv: j.lv});
+  for (const s of j.sched || [])
+    if (showNote('⏰ ' + hm(s.next) + ' 「' + s.name + '」 곧 돌아요', '/ops', {key: 'sched:' + s.id + ':' + s.next})) return;
+  if (j.ask != null) {
+    const more = j.ask > note.ask; note.ask = j.ask;
+    if (more && showNote('메신저에 답할 대화가 ' + j.ask + '개 있어요', j.chat || '/', {key: 'ask:' + j.ask + ':' + today() + ':' + new Date().getHours()})) return;
+  }
+  const d = new Date(), lv = PetAcc.conf.lv;
+  if (PetAcc.conf.grow && lv) {                          // 주간 한 줄 — 금요일 오후엔 이번 주, 월요일 오전엔 지난주
+    const fri = d.getDay() === 5 && d.getHours() >= 15, mon = d.getDay() === 1 && d.getHours() >= 9 && d.getHours() < 12;
+    const w = fri ? lv.week : mon ? lv.prev_week : null;
+    if (w && w.id && w.snacks > 0 && showNote((fri ? '이번 주' : '지난주') + ' 간식 ' + w.snacks + '개' + (w.fixes ? ' · 실패 ' + w.fixes + '번 고침' : ''),
+      '/', {key: 'week:' + w.id + (fri ? ':f' : ':m'), keep: true})) return;
+  }
+  if (j.tip && j.retro && d.getHours() >= 14) showNote('프롬프트 한 줄 팁 — ' + j.tip, j.retro, {key: 'tip:' + today(), keep: true});
+}
+setTimeout(pollNotes, 20 * 1000); setInterval(pollNotes, 2 * 60 * 1000);
+if (params.get('note') === 'demo') setTimeout(() => showNote('⏰ 09:30 「예약 메일 점검」 곧 돌아요', '/ops', {urgent: true, ms: 600000}), 1500);
 
 /* ---------- 설정(메뉴에서 바꾼 것) ---------- */
 function applySettings(s) {

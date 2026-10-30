@@ -704,14 +704,17 @@ function petLook(panel,el){
   const c=PetAcc.conf;panel.append(el('h3','','펫 소품'));
   const lv=PetAcc.lvText();if(lv)panel.append(el('p','lnote',lv));
   const r1=el('div','lrow');
-  for(const [key,txt] of [['season','계절 소품 자동 (할로윈·크리스마스·봄)'],['grow','키우기 (성공하면 간식 · 레벨로 소품이 풀림)']]){
+  for(const [key,txt] of [['season','계절 소품 자동 (할로윈·크리스마스·봄)'],['grow','키우기 (성공하면 간식 · 레벨로 소품이 풀림)'],['bubble','말풍선 (화면 펫 — 예약 곧·실패·메신저·주간 소식)']]){
     const l=el('label'),cb=el('input');cb.type='checkbox';cb.checked=!!c[key];
     cb.onchange=()=>api('/api/petx',{[key]:cb.checked}).catch(x=>toast(x.message));l.append(cb,txt);r1.append(l)}
   const r2=el('div','lrow');
   for(const [kind,label] of [['dog','강아지'],['cat','고양이']]){const s=el('select'),w=el('label','',label);
     s.append(new Option('없음','none'),...PetAcc.LIST.map(([id,n])=>{const o=new Option(PetAcc.locked(id)?n+' (잠김 · Lv.'+c.unlock[id]+')':n,id);o.disabled=PetAcc.locked(id);return o}));s.value=c.acc[kind]||'none';
     s.onchange=()=>api('/api/petx',{acc:{[kind]:s.value}}).catch(x=>toast(x.message));w.append(s);r2.append(w)}
-  panel.append(r1,r2);
+  const r3=el('div','lrow'),qs=el('select'),ql=el('label','','조용히 시간');
+  qs.append(...[['none','없음'],['lunch','점심 12~13시'],['night','저녁·밤 18~9시'],['both','점심 + 저녁·밤']].map(([v,n])=>new Option(n,v)));qs.value=c.quiet||'none';
+  qs.onchange=()=>api('/api/petx',{quiet:qs.value}).catch(x=>toast(x.message));ql.append(qs);r3.append(ql);
+  panel.append(r1,r2,r3);
   const ss=PetAcc.season();if(ss)panel.append(el('p','lnote','지금은 '+PetAcc.SEASONS[ss].name+' — 계절 소품이 먼저 보입니다'));
 }
 $('#skinSel').onchange=e=>api('/api/skin',{skin:e.target.value||null}).catch(x=>toast(x.message));
@@ -745,7 +748,8 @@ function upsertRun(r){
 // 대화가 켜져 있으면 허브가 바로 보내고(/api/fix send), 꺼져 있으면 부탁 글만 복사한다(말로 부탁하기와 같음)
 function showFix(r){$('#fixBtn').hidden=!((r.status==='fail'||r.status==='timeout')&&String(r.macro).startsWith('local/'))}
 async function loadMacros(){try{macros=await api('/api/macros');lastLoad=Date.now();try{deleted=await api('/api/deleted')}catch(e){deleted=[]}drawMacros();updatePets()}catch(e){}}
-async function loadRuns(){try{runs=await api('/api/runs');drawRuns();updatePets()}catch(e){}}
+async function loadRuns(){try{runs=await api('/api/runs');drawRuns();updatePets()
+  const want=+params.get('run');if(want&&!loadRuns.done){loadRuns.done=1;select(want)}}catch(e){}}   // ?run=<id> — 펫 쪽지(실패)를 누르면 그 실행 로그를 연다
 let reopen=false;
 function connect(){
   const es=new EventSource('/events');

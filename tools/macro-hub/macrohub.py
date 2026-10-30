@@ -174,6 +174,8 @@ def look_attrs(lk=None):
 # season: 계절 소품 자동(할로윈·크리스마스·봄 — 그동안은 고른 소품 대신 계절 소품) · acc: 강아지·고양이에 얹을 소품('none' = 없음)
 # grow: 키우기(간식·레벨 표시, 레벨로 소품 잠금 — petgrow.py). 끄면 표시를 안 하고 소품도 다 풀린다(세기는 계속).
 PET_ACCS = ('none', 'ribbon', 'scarf', 'glasses', 'beret', 'bowtie', 'crown')
+# bubble: 말풍선(예약 곧·실패·메신저·레벨·주간·팁) 켬 · quiet: 조용히 시간(none·lunch 12~13시·night 18~9시·both) — 그동안은 실패만
+PET_QUIET = ('none', 'lunch', 'night', 'both')
 F_GROW = os.path.join(HERE, 'data.local', 'pet-grow.json')
 GROW = None                                   # petgrow 기록(grow_init 이 읽는다)
 
@@ -182,6 +184,7 @@ def petx():
     px = state.get('petx') or {}
     acc = dict({'dog': 'none', 'cat': 'none'}, **{k: v for k, v in (px.get('acc') or {}).items() if k in ('dog', 'cat')})
     return {'season': px.get('season', True) is not False, 'grow': px.get('grow', True) is not False,
+            'bubble': px.get('bubble', True) is not False, 'quiet': px.get('quiet') if px.get('quiet') in PET_QUIET else 'none',
             'acc': {k: (v if v in PET_ACCS else 'none') for k, v in acc.items()}}
 
 
@@ -203,9 +206,13 @@ def clean_petx(body):
     """POST /api/petx 의 값 검사 — (새 petx, 오류). 빠진 키는 그대로 둔다."""
     cur = petx()
     body = body or {}
-    for key in ('season', 'grow'):
+    for key in ('season', 'grow', 'bubble'):
         if key in body:
             cur[key] = bool(body[key])
+    if 'quiet' in body:
+        if body['quiet'] not in PET_QUIET:
+            return None, '조용히 시간은 %s 중 하나입니다' % ' · '.join(PET_QUIET)
+        cur['quiet'] = body['quiet']
     for kind, v in (body.get('acc') or {}).items():
         if kind not in ('dog', 'cat'):
             continue
@@ -252,6 +259,70 @@ def grow_run(run):
     with lock:
         gained, up, fixed = petgrow.on_run(GROW, run.summary(), bool(m and m['service']))
     _grow_event(gained, up, fixed, run.name)
+
+
+# 화면 펫 말풍선 — 펫이 몇 분마다 묻는 거리 모음. 바깥(메신저 · AI 작업 회고)은 떠 있을 때만, 읽기만, 짧게.
+NOTE_TIP = {'at': 0, 'text': None, 'busy': False}
+
+
+def retro_url():
+    """AI 작업 회고(tools\\ai-share-agent) 화면 주소 — config.local.json ai_share.enabled 가 꺼져 있으면 None(묻지 않는다)."""
+    a = kit.section('ai_share', {}) or {}
+    if not a.get('enabled'):
+        return None
+    try:
+        port = int(a.get('port') or 8640)
+    except (TypeError, ValueError):
+        port = 8640
+    return 'http://127.0.0.1:%d' % port
+
+
+def _get_json(url, timeout=0.8):
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+def _refresh_tip():
+    """AI 작업 회고의 내 프롬프트 규칙 점검에서 자주 나온 고칠 점 하나(3시간에 한 번). 회고가 꺼져 있으면 조용히 None."""
+    from collections import Counter
+    from urllib.parse import quote
+    base = retro_url()
+    try:
+        if not base:
+            raise OSError('ai_share off')
+        tickets = [t for t in (_get_json(base + '/api/tickets', 2).get('tickets') or []) if t.get('mine')]
+        tickets.sort(key=lambda t: t.get('updated') or '', reverse=True)
+        seen = Counter()
+        for t in tickets[:30]:
+            for s in _get_json(base + '/api/prompts?key=' + quote(str(t.get('key', ''))), 1).get('sessions') or []:
+                for p in s.get('prompts') or []:
+                    for h in p.get('hints') or []:
+                        if h.get('kind') == 'tip' and h.get('text'):
+                            seen[h['text']] += 1
+        NOTE_TIP['text'] = seen.most_common(1)[0][0] if seen else None
+    except Exception:
+        NOTE_TIP['text'] = None
+    NOTE_TIP['at'] = time.time()
+    NOTE_TIP['busy'] = False
+
+
+def petnote():
+    """GET /api/petnote — {sched: 15분 안에 돌 예약, ask: 메신저 답할 대화 수(못 물으면 None), tip, lv}."""
+    now = time.time() * 1000
+    sched = [{'id': it['id'], 'name': it['name'], 'next': it['next']} for it in schedule_view()
+             if it.get('enabled') and it.get('next') and 0 < it['next'] - now <= 15 * 60 * 1000
+             and any('at' in t for t in it.get('schedule') or [])]     # '매 N' 되풀이 예약은 알리지 않는다
+    try:
+        th = _get_json(CHAT_URL + '/api/state', 0.6).get('threads') or []
+        ask = sum(1 for t in th if t.get('status') in ('ask', 'confirm'))
+    except Exception:
+        ask = None
+    if time.time() - NOTE_TIP['at'] > 3 * 3600 and not NOTE_TIP['busy']:
+        NOTE_TIP['busy'] = True
+        threading.Thread(target=_refresh_tip, daemon=True).start()
+    return {'sched': sched, 'ask': ask, 'tip': NOTE_TIP['text'], 'lv': petgrow.view(GROW) if GROW else None,
+            'chat': CHAT_URL + '/', 'retro': (retro_url() or '') + '/' if retro_url() else None}
 
 
 def grow_watch():
@@ -2098,6 +2169,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'skin': state.get('skin') or DEFAULT_SKIN, 'breed': state.get('breed') or {}, 'petx': petx_view()})
         if u.path == '/api/petx':                     # 화면 펫 소품·계절·키우기
             return self._send(200, petx_view())
+        if u.path == '/api/petnote':                  # 화면 펫 말풍선 거리(예약 곧·메신저 답할 대화·프롬프트 팁)
+            return self._send(200, petnote())
         if u.path == '/api/theme':                    # 허브 전용 창(shell/main.js)이 창 테두리·배경색을 맞추려고 묻는다
             return self._send(200, {'mode': ui_mode()})
         if u.path == '/api/ping':                     # 화면이 실시간 연결을 다시 붙일 때 — 토큰이 옛것(허브가 다시 뜸)이면 403 → 화면이 새로 고친다

@@ -29,23 +29,57 @@ class PetExtras(unittest.TestCase):
             macrohub.state['petx'] = self.saved
 
     def test_default_is_season_on_no_accessory(self):
-        self.assertEqual(macrohub.petx(), {'season': True, 'grow': True, 'acc': {'dog': 'none', 'cat': 'none'}})
+        self.assertEqual(macrohub.petx(), {'season': True, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
 
     def test_clean_keeps_missing_keys(self):
         macrohub.state['petx'] = {'season': False, 'acc': {'dog': 'crown'}}
         px, err = macrohub.clean_petx({'acc': {'cat': 'ribbon'}})
         self.assertIsNone(err)
-        self.assertEqual(px, {'season': False, 'grow': True, 'acc': {'dog': 'crown', 'cat': 'ribbon'}})
+        self.assertEqual(px, {'season': False, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'crown', 'cat': 'ribbon'}})
 
     def test_rejects_unknown_accessory_and_ignores_unknown_kind(self):
         self.assertIsNone(macrohub.clean_petx({'acc': {'dog': '<svg>'}})[0])
         px, err = macrohub.clean_petx({'acc': {'bird': 'crown'}, 'season': 0})
         self.assertIsNone(err)
-        self.assertEqual(px, {'season': False, 'grow': True, 'acc': {'dog': 'none', 'cat': 'none'}})
+        self.assertEqual(px, {'season': False, 'grow': True, 'bubble': True, 'quiet': 'none', 'acc': {'dog': 'none', 'cat': 'none'}})
 
     def test_old_bad_values_fall_back(self):
         macrohub.state['petx'] = {'acc': {'dog': 'gone', 'cat': 'glasses'}}
         self.assertEqual(macrohub.petx()['acc'], {'dog': 'none', 'cat': 'glasses'})
+
+    def test_bubble_and_quiet(self):
+        px, err = macrohub.clean_petx({'bubble': False, 'quiet': 'night'})
+        self.assertIsNone(err)
+        self.assertEqual((px['bubble'], px['quiet']), (False, 'night'))
+        self.assertIsNone(macrohub.clean_petx({'quiet': '3am'})[0])
+        macrohub.state['petx'] = {'quiet': 'weird'}
+        self.assertEqual(macrohub.petx()['quiet'], 'none')
+
+    def test_retro_url_follows_config(self):
+        """프롬프트 팁은 AI 작업 회고(ai_share)가 켜져 있을 때만 그 포트로 묻는다."""
+        saved = macrohub.kit.section
+        self.addCleanup(setattr, macrohub.kit, 'section', saved)
+        macrohub.kit.section = lambda name, default=None, cfg=None: {}
+        self.assertIsNone(macrohub.retro_url())
+        macrohub.kit.section = lambda name, default=None, cfg=None: {'enabled': True, 'port': '8650'}
+        self.assertEqual(macrohub.retro_url(), 'http://127.0.0.1:8650')
+
+    def test_petnote_quiet_when_outside_is_down(self):
+        """메신저·회고가 꺼져 있으면 ask=None · tip=None 으로 조용히(예외 없이)."""
+        saved = (macrohub.kit.section, macrohub._get_json, macrohub.schedule_view, dict(macrohub.NOTE_TIP))
+        def restore():
+            macrohub.kit.section, macrohub._get_json, macrohub.schedule_view = saved[:3]
+            macrohub.NOTE_TIP.update(saved[3])
+        self.addCleanup(restore)
+        macrohub.kit.section = lambda name, default=None, cfg=None: {}
+        def down(*_a, **_k):
+            raise OSError('down')
+        macrohub._get_json = down
+        macrohub.schedule_view = lambda: []
+        macrohub.NOTE_TIP.update(at=9e18, text=None, busy=False)      # 팁 새로 고침 스레드는 띄우지 않는다
+        j = macrohub.petnote()
+        self.assertEqual((j['sched'], j['ask'], j['tip'], j['retro']), ([], None, None, None))
+        self.assertTrue(j['chat'].startswith('http://127.0.0.1:'))
 
     def test_names_match_web(self):
         """허브의 소품 이름이 web/pets.js PetAcc.LIST 와 같아야 화면에서 고른 값이 통과한다."""

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('petApi', {
   dragBy: (dx, dy) => ipcRenderer.send('pet:drag', Number(dx) || 0, Number(dy) || 0),
   saveBounds: () => ipcRenderer.send('pet:save'),
   openHub: () => ipcRenderer.send('pet:open'),
+  openUrl: p => ipcRenderer.send('pet:open-url', String(p)),        // 쪽지(말풍선)를 누르면 — 허브 안 경로 또는 이 PC 의 메신저·AI 작업 회고만
   showMenu: () => ipcRenderer.send('pet:menu'),
   scaleBy: dir => ipcRenderer.send('pet:scale', dir > 0 ? 1 : -1),
   onAskOff: cb => ipcRenderer.on('pet:ask-off', () => cb()),

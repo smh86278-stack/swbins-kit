@@ -188,13 +188,15 @@ window.PetAcc = {
     xmas: {name: '크리스마스', from: '12-01', to: '12-26', dog: 'santa', cat: 'santa', deco: {dog: 'snow', cat: 'snow'}},
     spring: {name: '봄', from: '03-28', to: '04-12', dog: 'blossom', cat: 'blossom', deco: {cat: 'petal'}},
   },
+  // bubble: 말풍선(쪽지) 켬 · quiet: 조용히 시간(none·lunch·night·both) — 데스크톱 펫(pet.html)이 쓴다
   // grow: 키우기(간식·레벨) 켬 · lv: 허브 petgrow.view {snacks, level, floor, next, week, prev_week} · unlock: 소품이 풀리는 레벨
-  conf: {season: true, grow: true, acc: {dog: 'none', cat: 'none'}, lv: null, unlock: {}},
+  conf: {season: true, grow: true, bubble: true, quiet: 'none', acc: {dog: 'none', cat: 'none'}, lv: null, unlock: {}},
   force: {},                                                 // 미리 보기(주소의 ?season= · ?acc= · ?level=)
   set(c){                                                    // 허브 설정을 받는다(빠진 키는 그대로) — 바뀌었으면 true(그리는 쪽은 key 로 알아챈다)
     if (!c) return false;
     const has = k => Object.prototype.hasOwnProperty.call(c, k), cur = this.conf;
     const next = {season: has('season') ? c.season !== false : cur.season, grow: has('grow') ? c.grow !== false : cur.grow,
+      bubble: has('bubble') ? c.bubble !== false : cur.bubble, quiet: has('quiet') ? c.quiet || 'none' : cur.quiet,
       acc: has('acc') ? Object.assign({dog: 'none', cat: 'none'}, c.acc || {}) : cur.acc, lv: c.lv || cur.lv, unlock: c.unlock || cur.unlock};
     const changed = JSON.stringify(next) !== JSON.stringify(cur);
     Object.assign(cur, next);

@@ -104,6 +104,7 @@ async function currentPetx() {                          // 소품·계절 — �
     return r.ok ? await r.json() : null;
   } catch (_) { return null; }
 }
+const QUIET = [['none', '없음'], ['lunch', '점심 (12~13시)'], ['night', '저녁·밤 (18~9시)'], ['both', '점심 + 저녁·밤']];
 const ACCS = [['none', '없음'], ['ribbon', '리본'], ['scarf', '목도리'], ['glasses', '안경'], ['beret', '베레모'], ['bowtie', '나비넥타이'], ['crown', '왕관']];
 
 async function showMenu() {
@@ -117,10 +118,12 @@ async function showMenu() {
   const locked = id => grow && ((px.unlock || {})[id] || 0) > level;
   const lvLine = grow && lv ? [{ label: 'Lv.' + level + ' · 간식 ' + lv.snacks + '개' + (lv.next ? '  (다음 레벨까지 ' + (lv.next - lv.snacks) + '개)' : ''), enabled: false }] : [];
   const accMenu = px ? [{
-    label: '소품', submenu: [
+    label: '소품 · 말풍선', submenu: [
       ...lvLine,
       { label: '계절 소품 자동 (할로윈·크리스마스·봄)', type: 'checkbox', checked: px.season, click: () => setPetx({ season: !px.season }) },
       { label: '키우기 (자동화가 성공하면 간식 · 레벨로 소품이 풀림)', type: 'checkbox', checked: grow, click: () => setPetx({ grow: !grow }) },
+      { label: '말풍선 (예약 곧 · 실패 · 메신저 · 주간 소식, 20분에 한 번)', type: 'checkbox', checked: px.bubble !== false, click: () => setPetx({ bubble: px.bubble === false }) },
+      { label: '조용히 시간 (실패만 알림)', submenu: QUIET.map(([id, name]) => ({ label: name, type: 'radio', checked: (px.quiet || 'none') === id, click: () => setPetx({ quiet: id }) })) },
       { type: 'separator' },
       ...['dog', 'cat'].map(kind => ({ label: kind === 'dog' ? '강아지' : '고양이', submenu: ACCS.map(([id, name]) => ({
         label: locked(id) ? name + '  (잠김 · Lv.' + px.unlock[id] + ')' : name, type: 'radio', enabled: !locked(id),
@@ -213,6 +216,12 @@ ipcMain.on('pet:save', e => {
   settings.x = b.x; settings.y = b.y; saveSettings();
 });
 ipcMain.on('pet:open', e => { if (trusted(e)) openHub(); });
+ipcMain.on('pet:open-url', (e, p) => {                 // 쪽지(말풍선) — 허브 안 경로('/ops' 등) 또는 이 PC 의 메신저·AI 작업 회고 첫 화면만 연다
+  if (!trusted(e) || typeof p !== 'string') return;
+  rec('open-url', p);
+  const url = /^\/(?!\/)/.test(p) ? HUB + p : /^http:\/\/127\.0\.0\.1:\d{2,5}\/$/.test(p) ? p : null;   // 바깥은 이 PC 화면의 첫 페이지만(주소는 허브 /api/petnote 가 설정에서)
+  if (url && !TEST) shell.openExternal(url);
+});
 ipcMain.on('pet:scale', (e, dir) => {                  // 펫 위에서 휠: 한 칸에 약 10%
   if (!trusted(e) || !win) return;
   rec('scale', dir);
