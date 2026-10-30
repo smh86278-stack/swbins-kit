@@ -277,6 +277,32 @@ def retro_url():
     return 'http://127.0.0.1:%d' % port
 
 
+def retro_up(url, timeout=0.4):
+    """회고 화면 서버가 받고 있나(포트만 본다)."""
+    import socket
+    try:
+        port = int(url.rsplit(':', 1)[1])
+        with socket.create_connection(('127.0.0.1', port), timeout=timeout):
+            return True
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+def retro_page():
+    """GET /retro — 허브 창 「회고」 탭·왼쪽 목차가 여는 곳. (상태, 넘길 주소 또는 None, 안내 HTML 본문, 새로 고침 초).
+    켜져 있고 떠 있으면 그 화면으로 넘기고, 꺼져 있으면 켜는 법, 막 뜨는 중이면 잠깐 뒤 다시 본다(서버는 허브의 상시 서비스가 띄운다)."""
+    url = retro_url()
+    if not url:
+        return 'off', None, ('<p>AI 작업 회고(주간 보고 초안 · 발표 준비)가 <b>꺼져 있습니다</b>.</p>'
+                             '<p>설정에서 켜세요 — <code>config.local.json</code> 의 <code>ai_share.enabled</code> 를 <code>true</code> 로 '
+                             '(처음 설정 <code>python setup.py</code>). 켜면 허브가 회고 화면을 띄우고 이 탭에서 바로 열립니다.</p>'
+                             '<p class="muted"><a href="/ops#set">운영 → 설정 보기</a></p>'), 0
+    if retro_up(url):
+        return 'up', url + '/', '', 0
+    return 'starting', None, ('<p>회고 화면을 띄우는 중입니다… 잠시 뒤 저절로 열립니다.</p>'
+                              '<p class="muted">오래 걸리면 <a href="/ops#sched">운영 → 상시 서비스</a>에서 「AI 작업 회고」가 켜져 있는지 보세요.</p>'), 3
+
+
 def _get_json(url, timeout=0.8):
     import urllib.request
     with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -2051,6 +2077,23 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 return self._send(500, b'web/ops.html missing', 'text/plain')
             return self._send(200, html.encode('utf-8'), 'text/html; charset=utf-8')
+        if u.path == '/retro':                        # AI 작업 회고 — 떠 있으면 그쪽으로, 아니면 켜는 법·기다림 안내
+            st, to, body, refresh = retro_page()
+            if to:
+                self.send_response(302)
+                self.send_header('Location', to)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            try:
+                html = render_page(os.path.join(WEB_DIR, 'retro.html'))
+            except OSError:
+                return self._send(500, b'web/retro.html missing', 'text/plain')
+            html = html.replace('__REFRESH__', '<meta http-equiv="refresh" content="%d">' % refresh if refresh else '')
+            return self._send(200, html.replace('__BODY__', body).encode('utf-8'), 'text/html; charset=utf-8')
+        if u.path == '/api/retro':                    # 허브 창(shell/main.js)이 회고 화면 주소를 묻는다 — 탭 안에서 열 주소로 친다
+            url = retro_url()
+            return self._send(200, {'enabled': bool(url), 'url': url})
         if u.path == '/pet':                          # 데스크톱 펫(Electron)이 불러가는 투명 배경 페이지
             try:
                 html = render_page(os.path.join(WEB_DIR, 'pet.html'))

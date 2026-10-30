@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko" data-mode="__MODE__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+__REFRESH__
+<title>AI 작업 회고 — Taskhand</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+/* 허브 창 왼쪽 아이콘 줄 「회고」 탭 · 왼쪽 목차 「AI 작업 회고」 — 회고 화면이 떠 있으면 허브가 그쪽으로 바로 넘기고(302),
+   꺼져 있거나 막 뜨는 중이면 이 안내를 보여 준다(macrohub.retro_page) */
+body{display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;box-sizing:border-box}
+.box{max-width:520px;background:var(--solid);border:1px solid var(--line);border-radius:4px;padding:22px 24px}
+h1{font-size:20px;margin:0 0 10px}
+p{margin:8px 0;line-height:1.6;color:var(--text)}
+p.muted{color:var(--muted);font-size:13px}
+code{font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="box" role="status">
+  <h1>AI 작업 회고</h1>
+  __BODY__
+</div>
+</body>
+</html>

@@ -46,6 +46,8 @@ body.drop{background:color-mix(in srgb,var(--accent) 14%,var(--bg));box-shadow:i
   <span class="badge" id="chatBadge" hidden></span></button>
 <button data-tab="ops" draggable="true" data-tip="운영 — 예약 작업·상시 서비스·기능 상태·설정">
   <svg viewBox="0 0 24 24"><circle cx="12" cy="12.5" r="8"/><path d="M12 8.2v4.5l3 1.8M4.5 4.8 7 3M19.5 4.8 17 3"/></svg>운영</button>
+<button data-tab="retro" draggable="true" data-tip="AI 작업 회고 — 주간 보고 초안·발표 준비 (설정 ai_share.enabled)">
+  <svg viewBox="0 0 24 24"><path d="M12 6.5C9.8 5 6.8 4.7 3.5 5.5V19c3.3-.8 6.3-.5 8.5 1 2.2-1.5 5.2-1.8 8.5-1V5.5c-3.3-.8-6.3-.5-8.5 1zM12 6.5V20"/></svg>회고</button>
 </div>
 <script>
 const btns = [...document.querySelectorAll('button[data-tab]')];

@@ -156,7 +156,7 @@ const HubNav = (() => {
     ['hub', '자동화', '/', 'list', true], ['make', '만들기', '/?view=make', 'plus', true], ['apps', '내 앱', '/?view=make#appsBox', 'apps'],
     ['sched', '예약', '/ops#sched', 'clock'], ['log', '기록', '/ops#audit', 'history'],
     ['chat', '메일로 맡기기', 'http://127.0.0.1:8620/', 'mail', true, true], ['set', '설정', '/ops#set', 'gear'],
-    null, ['wiki', 'AI 작업 회고', 'http://127.0.0.1:8640/', 'book', false, true],
+    null, ['wiki', 'AI 작업 회고', '/retro', 'book', true, true],   // 허브가 회고 화면으로 넘긴다(꺼져 있으면 켜는 법). 허브 창에선 아이콘 줄 「회고」
   ];
   const TIPS = { chat: '디스패치 대화 — 메일로 맡긴 일을 메신저처럼', wiki: 'AI 작업 회고 · 주간 보고 초안 (ai_share.enabled 를 켜야 뜹니다)',
     sched: '예약 작업 · 상시 서비스 · 기능 상태', log: '변경 이력 · 지시 실행 기록', set: '메일 계정 · 설정' };

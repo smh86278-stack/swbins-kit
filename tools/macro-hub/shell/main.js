@@ -1,6 +1,8 @@
 'use strict';
 /* 자동화 허브 창 — 허브(http://127.0.0.1:8630/)와 디스패치 대화(8620)를 브라우저 탭이 아니라 창 하나에 연다. 카카오톡 PC 처럼
- * 왼쪽 아이콘 줄(rail.html)로 🏠 허브 · 💬 대화 · ⏰ 운영 을 오가고, 화면마다 따로 살려 두어 돌아와도 그대로다.
+ * 왼쪽 아이콘 줄(rail.html)로 🏠 허브 · 💬 대화 · ⏰ 운영 · 📚 회고 를 오가고, 화면마다 따로 살려 두어 돌아와도 그대로다.
+ * 📚 회고(AI 작업 회고)는 허브 /retro 를 연다 — 켜져 있으면(ai_share.enabled) 허브가 회고 화면으로 넘기고, 꺼져 있으면 켜는 법을 보여 준다.
+ * 회고 서버는 허브의 상시 서비스(svc_ai_share)가 띄우고 끈다 — 이 창은 띄우지 않는다.
  * 💬 대화 아이콘은 디스패치 대화가 떠 있을 때만 보인다(dispatch.enabled 를 켜야 뜬다 — 기본 꺼짐).
  *
  *   electron.exe shell [--page=/ops]     (보통은 WorkKit.exe · 트레이 '자동화 허브 열기' 가 띄운다)
@@ -18,7 +20,11 @@ const STATE = path.join(__dirname, 'window.local.json');
 const ICON = path.join(__dirname, '..', 'web', 'app.ico');
 const TITLE = '자동화 허브';
 const RAIL = 64;                                                          // 왼쪽 아이콘 줄 너비 — rail.html 의 --rail 과 같게
-const TABS = { hub: HUB + '/', make: HUB + '/?view=make', chat: CHAT + '/', ops: HUB + '/ops' };
+const TABS = { hub: HUB + '/', make: HUB + '/?view=make', chat: CHAT + '/', ops: HUB + '/ops', retro: HUB + '/retro' };
+let RETRO = null;                                                         // 📚 회고 화면 주소(http://127.0.0.1:<ai_share.port>) — 허브 /api/retro 가 알려 준다
+async function fetchRetro() {
+  try { const j = await (await fetch(HUB + '/api/retro', { signal: AbortSignal.timeout(1500) })).json(); RETRO = j.url || null; } catch (_) {}
+}
 const pageArg = argv => { const a = argv.find(x => x.startsWith('--page=')); const p = a ? a.slice(7) : '/'; return p.startsWith('/') ? p : '/'; };
 
 // GPU 합성을 끈다 — 켜 두면 잠자기·모니터 바뀜 뒤 창이 '보임·맨 앞'인데 화면엔 아무것도 안 그려지는 유령이 되는 일이 있다.
@@ -35,7 +41,7 @@ const views = {};                                                         // 탭
 let active = null;
 const popped = {};                                                        // 떼어 낸 탭 → 그 창(BaseWindow). 닫으면 다시 붙는다
 let dropTab = null;                                                       // 떼어 낸 창을 끌어 아이콘 줄 위에 올려 둔 탭 — 놓으면 다시 붙는다
-const NAMES = { hub: TITLE, make: '자동화 만들기', chat: '디스패치 대화', ops: '운영' };
+const NAMES = { hub: TITLE, make: '자동화 만들기', chat: '디스패치 대화', ops: '운영', retro: 'AI 작업 회고' };
 
 // 화면 모드(자동·라이트·다크) — 허브가 기억한다(/api/theme). 창 테두리(nativeTheme)와 배경색(web/theme.css 의 --bg)을 맞추고,
 // 허브 /events 를 들어 화면에서 바꾸면 바로 따라간다. 허브가 꺼져 있으면 5초마다 다시 붙는다. 아이콘 줄은 prefers-color-scheme 로 따라온다.
@@ -57,6 +63,7 @@ function applyLook(lk) { const t = lk && lk.theme; if (t && t !== lookTheme) { l
 async function fetchMode() {
   try { applyMode((await (await fetch(HUB + '/api/theme', { signal: AbortSignal.timeout(1500) })).json()).mode); } catch (_) {}
   try { applyLook((await (await fetch(HUB + '/api/look', { signal: AbortSignal.timeout(1500) })).json()).look); } catch (_) {}
+  await fetchRetro();
 }
 async function watchMode() {
   for (;;) {
@@ -100,8 +107,8 @@ function saveState() {
   if (!win) return;
   try { fs.writeFileSync(STATE, JSON.stringify({ bounds: win.getNormalBounds(), max: win.isMaximized(), order })); } catch (_) {}
 }
-// 아이콘 줄의 순서 — 끌어서 바꾸면 기억한다. Ctrl+1~4 도 이 순서(안 보이는 💬 는 건너뛴다)
-const MOVABLE = ['hub', 'make', 'chat', 'ops'];
+// 아이콘 줄의 순서 — 끌어서 바꾸면 기억한다. Ctrl+1~5 도 이 순서(안 보이는 💬 는 건너뛴다)
+const MOVABLE = ['hub', 'make', 'chat', 'ops', 'retro'];
 const sameSet = l => Array.isArray(l) && l.length === MOVABLE.length && MOVABLE.every(t => l.includes(t));
 // 저장된 순서를 살린다 — 나중에 생긴 탭(0.2.4 의 🛠 만들기)은 기본 자리에 끼우고, 없어진 탭·겹친 것은 뺀다
 function fixOrder(l) {
@@ -113,13 +120,15 @@ function fixOrder(l) {
 let order = fixOrder(readState().order);
 const ORDER = () => order.filter(t => t !== 'chat' || chatUp || views.chat);
 const under = (url, base) => url === base || url.startsWith(base + '/');
-const internal = url => under(url, HUB) || under(url, CHAT);
+const internal = url => under(url, HUB) || under(url, CHAT) || (!!RETRO && under(url, RETRO));
 // 허브·메신저 밖 주소는 기본 브라우저로 — 단 http·https·mailto 만(search-ms:·file://\공유폴더 같은 것이 열리지 않게. 2026-10-19 보안 점검)
 const openOut = url => { if (/^(https?:|mailto:)/i.test(url)) shell.openExternal(url); };
 function tabFor(url) {                                                    // 주소 → 그 화면을 맡는 탭
   if (under(url, CHAT)) return 'chat';
+  if (RETRO && under(url, RETRO)) return 'retro';
   const p = url.slice(HUB.length).split(/[?#]/)[0];
   if (p === '/ops' || p.startsWith('/ops/')) return 'ops';
+  if (p === '/retro') return 'retro';
   if (p === '/' && /[?&]view=make(&|#|$)/.test(url)) return 'make';
   return 'hub';
 }
@@ -148,6 +157,7 @@ function keys(wc) {                                                       // F5 
 }
 
 function makeView(tab) {
+  if (tab === 'retro') fetchRetro();
   const v = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   v.setBackgroundColor(bg());
   const wc = v.webContents;
@@ -160,7 +170,7 @@ function makeView(tab) {
     return { action: 'deny' };
   });
   wc.on('did-fail-load', (_e, code, _desc, url, main) => {               // 허브·대화가 막 뜨는 중 — 실패한 그 주소를 다시
-    if (code !== -3 && main) setTimeout(() => { if (!wc.isDestroyed()) wc.loadURL(internal(url) ? url : TABS[tab]).catch(() => {}); }, 1500);
+    if (code !== -3 && main) setTimeout(() => { if (!wc.isDestroyed()) wc.loadURL(tab === 'retro' ? TABS.retro : internal(url) ? url : TABS[tab]).catch(() => {}); }, 1500);   // 회고가 꺼졌으면 허브 안내로
   });
   keys(wc);
   win.contentView.addChildView(v);
