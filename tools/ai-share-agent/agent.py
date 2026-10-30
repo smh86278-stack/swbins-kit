@@ -1258,6 +1258,179 @@ def collect_prompts(since, until):
     log(f"내 프롬프트(로컬 전용): 세션 {n_sess}개 → 이슈 {len(out)}건")
 
 
+# ---------------------------------------------------------------- 내 프롬프트 피드백
+# 규칙 점검(바로, AI 없음) + ✨ AI 피드백(누를 때만, 결과는 _private/prompt_feedback.json 에 캐시 — 다시 과금 안 함).
+# 규칙은 적게·확실한 것만 — 대화 중간의 "응 진행해" 같은 짧은 말은 앞 맥락이 있어 문제가 아니다(그래서 대부분 세션 첫 프롬프트만 본다)
+FB_MAX = 20                                                  # ✨ 한 번에 보낼 최대 개수
+ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,9}-\d+\b|#\d+\b")   # 흔한 이슈 키 모양(ABC-123 · #123) — 출처 키 모양(TR.key_re)도 함께 본다
+DEMONSTRATIVE_RE = re.compile(r"(이거|그거|저거|이것|그것|저것|여기|거기|이건|그건|위에 거|아까 거)")
+TARGET_RE = re.compile(
+    r"https?://|[\w./\\-]+\.(?:php|py|js|ts|tsx|jsx|html|css|json|md|java|kt|sql|xml|yml|yaml|ps1|bat|go|rs|cs|vue|txt|csv|xlsx)\b"
+    r"|`[^`]+`|\b[a-z]+[A-Z]\w*\b|\b[A-Z][a-z]+[A-Z]\w*\b|\b\w+_\w+\b|\b\w+\(\)|[A-Za-z]:\\"
+    r"|붙여넣은 내용|\[Image|화면|페이지|버튼|탭|메뉴|API|함수|클래스|메서드|테이블|컬럼|쿼리|폴더|파일|브랜치|커밋|MR|PR|레포|이슈|티켓|에러|오류 메시지|로그")
+CHANGE_RE = re.compile(r"(고쳐|수정|만들어|추가|바꿔|변경|구현|개발|넣어|빼|지워|리팩터|정리해|개선)")
+CRITERIA_RE = re.compile(r"(확인|테스트|시험|검증|되면|될 때|완료|기대|결과|나오게|보이게|되게|도록|해야|통과|처럼|예상|성공|기준|일 때|경우)")
+BROAD_RE = re.compile(r"(전부|전체|모두|싹|다 바꿔|리팩터|갈아엎|정리해)")
+CONSTRAINT_RE = re.compile(r"(말고|하지 ?마|건드리지|그대로|유지|만\b|금지|빼고|없이|제외|범위|안 ?바꾸|손대지)")
+# 다음 프롬프트가 앞 지시를 고쳐 말한 것 — 맨 앞 "아니" 만으로는 맞장구("아니 근데…")일 수 있어 뒤에 말고·아니라·다시 가 있어야 센다
+CORRECTION_RE = re.compile(r"^\s*(?:(?:아니|아냐|아니야)\b.{0,40}(?:말고|아니라|다시|가 아니)|아니라|그게 아니|그거 말고|그건 아니|다시 해|다시 만들"
+                           r"|틀렸|잘못 (?:했|이해|만들)|그렇게 말고|내 말은)")
+QUESTION_RE = re.compile(r"(\?|나요?|까요?|니|냐|지|는지|던가|었나|았나|했나)\s*[.?!~]*\s*$")
+ASK_RE = re.compile(r"(줘|주세요|줄래|해\s?봐)(?![가-힣])")              # 부탁 끝맺음 — 고쳐줘·바꿔 주세요·찾아줄래
+NUMBERED_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*•])\s+\S")
+SMALLTALK_RE = re.compile(r"^\s*(응|ㅇㅇ|네|예|좋아|오케이|ok|okay|ㄱㄱ|고마워|감사|진행|계속|커밋|푸시|push|commit)", re.I)
+
+
+def feedback_file():
+    return PRIVATE / "prompt_feedback.json"
+
+
+def prompt_id(text):
+    import hashlib
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _has_key(t):
+    """이슈 키가 들었나 — 흔한 모양 또는 이슈 출처의 키 모양."""
+    return bool(ISSUE_KEY_RE.search(t) or (TR is not None and TR.key_re.search(t)))
+
+
+def prompt_hints(text, first=False, next_text=""):
+    """프롬프트 하나에 대한 규칙 점검. [{kind: "tip"|"good", code, text, ex}] — kind good 은 잘한 점.
+    first = 세션 첫 프롬프트(앞 맥락 없음), next_text = 바로 다음 프롬프트(고쳐 말했는지 보려고)."""
+    t = text.strip()
+    if not t or t.startswith("/"):                          # 슬래시 명령은 사람이 쓴 지시문이 아니다
+        return []
+    tips, good = [], []
+    has_key = _has_key(t)
+    has_target = has_key or bool(TARGET_RE.search(t))
+    n = len(re.sub(r"\s+", "", t))
+    numbered = len(NUMBERED_RE.findall(t)) >= 2
+    ask = bool((ASK_RE.search(t) or CHANGE_RE.search(t)) and not QUESTION_RE.search(t))   # 질문·혼잣말·붙여 넣은 자료는 지시가 아니다
+    if first and n < 25 and DEMONSTRATIVE_RE.search(t) and not has_target:
+        tips.append({"kind": "tip", "code": "vague", "text": "'이거·거기' 같은 지시어만 있어 무엇을 말하는지 AI 가 짐작해야 해요.",
+                     "ex": "이거 고쳐줘 → 주문 목록 화면(orders/list.html)의 '내보내기' 버튼이 두 번 눌리는 문제 고쳐줘"})
+    elif first and ask and 12 <= n <= 300 and not has_target and not SMALLTALK_RE.match(t):
+        tips.append({"kind": "tip", "code": "target", "text": "어디(파일·화면·이슈 키)를 말하는지 없어요 — 대상을 적으면 찾는 시간이 줄어요.",
+                     "ex": "…해줘 → ABC-123, src/orders/import.py 의 주문 가져오기에서 …해줘"})
+    if first and ask and n >= 30 and CHANGE_RE.search(t) and ASK_RE.search(t) and not CRITERIA_RE.search(t):
+        tips.append({"kind": "tip", "code": "criteria", "text": "무엇이 되면 끝인지(완료 기준·확인 방법)가 없어요.",
+                     "ex": "…고쳐줘. 같은 주문을 두 번 가져와도 1건만 저장되면 완료, 기존 테스트도 통과해야 해"})
+    if not numbered and len(ASK_RE.findall(t)) >= 3:
+        tips.append({"kind": "tip", "code": "many", "text": "한 프롬프트에 부탁이 여러 개 섞여 있어요 — 번호로 나누거나 따로 맡기면 빠지는 게 줄어요.",
+                     "ex": "1) 버튼 문구 바꾸기 2) 저장 오류 고치기 3) 테스트 추가 — 순서대로 하고 각각 확인해줘"})
+    if first and ask and BROAD_RE.search(t) and not CONSTRAINT_RE.search(t):
+        tips.append({"kind": "tip", "code": "scope", "text": "크게 바꾸는 부탁인데 건드리면 안 되는 곳·범위가 없어요.",
+                     "ex": "…정리해줘. 단 공개 함수 이름·DB 스키마는 그대로 두고, 이 폴더 안에서만"})
+    if ask and next_text and CORRECTION_RE.match(next_text):
+        tips.append({"kind": "tip", "code": "redo", "text": "바로 다음에 고쳐 말했어요 — 그 조건을 처음에 넣었으면 한 번에 됐을 수 있어요.",
+                     "ex": "다음 프롬프트: " + next_text.strip()[:80]})
+    if ask and n >= 30:
+        if has_key or re.search(r"\.\w{2,4}\b|`", t):
+            good.append({"kind": "good", "code": "target", "text": "대상(이슈·파일)을 콕 집어 적었어요.", "ex": ""})
+        if numbered:
+            good.append({"kind": "good", "code": "steps", "text": "할 일을 번호·목록으로 나눠 적었어요.", "ex": ""})
+        if CHANGE_RE.search(t) and CRITERIA_RE.search(t) and first:
+            good.append({"kind": "good", "code": "criteria", "text": "끝났는지 볼 기준을 같이 적었어요.", "ex": ""})
+        if CHANGE_RE.search(t) and CONSTRAINT_RE.search(t):
+            good.append({"kind": "good", "code": "scope", "text": "건드리지 말 것·범위를 함께 적었어요.", "ex": ""})
+    return tips + good[:2]
+
+
+def load_feedback():
+    try:
+        return json.loads(feedback_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_feedback(fb):
+    f = feedback_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(fb, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(f)
+
+
+def annotate_sessions(sessions, fb=None):
+    """화면용 — 프롬프트마다 id·규칙 점검(hints)·캐시된 AI 피드백(ai)을 붙인다."""
+    fb = load_feedback() if fb is None else fb
+    for s in sessions:
+        ps = s.get("prompts") or []
+        for i, p in enumerate(ps):
+            p["id"] = prompt_id(p["text"])
+            p["hints"] = prompt_hints(p["text"], first=(i == 0), next_text=ps[i + 1]["text"] if i + 1 < len(ps) else "")
+            p["ai"] = fb.get(p["id"])
+    return sessions
+
+
+def all_prompt_texts():
+    """id → (프롬프트, 세션 첫 프롬프트인지). ✨ 요청은 화면이 보낸 글이 아니라 이 id 로만 찾는다(아무 글이나 AI 로 보내지 않게)."""
+    out = {}
+    for sessions in read_json(PRIVATE / "prompts.json").values():
+        for s in sessions:
+            for i, p in enumerate(s.get("prompts") or []):
+                out.setdefault(prompt_id(p["text"]), (p["text"], i == 0))
+    return out
+
+
+FB_SYSTEM = ("너는 개발자가 코딩 AI(Claude Code 등)에게 쓴 프롬프트를 봐 주는 코치다. 프롬프트마다 짧은 한국어로 평가한다. "
+             "기준: 대상(파일·화면·이슈)이 분명한가, 완료 기준·확인 방법이 있는가, 범위·제약이 있는가, 한 번에 한 가지 일인가, "
+             "배경(왜)이 있는가. 대화 중간의 짧은 답(응·진행해)은 맥락이 있으니 낮게 보지 않는다. "
+             "반드시 JSON 배열만 출력한다(설명·코드 블록 표시 없이). 각 원소: "
+             '{"id": 받은 id, "score": 1~5 정수, "good": 잘한 점 한 문장, "improve": 고칠 점 한 문장, '
+             '"rewrite": 이렇게 쓰면 더 좋은 짧은 예(원문 의도 유지, 200자 이내)}')
+
+
+def ai_text(prompt, system):
+    """(답 글, 쓴 AI 이름). 허브 「AI 고르기」(aicli)에서 고른 AI — 못 부르면 로그인된 claude CLI(도구 없이)."""
+    try:
+        import aicli    # tools\macro-hub (위 sys.path)
+        st = aicli.settings()
+        return aicli.text(prompt, st["engine"], st["model"], 600, system), aicli.NAMES.get(st["engine"], st["engine"])
+    except ImportError as e:
+        log(f"허브 aicli 를 못 불러 claude 로 돌립니다: {e}")
+    return run_claude(f"[지시]\n{system}\n\n[글]\n{prompt}", timeout=600), "Claude Code"
+
+
+def parse_feedback(answer, ids):
+    """AI 답에서 JSON 배열을 꺼내 id 별 {score, good, improve, rewrite} 로. 받은 id 가 아닌 것·모양이 틀린 것은 버린다."""
+    m = re.search(r"\[.*\]", answer, re.S)
+    if not m:
+        raise ValueError("AI 답에 JSON 배열이 없습니다")
+    out = {}
+    for it in json.loads(m.group(0)):
+        if not isinstance(it, dict) or it.get("id") not in ids:
+            continue
+        try:
+            score = max(1, min(5, int(it.get("score"))))
+        except (TypeError, ValueError):
+            continue
+        out[it["id"]] = {k: str(it.get(k) or "")[:400] for k in ("good", "improve", "rewrite")}
+        out[it["id"]]["score"] = score
+    return out
+
+
+def run_feedback(ids, ai=None):
+    """id 들 중 캐시에 없는 것만(최대 FB_MAX) 한 번에 AI 로 보내 결과를 캐시에 더한다. 돌려준 값 = 새로 받은 개수.
+    ai(prompt, system) -> (답, AI 이름) 은 시험에서 가짜로 바꾼다."""
+    ai = ai or ai_text
+    texts, fb = all_prompt_texts(), load_feedback()
+    todo = [i for i in dict.fromkeys(ids) if i in texts and i not in fb][:FB_MAX]
+    if not todo:
+        return 0
+    items = [{"id": i, "first": texts[i][1], "text": mask(texts[i][0])} for i in todo]
+    answer, engine = ai("아래 프롬프트들을 평가해 줘. first=true 는 세션 첫 프롬프트(앞 맥락 없음).\n\n"
+                        + json.dumps(items, ensure_ascii=False, indent=1), FB_SYSTEM)
+    got = parse_feedback(answer, set(todo))
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    fb = load_feedback()                                     # AI 가 도는 사이 바뀌었을 수 있다
+    for i, v in got.items():
+        fb[i] = dict(v, engine=engine, at=now)
+    save_feedback(fb)
+    return len(got)
+
+
 # ---------------------------------------------------------------- collect
 def gather(since, until, other=True):
     """수집만 — 위키를 쓰지 않는다(주간 보고도 이것을 쓴다). 이슈 출처가 실패해도 git 쪽은 계속 모은다."""
@@ -1554,6 +1727,7 @@ def serve(port, open_browser=True):
     import threading
     import webbrowser
     lock = threading.Lock()
+    fb_lock, fbstate = threading.Lock(), {"busy": False, "n": 0, "done": 0, "error": ""}   # ✨ AI 피드백 (한 번에 하나)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -1587,7 +1761,10 @@ def serve(port, open_browser=True):
                 return self.reply(200, team_settings())
             if u.path == "/api/prompts":                     # 내 프롬프트 — 이 PC 화면에서만
                 allp = read_json(PRIVATE / "prompts.json")
-                return self.reply(200, {"sessions": allp.get(q.get("key", ""), [])})
+                return self.reply(200, {"sessions": annotate_sessions(allp.get(q.get("key", ""), [])),
+                                        "fb_max": FB_MAX, "fb": dict(fbstate)})
+            if u.path == "/api/feedback":                    # ✨ AI 피드백 진행 상태 — 화면이 돌고 있는 동안 묻는다
+                return self.reply(200, dict(fbstate))
             if u.path == "/api/doc":
                 kind = q.get("kind")
                 if kind == "ticket" and q.get("part") in (MY_PART, OTHER_PART) and key_ok(q.get("key", "")):
@@ -1630,6 +1807,24 @@ def serve(port, open_browser=True):
                         sel.pop(key, None)
                     save_select(sel)
                 return self.reply(200, {"ok": True})
+            if u == "/api/feedback":                     # ✨ AI 피드백 — 누를 때만, 한 번에 하나, 결과는 캐시
+                ids = [i for i in body.get("ids") or [] if isinstance(i, str) and re.fullmatch(r"[0-9a-f]{16}", i)]
+                if not ids:
+                    return self.reply(400, {"error": "보낼 프롬프트가 없습니다"})
+                if not fb_lock.acquire(blocking=False):
+                    return self.reply(409, {"error": "AI 피드백을 이미 받는 중입니다"})
+                fbstate.update(busy=True, n=min(len(ids), FB_MAX), done=0, error="")
+
+                def work():
+                    try:
+                        fbstate["done"] = run_feedback(ids)
+                    except Exception as e:                       # AI 실행 실패·JSON 아님 — 화면에 그대로 보인다
+                        fbstate["error"] = str(e)[:500]
+                    finally:
+                        fbstate["busy"] = False
+                        fb_lock.release()
+                threading.Thread(target=work, daemon=True).start()
+                return self.reply(202, dict(fbstate))
             if u in ("/api/collect", "/api/weekly", "/api/weekly/send"):
                 since, until = body.get("since", ""), body.get("until", "")
                 if u != "/api/weekly/send" and not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", since) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", until)):

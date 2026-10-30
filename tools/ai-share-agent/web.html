@@ -110,6 +110,32 @@ select.st.v-비공개 { color: var(--danger); }
 .prompts .sh { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
 .prompts ol { margin: 0; padding-left: 22px; font-size: 13px; }
 .prompts li { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
+/* 프롬프트 피드백 — 줄 끝 표시(💡 규칙 점검 수 · ★ AI 점수) · 마우스를 올리면 카드, 표시를 누르면 고정 */
+.prompts li[data-pid]:hover { background: var(--hover); }
+.pmk { font-size: 11.5px; padding: 0 5px; margin-left: 6px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted);
+  white-space: nowrap; vertical-align: 1px; font-variant-numeric: tabular-nums; }
+.pmk:hover { border-color: var(--text); color: var(--text); background: transparent; }
+.pmk.tip { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.pmk.none { opacity: .55; }
+.fbbar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 0 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.fbbar .top b { color: var(--warn); font-weight: 600; }
+.fbbar .spacer { flex: 1; }
+.pop { position: fixed; z-index: 20; width: min(440px, calc(100vw - 32px)); max-height: min(70vh, 560px); overflow: auto;
+  background: var(--solid); color: var(--text); border: 1px solid var(--rule); border-radius: 3px; padding: 10px 14px 12px; font-size: 13px; }
+.pop[hidden] { display: none; }
+.pop h4 { margin: 8px 0 4px; font: 600 12px var(--sans); color: var(--muted); border-top: 1px solid var(--line); padding-top: 6px; }
+.pop h4:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+.pop .hn { margin: 4px 0; }
+.pop .hn.tip::before { content: "💡 "; } .pop .hn.good::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+.pop .ex { display: block; margin: 2px 0 0 20px; font-size: 12px; color: var(--muted); }
+.pop .ex::before { content: "이렇게 써 보면 · "; color: var(--accent); }
+.pop .ex.redo::before { content: ""; }
+.pop .score { font: 700 18px var(--serif); color: var(--accent); }
+.pop .score small { font: 500 12px var(--sans); color: var(--muted); margin-left: 4px; }
+.pop .rw { white-space: pre-wrap; word-break: break-word; background: var(--code-bg); padding: 6px 8px; border-radius: 2px; margin: 4px 0; font-size: 12.5px; }
+.pop .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.pop .muted { color: var(--muted); font-size: 12px; }
+.pop .pin { float: right; font-size: 11px; color: var(--muted); }
 .doc h1 { font-size: 24px; } .doc h2 { font-size: 18px; border-top: 2px solid var(--rule); padding-top: 6px; margin-top: 28px; }
 .doc h3 { font-size: 15px; } .doc h4, .doc h5, .doc h6 { font-size: 14px; }
 .doc code { background: var(--code-bg); padding: 1px 4px; border-radius: 2px; font: 12.5px/1.5 Consolas, "D2Coding", monospace; }
@@ -473,15 +499,107 @@ function renderDash() {
 
 // ---------- 보기
 // 내가 Claude 에게 친 프롬프트 — 이 PC 의 대화 기록에서만 읽는다. 기록 문서·발표 자료에는 들어가지 않는다
+// 프롬프트마다 💡 규칙 점검(서버가 바로 계산, AI 없음) · ★ AI 피드백(✨ 누를 때만, 서버가 캐시) — 마우스를 올리면 카드로 본다
+const P = { byId: {}, key: "", open: false, fbMax: 20, fb: { busy: false }, sessions: [] };
+const tipsOf = p => (p.hints || []).filter(h => h.kind === "tip");
+const TIP_NAMES = { vague: "지시어만", target: "대상 없음", criteria: "완료 기준 없음", many: "부탁 여러 개", scope: "범위·제약 없음", redo: "다음에 고쳐 말함" };
+const needAi = () => Object.values(P.byId).filter(p => !p.ai && !p.text.startsWith("/"));
+function marker(p) {
+  const t = tipsOf(p).length, g = (p.hints || []).length - t;
+  const s = [t ? `💡${t}` : g ? "✓" : "", p.ai ? `★${p.ai.score}` : ""].filter(Boolean).join(" ") || "✨";
+  return `<button class="pmk${t ? " tip" : ""}${s === "✨" ? " none" : ""}" data-pmk="${p.id}" title="눌러서 피드백 카드 고정">${s}</button>`;
+}
 function promptsBox(sessions) {
   if (!sessions.length) return "";
+  P.byId = {};
+  sessions.forEach(s => s.prompts.forEach(p => { if (p.id) P.byId[p.id] = p; }));
   const n = sessions.reduce((a, s) => a + s.prompts.length, 0);
-  return `<details class="prompts"><summary>내 프롬프트 <b>${sessions.length}</b>세션 · ${n}개
-      <span>이 PC에서만 보임 · 발표 자료·공유 기록에는 안 들어감</span></summary>
-    ${sessions.sort((a, b) => a.date < b.date ? 1 : -1).map(s => `<div class="sess">
+  // 자주 나온 개선점 top 3 — 이 이슈 프롬프트의 규칙 점검에서
+  const cnt = {};
+  Object.values(P.byId).forEach(p => tipsOf(p).forEach(h => { cnt[h.code] = cnt[h.code] || [0, h.text]; cnt[h.code][0]++; }));
+  Object.keys(cnt).forEach(c => cnt[c][1] = TIP_NAMES[c] || cnt[c][1]);
+  const top = Object.values(cnt).sort((a, b) => b[0] - a[0]).slice(0, 3);
+  const left = needAi().length;
+  return `<details class="prompts"${P.open ? " open" : ""}><summary>내 프롬프트 <b>${sessions.length}</b>세션 · ${n}개
+      <span>이 PC 대화 기록에서 읽음 · 발표 자료·공유 기록에는 안 들어감</span></summary>
+    <div class="fbbar">${top.length ? `<span class="top">자주 나온 개선점 · ${top.map(([c, t]) => `${esc(t)} <b>${c}</b>`).join(" · ")}</span>`
+      : `<span>규칙 점검에 걸린 프롬프트가 없어요</span>`}
+      <span class="spacer"></span>
+      <span id="fbMsg">${P.fb.busy ? "AI 피드백 받는 중…" : P.fb.error ? "AI 피드백 실패: " + esc(P.fb.error) : ""}</span>
+      ${left ? `<button id="btnFb" ${P.fb.busy ? "disabled" : ""} title="AI 피드백이 없는 프롬프트를 한 번에 보냅니다(최대 ${P.fbMax}개, 받은 결과는 저장돼 다시 안 보냄)">✨ AI 피드백 받기 (${Math.min(left, P.fbMax)})</button>` : ""}
+    </div>
+    ${sessions.slice().sort((a, b) => a.date < b.date ? 1 : -1).map(s => `<div class="sess">
       <div class="sh">${esc(s.date)} · ${esc(s.title || "(제목 없음)")}${s.branch ? ` · <code>${esc(s.branch)}</code>` : ""}</div>
-      <ol>${s.prompts.map(p => `<li>${esc(p.text)}</li>`).join("")}</ol></div>`).join("")}
+      <ol>${s.prompts.map(p => p.id ? `<li data-pid="${p.id}">${esc(p.text)}${p.text.startsWith("/") ? "" : marker(p)}</li>` : `<li>${esc(p.text)}</li>`).join("")}</ol></div>`).join("")}
   </details>`;
+}
+// 카드 — 마우스를 올리면 뜨고, 표시(💡·★)를 누르면 고정(키보드·터치용). Esc·바깥 누르기로 닫는다
+const pop = document.createElement("div");
+pop.className = "pop"; pop.hidden = true; document.body.appendChild(pop);
+let popFor = "", popPinned = false, popTimer = 0;
+function popHtml(p) {
+  const hs = p.hints || [];
+  const h = hs.map(x => `<div class="hn ${x.kind}">${esc(x.text)}${x.ex ? `<span class="ex${x.code === "redo" ? " redo" : ""}">${esc(x.ex)}</span>` : ""}</div>`).join("");
+  const ai = p.ai ? `<h4>✨ AI 피드백 <span class="muted">${esc(p.ai.engine || "")}</span></h4>
+      <div class="score">${"★".repeat(p.ai.score)}${"☆".repeat(5 - p.ai.score)}<small>${p.ai.score}/5</small></div>
+      ${p.ai.good ? `<div class="hn good">${esc(p.ai.good)}</div>` : ""}
+      ${p.ai.improve ? `<div class="hn tip">${esc(p.ai.improve)}</div>` : ""}
+      ${p.ai.rewrite ? `<h4>고쳐 쓴 예</h4><div class="rw">${esc(p.ai.rewrite)}</div><div class="row"><button data-copy="${p.id}">복사</button></div>` : ""}`
+    : `<h4>✨ AI 피드백</h4><div class="row">${P.fb.busy ? `<span class="muted">AI 피드백 받는 중…</span>`
+      : `<button data-fb="${p.id}">✨ AI 피드백 받기</button><span class="muted">이 프롬프트 하나만 · 결과는 저장돼 다시 안 보냄</span>`}</div>`;
+  return `${popPinned ? '<span class="pin">고정됨 · Esc 로 닫기</span>' : ""}<h4>규칙 점검</h4>${h || '<div class="muted">걸린 점이 없어요.</div>'}${ai}`;
+}
+function showPop(li, pinned) {
+  const p = li && P.byId[li.dataset.pid];
+  if (!p) return;
+  clearTimeout(popTimer);
+  popFor = p.id; popPinned = !!pinned;
+  pop.innerHTML = popHtml(p); pop.hidden = false;
+  const r = li.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const x = Math.max(16, Math.min(r.left + 24, innerWidth - w - 16));
+  const y = r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4;
+  pop.style.left = x + "px"; pop.style.top = y + "px";
+}
+function hidePop(force) { if (popPinned && !force) return; pop.hidden = true; popFor = ""; popPinned = false; }
+document.addEventListener("mouseover", e => {
+  if (popPinned) return;
+  const li = e.target.closest(".prompts li[data-pid]");
+  if (li) { clearTimeout(popTimer); if (popFor !== li.dataset.pid) popTimer = setTimeout(() => showPop(li), 250); return; }
+  if (e.target.closest(".pop")) { clearTimeout(popTimer); return; }
+  if (popFor || popTimer) { clearTimeout(popTimer); popTimer = setTimeout(() => hidePop(), 200); }
+});
+addEventListener("scroll", e => { if (!pop.contains(e.target)) hidePop(true); }, { capture: true, passive: true });   // 카드는 화면에 고정 위치라 스크롤하면 닫는다
+addEventListener("resize", () => hidePop(true));
+document.addEventListener("toggle", e => { if (e.target.matches && e.target.matches("details.prompts")) P.open = e.target.open; }, true);
+async function copyText(s) {
+  try { await navigator.clipboard.writeText(s); return true; } catch (e) {}
+  const ta = document.createElement("textarea"); ta.value = s; document.body.appendChild(ta); ta.select();
+  const ok = document.execCommand("copy"); ta.remove(); return ok;
+}
+// ✨ — 서버가 AI 를 한 번에 하나만 돌린다. 끝날 때까지 상태를 묻고, 끝나면 프롬프트 칸만 다시 그린다
+async function askFeedback(ids) {
+  try { P.fb = await api("/api/feedback", { ids }); }
+  catch (e) { status("AI 피드백: " + e.message); return; }
+  redrawPrompts();
+  while (P.fb.busy) {
+    await new Promise(r => setTimeout(r, 2000));
+    try { P.fb = await api("/api/feedback"); } catch (e) { break; }
+  }
+  status(P.fb.error ? "AI 피드백 실패: " + P.fb.error : `AI 피드백 ${P.fb.done}개 받음`);
+  await refreshPrompts();
+}
+function redrawPrompts() {
+  const box = document.querySelector("#viewer details.prompts");
+  if (!box) return;
+  P.open = box.open;
+  box.outerHTML = promptsBox(P.sessions || []);
+  if (popFor && P.byId[popFor]) pop.innerHTML = popHtml(P.byId[popFor]);
+}
+async function refreshPrompts() {
+  if (!P.key) return;
+  const pr = await api(`/api/prompts?key=${encodeURIComponent(P.key)}`);
+  P.sessions = pr.sessions; P.fbMax = pr.fb_max || P.fbMax; P.fb = pr.fb || P.fb;
+  redrawPrompts();
 }
 // 이어진 이슈 — 이 문서가 언급한 이슈 · 이 이슈를 언급한 이슈(백링크). 목록에 없는 키는 글자만
 function linksBox(t) {
@@ -497,6 +615,9 @@ async function openTicket(part, key) {
   const enc = encodeURIComponent;
   const [j, pr] = await Promise.all([api(`/api/doc?kind=ticket&part=${enc(part)}&key=${enc(key)}`),
     t && t.mine ? api(`/api/prompts?key=${enc(key)}`) : Promise.resolve({ sessions: [] })]);
+  if (P.key !== key) P.open = false;
+  P.key = key; P.sessions = pr.sessions; P.fbMax = pr.fb_max || P.fbMax; P.fb = pr.fb || P.fb;
+  hidePop(true);
   $("viewer").innerHTML = `<div class="bar">${stSelect(t)}
     <input class="memo" id="memo" placeholder="메모 (선택 사유 등) — Enter 또는 칸을 벗어나면 저장" value="${esc(t.memo || "")}">
     ${/^https?:\/\//.test(t.url || "") ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(S.F.tracker_label || "이슈")} ↗</a>` : ""}</div>
@@ -545,6 +666,27 @@ document.addEventListener("change", e => {
   if (e.target.matches("select.st")) setSelect(e.target.dataset.key, e.target.value);
 });
 document.addEventListener("click", e => {
+  const mk = e.target.closest("button[data-pmk]");
+  if (mk) {                                           // 프롬프트 표시 — 카드 고정(다시 누르면 풀림)
+    e.preventDefault();
+    if (popPinned && popFor === mk.dataset.pmk) return hidePop(true);
+    return showPop(mk.closest("li[data-pid]"), true);
+  }
+  const fbOne = e.target.closest("button[data-fb]");
+  if (fbOne) return askFeedback([fbOne.dataset.fb]);
+  const cp = e.target.closest("button[data-copy]");
+  if (cp) {
+    const p = P.byId[cp.dataset.copy];
+    if (p && p.ai) copyText(p.ai.rewrite).then(ok => { cp.textContent = ok ? "복사됨" : "복사 실패"; });
+    return;
+  }
+  if (e.target.closest("#btnFb")) {
+    const ids = needAi().slice(0, P.fbMax).map(p => p.id);
+    if (ids.length && confirm(`프롬프트 ${ids.length}개를 AI 에게 보내 피드백을 받습니다.\n(허브 「AI 고르기」에서 고른 AI · 사용량이 듭니다 · 민감 값은 가려서 보냄 · 결과는 저장돼 다시 안 보냄)\n계속할까요?`))
+      askFeedback(ids);
+    return;
+  }
+  if (popPinned && !e.target.closest(".pop")) hidePop(true);
   const chip = e.target.closest("button[data-tk]");
   if (chip) {                                         // 태그 칩 — 그 태그로 거른다(같은 칩을 다시 누르면 풀림)
     const same = S.tag && S.tag[0] === chip.dataset.tk && S.tag[1] === chip.dataset.tv;
@@ -598,7 +740,7 @@ function showViewer(label) {
 }
 function showList() {
   if (!document.body.classList.contains("view-doc")) return;
-  document.body.classList.remove("view-doc");
+  document.body.classList.remove("view-doc"); hidePop(true);
   if (narrowMQ.matches) requestAnimationFrame(() => scrollTo(0, S.listY || 0));
 }
 function goList() { if (history.state && history.state.aiv) history.back(); else showList(); }
@@ -609,7 +751,7 @@ addEventListener("popstate", e => { if (e.state && e.state.aiv) { if (narrowMQ.m
 narrowMQ.addEventListener("change", () => { if (!narrowMQ.matches) showList(); });
 if (location.hash === "#doc") history.replaceState(null, "", location.pathname + location.search);   // 새로 고침하면 목록부터
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { if (isDocView() && !(e.target.closest && e.target.closest("input, textarea, select"))) goList(); }
+  if (e.key === "Escape") { if (!pop.hidden) return hidePop(true); if (isDocView() && !(e.target.closest && e.target.closest("input, textarea, select"))) goList(); }
   else if (e.altKey && e.key === "ArrowLeft" && isDocView()) { e.preventDefault(); goList(); }
 });
 $("btnBack").onclick = goList;
