@@ -42,6 +42,15 @@ tr:last-child td{border-bottom:0}
 th{color:var(--muted);font-weight:600;font-size:12.5px}
 tbody tr:hover td{background:color-mix(in srgb,var(--soft) 60%,transparent)}
 .log>.row{padding:6px 0;border-bottom:1px solid var(--line2)}
+/* 변경 이력 · 지시 실행 기록 — 좁은 창에선 한 줄 표 대신 카드로 쌓는다: 시각+배지 / 대상(통째로) / 어디서(작게) */
+#auditBox,#jobAuditBox{min-width:0;max-width:100%}
+@media (max-width:600px){
+  .arow{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;align-items:center;padding:4px 0}
+  .arow>.chip{justify-self:start}
+  .arow>:nth-child(n+3){grid-column:1/-1;min-width:0}
+  .arow>.name{word-break:keep-all;overflow-wrap:anywhere}
+  .arow>.sub:nth-child(n+3){overflow-wrap:anywhere}
+}
 </style>
 </head>
 <body>
@@ -347,7 +356,7 @@ async function loadAudit(){
   if (!v.items.length) { box.replaceChildren(el('div', 'empty', '아직 기록이 없습니다 — 서비스를 켜고 끄거나 설정을 바꾸면 여기 남습니다')); return; }
   const c = el('div', 'card log');
   for (const it of v.items){
-    const r = el('div', 'row');
+    const r = el('div', 'row arow');
     r.append(el('span', 'sub', it.ts), el('span', 'chip', it.action), el('span', 'name grow', (it.name || it.target || '') + (it.detail ? ' — ' + it.detail : '')),
       el('span', 'sub', (it.user || '?') + ' · ' + it.via));
     c.append(r);
@@ -366,7 +375,7 @@ async function loadJobAudit(){
   if (!v.items.length) { box.replaceChildren(el('div', 'empty', q ? '찾는 기록이 없습니다' : '아직 기록이 없습니다 — 메일 게이트웨이가 끝난 지시를 여기에 남깁니다')); return; }
   const c = el('div', 'card log');
   for (const it of v.items){
-    const r = el('div', 'row'); r.style.flexWrap = 'wrap';
+    const r = el('div', 'row arow'); r.style.flexWrap = 'wrap';
     const who = (VIA[it.via] || it.via) + (it.from ? ' · ' + it.from : '');
     const tools = it.tools && it.tools.length ? it.tools.join(' ') : '읽기 기본';
     r.append(el('span', 'sub', it.finished || it.created), el('span', 'chip', (ST[it.status] || it.status) + (it.mode === 'write' ? ' · 수정' : '')),

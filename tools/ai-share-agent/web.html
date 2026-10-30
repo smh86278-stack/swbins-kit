@@ -45,6 +45,7 @@ header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; pad
   border-bottom: 2px solid var(--rule); background: var(--bg); }
 header h1 { font-size: 22px; font-weight: 700; margin: 0; line-height: 1.2; }
 .spacer { flex: 1; }
+.range { white-space: nowrap; }
 .tools { display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; }
 #report { max-width: 240px; }
 input, select { font: inherit; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--field);
@@ -64,7 +65,7 @@ main { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); fle
 .filters { display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line);
   position: sticky; top: 0; background: var(--bg); z-index: 2; }
 .filters input[type=search] { flex: 1; min-width: 160px; }
-.list { overflow: auto; flex: 1; }
+.list { overflow: auto; flex: 1; container-type: inline-size; }
 table.tk { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.tk th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 600; font-size: 12px;
   color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--rule); cursor: pointer; white-space: nowrap; }
@@ -79,7 +80,7 @@ table.tk tr.s-발표제외 td, table.tk tr.s-비공개 td { color: var(--muted);
 table.tk tr.s-비공개 td:first-child { box-shadow: inset 2px 0 var(--danger); }
 td.key { white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.title { max-width: 360px; }
+td.title { max-width: 360px; overflow-wrap: anywhere; }
 td.title .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .part { font-size: 11px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); margin-right: 4px; }
 .h-grilling { color: var(--ok); font-weight: 600; }
@@ -135,7 +136,7 @@ td.shop { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow
 .who.mine { color: var(--accent); font-weight: 600; }
 .shown { align-self: center; font-size: 12px; color: var(--muted); margin-left: auto; }
 /* 요약 — 내 파트 기준 숫자. 위 굵은 선 + 칸 사이 세로줄, 고른 칸만 면 색. 칸을 누르면 아래 목록이 그 조건으로 걸러진다 */
-.dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0;
+.dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-flow: dense; gap: 0;
   margin: 12px 16px 0; border-top: 2px solid var(--rule); border-bottom: 1px solid var(--line); overflow: hidden; }
 .card { --c: var(--accent); background: transparent; border: 0; border-left: 1px solid var(--line); border-top: 1px solid var(--line);
   margin: -1px 0 0 -1px; border-radius: 0; padding: 9px 14px 10px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
@@ -179,20 +180,48 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
 .hit { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
   font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .hit mark { background: var(--accent-bg); color: var(--text); }
-@media (max-width: 600px) { .chips { padding-left: 12px; padding-right: 12px; } .links { margin-left: 12px; margin-right: 12px; } }
+/* 창 크기에 맞춤 — 표 칸은 목록 폭(컨테이너)을 보고 덜 중요한 열부터 감춘다: 커밋·하네스 → 꼬리표 → 담당·수정일 → 선택.
+   꼬리표·하네스 열은 설정에 따라 빠지기도 해서 순서(nth-child) 대신 열 이름(data-col)으로 고른다 */
+@container (max-width: 760px) { table.tk [data-col=commits], table.tk [data-col=harness] { display: none; } }
+@container (max-width: 620px) { table.tk [data-col=tag] { display: none; } }
+@container (max-width: 500px) { table.tk [data-col=owner], table.tk [data-col=updated] { display: none; } }
+@container (max-width: 400px) { table.tk [data-col=select] { display: none; } }
+.backbar { display: none; }
 @media (max-width: 1250px) { .dash { grid-template-columns: repeat(4, 1fr); } .card.shops { grid-column: span 2; } }
-@media (max-width: 900px) {
-  .dash { grid-template-columns: repeat(2, 1fr); } .card.shops { grid-column: span 2; }
+/* 1000px 아래는 한 칸 — 목록이 폭을 다 쓰고, 이슈·주간 보고·자료를 고르면 그 내용이 폭을 다 쓴다(맨 위 「← 목록」·뒤로 가기·Esc·Alt+← 로 돌아감) */
+@media (max-width: 999px) {
   body { display: block; height: auto; }
   main { grid-template-columns: minmax(0, 1fr); }
   .pane { overflow: visible; } .left { border-right: 0; } .list { overflow: visible; }
+  table.tk th { position: static; }
   td.title { max-width: none; }
+  .right { display: none; }
+  body.view-doc .left, body.view-doc .dash { display: none; }
+  body.view-doc .right { display: block; }
+  .backbar { display: flex; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 3; padding: 7px 16px;
+    background: var(--bg); border-bottom: 1px solid var(--rule); }
+  .backbar button { flex: none; font-weight: 600; }
+  #backTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--muted); }
+  .bar { position: static; padding: 8px 16px; }
+  .doc { padding: 4px 16px 40px; } .teamform { padding: 12px 16px 40px; } .weekly { padding: 12px 16px 40px; }
+  .weekly .doc { padding-left: 0; padding-right: 0; }
+  .prompts { margin: 10px 16px 0; } .chips { padding: 8px 16px 0; } .links { margin: 10px 16px 0; }
 }
+@media (max-width: 900px) { .dash { grid-template-columns: repeat(2, 1fr); } .card.shops { grid-column: span 2; } }
 @media (max-width: 600px) {
-  header { padding: 8px 12px; } header h1 { font-size: 20px; }
-  .dash { margin: 10px 12px 0; } .filters { padding: 8px 12px; } .bar { padding: 8px 12px; }
-  .doc, .teamform { padding-left: 12px; padding-right: 12px; } .prompts { margin: 10px 12px 0; }
-  .list { overflow-x: auto; min-width: 0; } .doc table.fm { display: block; overflow-x: auto; }
+  header { padding: 8px 12px; gap: 6px 12px; } header h1 { font-size: 20px; }
+  .tools { gap: 6px; } .tools button { padding: 3px 8px; } input[type=date] { width: 8.6em; }
+  #report { max-width: 100%; flex: 1 1 140px; }
+  #status { max-width: 100%; flex-basis: 100%; } #status:empty { display: none; }
+  .dash { margin: 10px 12px 0; } .card { padding: 7px 12px 8px; } .card .v { font-size: 21px; }
+  .filters { padding: 8px 12px; } .filters input[type=search] { flex-basis: 100%; min-width: 0; }
+  .backbar { padding: 6px 12px; } .bar { padding: 8px 12px; }
+  .doc, .teamform, .weekly { padding-left: 12px; padding-right: 12px; } .prompts { margin: 10px 12px 0; }
+  .weekly .doc { padding-left: 0; padding-right: 0; }
+  .chips { padding-left: 12px; padding-right: 12px; } .links { margin-left: 12px; margin-right: 12px; }
+  .links .lk { flex-wrap: wrap; gap: 2px 8px; } .links .lk > b { flex-basis: 100%; }
+  .doc table.fm { display: block; overflow-x: auto; }
+  table.tk td, table.tk th { padding-left: 6px; padding-right: 6px; }
 }
 </style>
 </head>
@@ -208,7 +237,7 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
     <button id="btnIndex">INDEX</button>
     <button id="btnWeekly" title="이번 주(월요일~오늘) 주간 업무 보고 초안 — LLM 을 부른다">주간 보고 초안</button>
     <select id="report"><option value="">보고·발표 자료…</option></select>
-    <input type="date" id="since" title="수집 시작일"> ~ <input type="date" id="until" title="수집 종료일">
+    <span class="range"><input type="date" id="since" title="수집 시작일"> ~ <input type="date" id="until" title="수집 종료일"></span>
     <button id="btnCollect" class="primary" title="이슈·git·기록 다시 수집 (LLM 없음)">수집</button>
     <span id="status"></span>
   </div>
@@ -236,8 +265,10 @@ button.toggle.on { background: var(--solid); border-color: var(--text); color: v
       </table>
     </div>
   </section>
-  <section class="pane right" id="viewer"><div class="empty">왼쪽에서 이슈를 고르면 내용이 여기 보입니다. <b>주간 보고 초안</b> 은 이번 주 한 일을 보고서 초안으로 씁니다.<br>
-    <b>추천</b> 건은 따로 고르지 않아도 발표 자료 후보로 먼저 들어갑니다.<br>선택: <b>발표고정</b> 추천 밖이어도 발표 사례로 꼭 넣음 · <b>발표제외</b> 기록엔 두고 발표에선 뺌 · <b>비공개</b> 내 PC에만, 발표 프롬프트에서도 제외</div></section>
+  <section class="pane right" id="paneR">
+    <div class="backbar"><button id="btnBack" title="목록으로 (Esc · Alt+← · 뒤로 가기)">← 목록</button><span id="backTitle"></span></div>
+    <div id="viewer"><div class="empty">왼쪽에서 이슈를 고르면 내용이 여기 보입니다. <b>주간 보고 초안</b> 은 이번 주 한 일을 보고서 초안으로 씁니다.<br>
+    <b>추천</b> 건은 따로 고르지 않아도 발표 자료 후보로 먼저 들어갑니다.<br>선택: <b>발표고정</b> 추천 밖이어도 발표 사례로 꼭 넣음 · <b>발표제외</b> 기록엔 두고 발표에선 뺌 · <b>비공개</b> 내 PC에만, 발표 프롬프트에서도 제외</div></div></section>
 </main>
 <script>
 const STATES = ["발표고정", "발표제외", "비공개"];
@@ -373,12 +404,12 @@ function renderRows() {
   computeRec();
   const list = sorted(filtered());
   $("rows").innerHTML = list.map(t => `<tr class="s-${t.select || "none"}${S.cur && S.cur.key === t.key && S.cur.part === t.part ? " cur" : ""}" data-part="${esc(t.part)}" data-key="${esc(t.key)}">
-    <td>${stSelect(t)}</td>
+    <td data-col="select">${stSelect(t)}</td>
     <td class="key"><span class="part">${esc(t.part)}</span>${esc(t.disp || t.key)}</td>
-    <td class="owner">${(t.owner || "").split(", ").filter(Boolean).map(w => `<span class="who${S.meNames.includes(w) ? " mine" : ""}">${esc(w)}</span>`).join(" ")}</td>
-    ${S.F.tag ? `<td class="shop" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec"></span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${hitLine(t)}${t.memo ? `<br><small style="color:var(--muted)">메모 · ${esc(t.memo)}</small>` : ""}</td>
-    <td>${esc(t.status)}</td><td class="num">${t.commits || ""}</td>
-    ${S.F.harness ? `<td class="h-${t.harness}">${t.harness === "none" ? "" : t.harness}</td>` : ""}<td class="key">${t.updated}</td></tr>`).join("");
+    <td class="owner" data-col="owner">${(t.owner || "").split(", ").filter(Boolean).map(w => `<span class="who${S.meNames.includes(w) ? " mine" : ""}">${esc(w)}</span>`).join(" ")}</td>
+    ${S.F.tag ? `<td class="shop" data-col="tag" title="${esc(t.tag)}">${esc(t.tag)}</td>` : ""}<td class="title" title="${esc(t.title)}"><span class="t">${S.rec.has(t.key) && t.mine ? '<span class="rec"></span>' : ""}${esc(t.title)}</span>${S.rec.has(t.key) && t.mine ? `<span class="why">${esc(t.why)}</span>` : ""}${hitLine(t)}${t.memo ? `<br><small style="color:var(--muted)">메모 · ${esc(t.memo)}</small>` : ""}</td>
+    <td>${esc(t.status)}</td><td class="num" data-col="commits">${t.commits || ""}</td>
+    ${S.F.harness ? `<td class="h-${t.harness}" data-col="harness">${t.harness === "none" ? "" : t.harness}</td>` : ""}<td class="key" data-col="updated">${t.updated}</td></tr>`).join("");
   document.querySelectorAll("table.tk th").forEach(th => {
     th.classList.toggle("on", th.dataset.col === S.sort.col);
     th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.col === S.sort.col ? (S.sort.dir > 0 ? " ▲" : " ▼") : "");
@@ -473,17 +504,23 @@ async function openTicket(part, key) {
     ${linksBox(t)}
     ${promptsBox(pr.sessions)}
     <div class="doc">${render(j.text)}</div>`;
-  $("viewer").scrollTop = 0;
+  viewerTop();
   const memo = $("memo");
   const saveMemo = () => { if (memo.value !== (t.memo || "")) setSelect(key, t.select, memo.value, true); };
   memo.addEventListener("keydown", e => { if (e.key === "Enter") memo.blur(); });
   memo.addEventListener("blur", saveMemo);
 }
+// 사용자가 이슈를 고를 때 — 내용을 그리고(좁은 창이면) 내용 화면으로 넘어간다. 선택 저장 뒤 다시 그리기는 openTicket 만 부른다
+async function openTicketView(part, key) {
+  await openTicket(part, key);
+  const t = S.tickets.find(x => x.part === part && x.key === key);
+  showViewer((t && t.disp || key) + (t && t.title ? " · " + t.title : ""));
+}
 async function openDoc(kind, name) {
   S.cur = null; renderRows();
   const j = await api(`/api/doc?kind=${kind}${name ? "&name=" + encodeURIComponent(name) : ""}`);
   $("viewer").innerHTML = `<div class="doc">${render(j.text)}</div>`;
-  $("viewer").scrollTop = 0;
+  viewerTop();
 }
 
 // ---------- 선택 저장
@@ -532,10 +569,10 @@ document.addEventListener("click", e => {
     return renderRows();
   }
   const a = e.target.closest("a[data-open]");
-  if (a) { e.preventDefault(); const t = S.byKey[a.dataset.open]; return openTicket(t.part, t.key); }
+  if (a) { e.preventDefault(); const t = S.byKey[a.dataset.open]; return openTicketView(t.part, t.key); }
   if (e.target.closest("select")) return;
   const tr = e.target.closest("#rows tr");
-  if (tr) return openTicket(tr.dataset.part, tr.dataset.key);
+  if (tr) return openTicketView(tr.dataset.part, tr.dataset.key);
   const th = e.target.closest("table.tk th");
   if (th) {
     const col = th.dataset.col;
@@ -547,6 +584,35 @@ document.addEventListener("click", e => {
 ["q", "fPart", "fOwner", "fHarness", "fSel"].forEach(id => $(id).addEventListener("input", () => { S.recOnly = false; renderRows(); }));
 $("q").addEventListener("input", searchBodies);
 $("btnRec").onclick = () => { S.recOnly = !S.recOnly; renderRows(); };
+// 한 칸 화면(좁은 창) — 목록 ↔ 내용. 내용을 열 때 history 에 한 칸 쌓아서 뒤로 가기·Esc·Alt+←·「← 목록」이 다 목록으로 돌아온다.
+// 목록 스크롤 위치·필터는 그대로 둔다(목록은 감추기만 한다)
+const narrowMQ = matchMedia("(max-width: 999px)");
+const isDocView = () => narrowMQ.matches && document.body.classList.contains("view-doc");
+function showViewer(label) {
+  $("backTitle").textContent = label || "";
+  if (!narrowMQ.matches || document.body.classList.contains("view-doc")) return;
+  S.listY = scrollY;
+  document.body.classList.add("view-doc");
+  history.pushState({ aiv: 1 }, "", "#doc");
+  scrollTo(0, 0);
+}
+function showList() {
+  if (!document.body.classList.contains("view-doc")) return;
+  document.body.classList.remove("view-doc");
+  if (narrowMQ.matches) requestAnimationFrame(() => scrollTo(0, S.listY || 0));
+}
+function goList() { if (history.state && history.state.aiv) history.back(); else showList(); }
+function viewerTop() {          // 내용을 새로 그렸을 때 맨 위로 — 한 칸 화면에서 목록을 보는 중이면 목록 스크롤은 건드리지 않는다
+  if (!narrowMQ.matches) $("paneR").scrollTop = 0; else if (isDocView()) scrollTo(0, 0);
+}
+addEventListener("popstate", e => { if (e.state && e.state.aiv) { if (narrowMQ.matches) document.body.classList.add("view-doc"); } else showList(); });
+narrowMQ.addEventListener("change", () => { if (!narrowMQ.matches) showList(); });
+if (location.hash === "#doc") history.replaceState(null, "", location.pathname + location.search);   // 새로 고침하면 목록부터
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (isDocView() && !(e.target.closest && e.target.closest("input, textarea, select"))) goList(); }
+  else if (e.altKey && e.key === "ArrowLeft" && isDocView()) { e.preventDefault(); goList(); }
+});
+$("btnBack").onclick = goList;
 // 테마 — 자동/밝게/어둡게 순환. 고른 값은 이 브라우저에만 기억한다(저장 실패해도 화면은 정상)
 const THEMES = [["auto", "◐ 자동"], ["light", "☀ 밝게"], ["dark", "☾ 어둡게"]];
 function applyTheme(mode) {
@@ -585,7 +651,7 @@ async function openTeam() {
     <div class="btns"><button id="tmSave">저장</button>
       <button id="tmSaveCollect" class="primary">저장하고 다시 수집</button><span class="msg" id="tmMsg"></span></div>
   </div>`;
-  $("viewer").scrollTop = 0;
+  viewerTop();
   const save = async collectAfter => {
     const aliases = {};
     $("tmAlias").value.split("\n").map(l => l.split("=")).forEach(([k, v]) => { if (k && v && k.trim()) aliases[k.trim()] = v.trim(); });
@@ -597,6 +663,7 @@ async function openTeam() {
   };
   $("tmSave").onclick = () => save(false);
   $("tmSaveCollect").onclick = () => save(true);
+  showViewer("팀 명단");
 }
 $("btnTeam").onclick = openTeam;
 // 주간 업무 보고 초안 — 이번 주(월요일~오늘)를 모아 LLM 이 초안을 쓴다. 보내기는 미리 본 뒤 따로 누른다
@@ -607,6 +674,7 @@ $("btnWeekly").onclick = async () => {
   const b = $("btnWeekly"); b.disabled = true; status("주간 보고 초안 만드는 중… (1~3분)");
   S.cur = null; renderRows();
   $("viewer").innerHTML = '<div class="weekly"><h2>주간 보고 초안</h2><p class="msg">수집하고 초안을 쓰는 중입니다…</p></div>';
+  viewerTop(); showViewer("주간 보고 초안");
   try {
     const j = await api("/api/weekly", { since: S.week.since, until: S.week.until });
     if (!j.ok) { $("viewer").innerHTML = `<div class="doc"><h2>주간 보고 실패</h2><pre><code>${esc(j.log)}</code></pre></div>`; status("주간 보고 실패"); }
@@ -628,11 +696,12 @@ async function sendWeekly() {
     $("wkMsg").textContent = j.ok ? "보냈습니다 " + (j.why || "") : "못 보냄: " + (j.why || j.log || "");
   } catch (e) { $("wkMsg").textContent = "못 보냄: " + e.message; }
 }
-$("btnIndex").onclick = () => openDoc("index");
+$("btnIndex").onclick = () => openDoc("index").then(() => showViewer("INDEX"));
 $("report").onchange = e => {
   const v = e.target.value;
   if (!v) return;
   openDoc("report", v).then(() => {
+    showViewer(v);
     if (!v.includes("주간보고")) return;
     lastWeekly = v;
     $("viewer").insertAdjacentHTML("afterbegin", `<div class="weekly" style="padding-bottom:0"><div class="btns"><b>${esc(v)}</b>
@@ -644,7 +713,7 @@ $("btnCollect").onclick = async () => {
   try {
     const j = await api("/api/collect", { since: $("since").value, until: $("until").value });
     status(j.ok ? "수집 완료" : "수집 실패 — 로그를 오른쪽에 표시");
-    if (!j.ok) $("viewer").innerHTML = `<div class="doc"><h2>수집 로그</h2><pre><code>${esc(j.log)}</code></pre></div>`;
+    if (!j.ok) { $("viewer").innerHTML = `<div class="doc"><h2>수집 로그</h2><pre><code>${esc(j.log)}</code></pre></div>`; viewerTop(); showViewer("수집 로그"); }
     await load();
   } catch (e) { status("수집 실패: " + e.message); }
   b.disabled = false;
@@ -689,7 +758,7 @@ async function load() {
   $("report").innerHTML = '<option value="">보고·발표 자료…</option>' + j.reports.map(r => `<option>${esc(r)}</option>`).join("");
   renderRows();
 }
-load().catch(e => { $("viewer").innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message)}<br>먼저 <b>수집</b> 을 눌러 보세요.</div>`; });
+load().catch(e => { $("viewer").innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message)}<br>먼저 <b>수집</b> 을 눌러 보세요.</div>`; showViewer("불러오기 실패"); });
 </script>
 </body>
 </html>
